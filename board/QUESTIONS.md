@@ -98,3 +98,13 @@ For `specs/fit.md` and `specs/models.md` (card T-008). Same rules as Q-008: look
 Decision taken meanwhile: `specs/fit.md` and `specs/models.md` follow open-tool conventions and the defaults of `AGENTS.md` section 6; every point above is tagged `assumed` there (open items OF-01 to OF-07, OM-02, OM-03).
 
 Answer: _pending_.
+
+## Q-010 (2026-10-08, reader): replaced values and the extrapolation to infinity
+
+No action needed from you yet; this is a decision record for the orchestrator and a possible later look at your screen. PKNCA, and therefore the engine by default, adds the tail Clast/λz from the last measured positive point after an area that already runs to a later replaced value (a trailing BLQ value replaced by a number), so that stretch is counted twice in AUCinf and AUMCinf (`specs/nca.md` NCA-EXT-01b, worked example W9). The engine reports it with the quality flag `area_past_tlast`.
+
+If you ever use a BLQ rule that replaces trailing values by a number in the reference software, please note whether its AUCinf, observed, equals "area to the last measured positive point plus Clast/λz" or "area to the last replaced point plus Clast/λz" (one profile is enough), and tell the orchestrator. Open item O-18.
+
+Decision taken meanwhile: the PKNCA-compatible default stays, with the flag; a consistent alternative is not offered (O-18).
+
+Answer: _pending_.

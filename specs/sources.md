@@ -150,3 +150,15 @@ Same rules as before: the reference software's own documentation was not used; t
 | S-30 | Bertrand J, Mentré F. Mathematical expressions of the pharmacokinetic and pharmacodynamic models implemented in the Monolix software. 2008. | Cited by S-20 | Not located and not read; cited only through S-20. |
 
 Hand checks added: H1 to H3 are listed in `specs/models.md` section 9 and `specs/fit.md` section 11 (closed forms against a numerical ODE integration; all worked-example numbers recomputed by a script outside the repository). `specs/models.md` and `specs/fit.md` use S-20 to S-30 only for conventions, names and default values, never for wording; no third-party text or number is copied, so no row was added to `ATTRIBUTION.md`.
+
+## 8. Evidence from the edge-case oracle and the engine (card T-016, 2026-10-08)
+
+Same rules as section 6: the reader read the board cards and `oracle/` (data files, expected values, options files, `oracle/data/README.md`), not `crates/` and not `private/`; the engine and test results are as reported by the agents and not re-run by the reader. The worked example W9 of `specs/nca.md` and the IV-area example of NCA-IV-02 were recomputed by the reader from the expected values in a throwaway script outside the repository (hand check H7: every number agrees to the digits shown).
+
+| key | what | where | note |
+|---|---|---|---|
+| E-05 | Edge-case oracle (card T-012): 14 cases `edge_blq_*` (default, keep, last_drop, first_drop, set, tmax), `edge_missing_drop`, `edge_missing_replace`, `edge_negative_linear`, `edge_oral`, `edge_iv`, `edge_iv_linear`, `edge_infusion`, `edge_infusion_linear`; 2448 expected values from PKNCA 0.12.1 on R 4.5.2, options written explicitly; facts found by running PKNCA recorded in the data README | `oracle/data/edge_*.csv`, `oracle/data/README.md`, `oracle/expected/edge_*`, `board/tasks/T-012.md` | PKNCA is used as an external tool; `aumcpext.*` are derived by the script from PKNCA's AUMC; no PKNCA value exists for them. The profiles are hand-made for this project. |
+| E-06 | Engine alignment (card T-013, review of 46c0ce1): replaced values as ordinary points, Tfirst/Tlast/Clast before replacement, Tlag before the BLQ policy, IV areas with the lin-up/log-down first segments, AUMC tail with `t_end`; `oracle_edge` 88 of 88, conformance 3744 of 3744 with 16 documented differences | `board/tasks/T-013.md`, `specs/differences.md` (D-01) | As reported by the engine and reviewer agents. |
+| E-07 | Quality flags (card T-015, review of 2b32db6): the six flags, their thresholds and the NC reason `no_positive_concentration` | `board/tasks/T-015.md` | Design decisions of the orchestrator and the engine; the thresholds are PKNCA's conventions (NCA-LZ-12). |
+
+Hand check added: H7, see above.

@@ -23,4 +23,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-013 | caladrius-nca: edge parameters (tlag, vss, auciv*, aumcall.dn), PKNCA profile for replaced values | engine | done | T-012 |
 | T-014 | Documented-difference marker in oracle/testkit/conformance; D-01 negative concentrations | oracle | done | T-012 |
 | T-015 | caladrius-nca quality flags (NCA-LZ-12b) and T-013 review follow-ups | engine | done | T-013 |
-| T-016 | specs/nca.md: PKNCA facts from T-012/T-013 (replaced values, IV first segments, AUMC tail, Tlag) | reader | in progress | T-013 |
+| T-016 | specs/nca.md: PKNCA facts from T-012/T-013 (replaced values, IV first segments, AUMC tail, Tlag) | reader | done | T-013 |
