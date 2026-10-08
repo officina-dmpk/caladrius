@@ -67,3 +67,7 @@ Facts found by running PKNCA 0.12.1 on these profiles (the oracle records them; 
 - PKNCA's `vss.obs` and `vss.pred` exist for every route and equal CL times the uncorrected MRT (`vss.iv.*` subtract half the infusion duration).
 - Tlag is the time of the sample before the first increase (0 when the profile rises at once, not available when it never rises).
 - PKNCA percent back-extrapolated is `100 * (1 - AUC / AUC_iv)` with its IV area; zero when the record at the dose time is the observed C0.
+
+## `fit/spec.csv` (task T-009)
+
+The five-point IV bolus example of `specs/fit.md` section 11 (dose 100, times 0.5, 1, 2, 4, 8, concentrations 9.31, 7.92, 6.85, 4.31, 2.11), in the usual columns with subject 1. Made up for that specification (no source, same license as the repository). It is fitted by `oracle/scripts/fit_wls.R` with the five weightings; the uniform and `inv_y2` fits reproduce the hand-computed examples F2 and F3 of the specification, and `crates/caladrius-testkit/src/step3.rs` tests that. The Theoph fits leave out the sample at time 0 (the oral model predicts 0 there, which weights on predicted values cannot use); the Indometh fits use all samples.

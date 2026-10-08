@@ -17,6 +17,10 @@ version = "0.1.0"
 [[package]]
 name = "caladrius-fit"
 version = "0.1.0"
+dependencies = [
+ "caladrius-models",
+ "caladrius-testkit",
+]
 
 [[package]]
 name = "caladrius-mcp"
@@ -25,6 +29,9 @@ version = "0.1.0"
 [[package]]
 name = "caladrius-models"
 version = "0.1.0"
+dependencies = [
+ "caladrius-testkit",
+]
 
 [[package]]
 name = "caladrius-nca"

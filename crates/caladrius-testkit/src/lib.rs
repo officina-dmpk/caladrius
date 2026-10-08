@@ -10,6 +10,7 @@
 //! - [`tolerance`]: the tolerances of `AGENTS.md` section 5, defined once.
 //! - [`compare`]: tables of values and a comparison that reports every value outside tolerance.
 //! - [`oracle`]: loaders for the versioned public oracle in `oracle/`.
+//! - [`step3`]: loaders for the closed-form model values and the reference fits of step 3.
 //! - [`naive`]: independent, deliberately simple computations (second implementation for cross-checks).
 //!
 //! Nothing here panics: loaders return [`oracle::OracleError`], comparisons return a
@@ -18,6 +19,7 @@
 pub mod compare;
 pub mod naive;
 pub mod oracle;
+pub mod step3;
 pub mod tolerance;
 
 pub use compare::{
@@ -25,4 +27,8 @@ pub use compare::{
     compare_tables_documented,
 };
 pub use oracle::{OracleCase, OracleError, Profile, list_cases, load_case};
+pub use step3::{
+    FitCase, FitCaseOptions, ModelCase, Observations, list_fit_cases, list_model_cases,
+    load_fit_case, load_model_case,
+};
 pub use tolerance::Tolerance;

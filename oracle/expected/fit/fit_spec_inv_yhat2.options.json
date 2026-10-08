@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "kind": "fit",
+  "case": "fit_spec_inv_yhat2",
+  "generated_by": "oracle/scripts/fit_wls.R",
+  "dataset": "spec",
+  "data_file": "data/fit/spec.csv",
+  "model": "pk1.iv_bolus",
+  "weighting": "inv_yhat2",
+  "note": "the five-point example of specs/fit.md section 11 (F1 to F3)",
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "observations": {
+    "use": "all"
+  },
+  "initial_estimates": {
+    "1": {
+      "v": 12.4,
+      "k": 0.163
+    }
+  },
+  "fit_options": {
+    "derivatives": "analytic",
+    "criterion": "relative_decrease",
+    "convergence": 1e-10,
+    "max_iterations": 200,
+    "confidence_level": 0.95
+  },
+  "weights_note": "iteratively reweighted fixed point (specs/fit.md FIT-WGT-03): the weights of the solution, constants in the derivatives",
+  "method": {
+    "estimates": "minpack.lm::nlsLM (Levenberg-Marquardt, ftol = ptol = 1e-15); stats::nls (Gauss-Newton, relative-offset tol 1e-7) is required to agree within 1e-5 relative where it converges from the same start",
+    "statistics": "oracle/scripts/fit_wls.R, formulas of specs/fit.md FIT-OUT-01 to FIT-OUT-07 on the analytic Jacobian; standard errors and S checked against summary.nls",
+    "optimizer_agreement": {
+      "1": {
+        "nls_converged": true,
+        "max_rel_difference": 3e-09
+      }
+    }
+  },
+  "definitions": {
+    "aic": "N * ln(WRSS) + 2 * P (FIT-OUT-07, an assumed form)",
+    "sbc": "N * ln(WRSS) + P * ln(N)",
+    "ss_corrected": "sum of w * (y - weighted mean of y)^2",
+    "corr_obs_pred": "weighted Pearson correlation of observed and predicted values, weights w",
+    "ci": "estimate +/- t(0.975; DF) * SE; planar: estimate +/- sqrt(P * F(0.95; P, DF)) * SE",
+    "eigenvalue": "eigenvalues of the correlation matrix of the estimates, decreasing; condition_number = largest / smallest; kappa_jacobian = sqrt of the same ratio for the Jacobian with unit-length columns",
+    "secondary": "cl = v * k, half_life = ln 2 / k, auc_inf = dose / (v * k); standard errors by the delta method"
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "minpack.lm": "1.2.4",
+    "jsonlite": "2.0.0"
+  },
+  "subjects": [
+    "1"
+  ],
+  "no_fixed_point": [],
+  "solved_by": {
+    "1": "iteration"
+  },
+  "n_values": 47
+}

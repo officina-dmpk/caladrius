@@ -6,10 +6,14 @@ use std::fmt;
 /// How close an actual value must be to an expected value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tolerance {
-    /// Passes when `|actual - expected| <= rel * |expected| + abs`.
+    /// Passes when `|actual - expected| <= rel * |expected|`; when `expected` is exactly zero,
+    /// when `|actual| <= abs`.
     ///
-    /// `abs` only exists so that an expected value of exactly zero has a defined meaning; it is far
-    /// below any value a pharmacokinetic result can take.
+    /// The absolute part is not a floor added to every comparison: it only gives an expected value
+    /// of exactly zero a defined meaning. Added to a non-zero expected value it would make the
+    /// tolerance silently relative-plus-1e-12, which for a quantity of order 1e-6 (a dose-normalised
+    /// value in large units, a tiny rate constant) is a relative error of 1e-6 hidden inside a
+    /// 1e-6 tolerance (task T-009, review of the reviewer's note on T-004c).
     Relative { rel: f64, abs: f64 },
     /// Equality at the precision shown in an export: passes when the actual value, rounded to
     /// `decimals` decimal places, equals the expected value, i.e. `|actual - expected| <= 0.5 * 10^-decimals`.
@@ -33,6 +37,14 @@ impl Tolerance {
         abs: 1e-12,
     };
 
+    /// Closed-form model values (concentration, AUC, secondary parameters) against the exact values
+    /// of `oracle/expected/models/`: relative error at most 1e-12. An expected zero (before the dose
+    /// or the lag, dose 0) must be returned as exactly zero.
+    pub const MODEL_VALUES: Tolerance = Tolerance::Relative {
+        rel: 1e-12,
+        abs: 0.0,
+    };
+
     /// Equality at the precision displayed in a reference export, with `decimals` decimal places.
     pub const fn displayed(decimals: u32) -> Tolerance {
         Tolerance::DisplayedDecimals { decimals }
@@ -41,7 +53,13 @@ impl Tolerance {
     /// Largest absolute difference accepted for this expected value.
     pub fn allowed_difference(&self, expected: f64) -> f64 {
         match *self {
-            Tolerance::Relative { rel, abs } => rel * expected.abs() + abs,
+            Tolerance::Relative { rel, abs } => {
+                if expected == 0.0 {
+                    abs
+                } else {
+                    rel * expected.abs()
+                }
+            }
             Tolerance::DisplayedDecimals { decimals } => {
                 // Half a unit in the last displayed place, plus a margin for binary rounding of the
                 // decimal text (relative 1e-9 of that half unit).
@@ -75,7 +93,10 @@ impl fmt::Display for Tolerance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Tolerance::Relative { rel, abs } => {
-                write!(f, "relative error <= {rel:e} (+ {abs:e} absolute)")
+                write!(
+                    f,
+                    "relative error <= {rel:e} (absolute {abs:e} when the expected value is 0)"
+                )
             }
             Tolerance::DisplayedDecimals { decimals } => {
                 write!(f, "equality at {decimals} displayed decimal place(s)")
@@ -139,6 +160,27 @@ mod tests {
         assert!(Tolerance::NCA_VS_PKNCA.accepts(0.0, 0.0));
         assert!(Tolerance::NCA_VS_PKNCA.accepts(1e-13, 0.0));
         assert!(!Tolerance::NCA_VS_PKNCA.accepts(1e-9, 0.0));
+    }
+
+    #[test]
+    fn the_absolute_part_only_applies_to_an_expected_zero() {
+        // A value of order 1e-7 is compared relatively: an absolute floor of 1e-12 added to every
+        // comparison would let a relative error of 1e-5 through (1e-12 / 1e-7).
+        assert!(!Tolerance::NCA_VS_PKNCA.accepts(1.00001e-7, 1e-7));
+        assert!(Tolerance::NCA_VS_PKNCA.accepts(1.0000009e-7, 1e-7));
+        // Smaller still (1e-14): the floor would have accepted anything below 1e-12.
+        assert!(!Tolerance::NCA_VS_PKNCA.accepts(2e-14, 1e-14));
+        assert!(Tolerance::NCA_VS_PKNCA.accepts(1e-14 * (1.0 + 5e-7), 1e-14));
+    }
+
+    #[test]
+    fn model_values_are_relative_to_1e_12_and_zero_is_exact() {
+        let t = Tolerance::MODEL_VALUES;
+        assert!(t.accepts(5.0 * (1.0 + 9e-13), 5.0));
+        assert!(!t.accepts(5.0 * (1.0 + 2e-12), 5.0));
+        assert!(t.accepts(0.0, 0.0));
+        assert!(!t.accepts(1e-300, 0.0));
+        assert!(t.to_string().contains("1e-12"));
     }
 
     #[test]
