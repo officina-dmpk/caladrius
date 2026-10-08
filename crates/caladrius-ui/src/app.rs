@@ -14,6 +14,7 @@ use crate::fmt;
 use crate::import::{self, PendingImport};
 use crate::model::{Overview, Status, Table, WorksheetInfo, read};
 use crate::nca::{self, NcaPage};
+use crate::palette::{self, CommandLine, PaletteState};
 use crate::projectfile::{FileState, Guarded};
 use crate::projectmenu;
 use crate::sheet::{self, Rejected};
@@ -78,6 +79,15 @@ pub enum Action {
     GuardSave,
     GuardDiscard,
     GuardCancel,
+    /// Open the command palette (Ctrl+K).
+    OpenPalette,
+    ClosePalette,
+    /// Run the palette entry with this key.
+    PaletteRun(String),
+    /// Say what the project holds (`project.describe`).
+    DescribeProject,
+    /// Open the settings page.
+    OpenSettings,
 }
 
 /// What the engine understood of a typed cell, when that is not what was typed (`3,25` is 3.25).
@@ -150,6 +160,9 @@ pub struct UiState {
     pub fit: Option<FitPage>,
     /// The simulation page being worked on.
     pub sim: Option<SimPage>,
+    /// The command palette.
+    #[serde(default)]
+    pub palette: PaletteState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -184,6 +197,8 @@ pub struct UiApp {
     pub(crate) notice: Option<Notice>,
     pub(crate) requests: Vec<Request>,
     pub(crate) file: FileState,
+    /// The registry as the palette lists it (read once).
+    pub(crate) commands: Vec<CommandLine>,
     theme_error: Option<String>,
 }
 
@@ -218,6 +233,7 @@ impl UiApp {
             notice: None,
             requests: Vec::new(),
             file: FileState::default(),
+            commands: palette::registry(),
             theme_error,
         };
         app.file.saved = app.engine.project().clone();
@@ -533,6 +549,11 @@ impl UiApp {
                 Action::GuardSave => self.guard_save(),
                 Action::GuardDiscard => self.guard_discard(),
                 Action::GuardCancel => self.guard_cancel(),
+                Action::OpenPalette => self.open_palette(),
+                Action::ClosePalette => self.close_palette(),
+                Action::PaletteRun(key) => self.palette_run(&key),
+                Action::DescribeProject => self.describe_project(),
+                Action::OpenSettings => self.open_settings(),
             }
         }
     }
@@ -597,6 +618,13 @@ impl UiApp {
         let mut actions: Vec<Action> = Vec::new();
         if self.file.guard.is_none() {
             projectmenu::shortcuts(ctx, &mut actions);
+            if ctx.input_mut(|i| i.consume_shortcut(&palette::OPEN)) {
+                actions.push(if self.state.palette.open {
+                    Action::ClosePalette
+                } else {
+                    Action::OpenPalette
+                });
+            }
         }
 
         egui::TopBottomPanel::top("top-bar")
@@ -628,6 +656,16 @@ impl UiApp {
                         self.main(ui, &tokens, &mut actions);
                     });
             });
+        if self.state.palette.open && self.file.guard.is_none() {
+            let results = self.palette_results();
+            palette::draw(
+                ctx,
+                &tokens,
+                &mut self.state.palette,
+                &results,
+                &mut actions,
+            );
+        }
         if let Some(what) = self.file.guard.clone() {
             let name = self.engine.project().name().to_owned();
             projectmenu::guard_dialog(ctx, &tokens, &name, &what, &mut actions);
@@ -745,6 +783,14 @@ impl UiApp {
                         actions.push(Action::NewSimulation);
                     }
                 });
+            let hint = ui.ctx().format_shortcut(&palette::OPEN);
+            if ui
+                .button("Commands")
+                .on_hover_text(format!("Search every command ({hint})"))
+                .clicked()
+            {
+                actions.push(Action::OpenPalette);
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let label = match self.state.mode {
                     ThemeMode::Light => "Dark theme",

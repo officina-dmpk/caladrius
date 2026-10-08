@@ -26,6 +26,7 @@ pub mod model;
 pub mod modelinfo;
 pub mod modelpick;
 pub mod nca;
+pub mod palette;
 pub mod plot;
 pub mod plotdata;
 pub mod projectfile;
@@ -40,5 +41,7 @@ pub use app::{Action, Request, Selection, UiApp, UiState};
 #[cfg(test)]
 mod tests;
 pub use theme::{ThemeMode, Tokens};
+#[cfg(test)]
+mod tests_palette;
 #[cfg(test)]
 mod tests_project;

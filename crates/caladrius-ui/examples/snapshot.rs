@@ -240,6 +240,22 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     app.state.mode = ThemeMode::Dark;
     scenes.push(("26-unsaved-changes-question-dark", app));
 
+    // The command palette: the whole list, a query, and in the dark theme.
+    let mut app = nca(with_oral());
+    app.perform(vec![Action::OpenPalette]);
+    scenes.push(("27-palette-all-entries", app));
+
+    let mut app = nca(with_oral());
+    app.perform(vec![Action::OpenPalette]);
+    app.state.palette.query = "fit".to_owned();
+    scenes.push(("28-palette-query-fit", app));
+
+    let mut app = with_oral();
+    app.perform(vec![Action::OpenPalette]);
+    app.state.palette.query = "nca".to_owned();
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("29-palette-query-nca-dark", app));
+
     scenes
 }
 

@@ -25,6 +25,11 @@ impl UiApp {
         }
     }
 
+    /// Opens the settings page.
+    pub(crate) fn open_settings(&mut self) {
+        self.info_notice("Settings are not available yet.");
+    }
+
     /// A command that is asked at every change: its refusal is a sentence for the page.
     fn ask(&mut self, id: &str, params: Value) -> Result<Value, String> {
         self.engine
