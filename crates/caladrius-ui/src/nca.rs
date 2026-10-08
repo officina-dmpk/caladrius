@@ -302,11 +302,7 @@ pub fn central(
         .view
         .as_ref()
         .map_or_else(|| "New NCA".to_owned(), |v| v.label.clone());
-    ui.label(
-        RichText::new(label)
-            .size(tokens.font.heading + 4.0)
-            .strong(),
-    );
+    ui.label(RichText::new(label).size(tokens.font.title).strong());
     let status = page.status();
     if let Some(sentence) = status.sentence() {
         tokens
@@ -495,7 +491,7 @@ fn error_box(ui: &mut Ui, tokens: &Tokens, text: &str) {
     let c = &tokens.colors;
     tokens
         .card_frame()
-        .stroke(egui::Stroke::new(1.5_f32, c.error.color()))
+        .stroke(egui::Stroke::new(tokens.stroke.medium, c.error.color()))
         .show(ui, |ui| {
             ui.label(RichText::new(text).color(c.error.color()));
         });
@@ -850,7 +846,7 @@ fn results(
                     .color(c.warning.color()),
             );
             for m in &subject.flag_messages {
-                ui.label(RichText::new(format!("• {m}")).color(c.text.color()));
+                ui.label(RichText::new(format!("• {}", fmt::with_labels(m))).color(c.text.color()));
             }
         });
     }
@@ -1082,7 +1078,8 @@ pub fn plot_panel(
         c.series_replaced.color(),
         c.series_fit.color(),
     );
-    let plot_height = (ui.available_height() - 210.0).max(240.0);
+    let plot_height =
+        (ui.available_height() - tokens.size.plot_reserved_height).max(tokens.size.plot_min_height);
     let plot = Plot::new("profile-plot")
         .height(plot_height)
         .legend(Legend::default())
@@ -1139,7 +1136,11 @@ pub fn plot_panel(
             [x_range.1, y_range.1],
         ));
         for v in &x_ticks {
-            plot_ui.vline(VLine::new("", *v).color(grid_color).width(1.0_f32));
+            plot_ui.vline(
+                VLine::new("", *v)
+                    .color(grid_color)
+                    .width(tokens.stroke.thin),
+            );
         }
         for (v, major) in &y_marks {
             let color = if *major {
@@ -1147,13 +1148,13 @@ pub fn plot_panel(
             } else {
                 grid_color.gamma_multiply(0.5)
             };
-            plot_ui.hline(HLine::new("", *v).color(color).width(1.0_f32));
+            plot_ui.hline(HLine::new("", *v).color(color).width(tokens.stroke.thin));
         }
         let line: Vec<[f64; 2]> = shown.iter().map(|p| [p.time, y(p.conc)]).collect();
         plot_ui.line(
             Line::new("Profile", PlotPoints::from(line))
                 .color(colors.1)
-                .width(1.5_f32),
+                .width(tokens.stroke.medium),
         );
         if let Some((a, lambda, from)) = fit {
             let steps = 60;
@@ -1167,7 +1168,7 @@ pub fn plot_panel(
             plot_ui.line(
                 Line::new("λz fit", PlotPoints::from(curve))
                     .color(colors.3)
-                    .width(2.0_f32),
+                    .width(tokens.stroke.thick),
             );
         }
         let is_used = |p: &Pt| used.contains(&p.time);
@@ -1178,7 +1179,7 @@ pub fn plot_panel(
                 .filter(|p| !p.replaced && !is_used(p))
                 .map(|p| [p.time, y(p.conc)]),
             MarkerShape::Circle,
-            4.0,
+            tokens.size.marker_small,
             colors.0,
             true,
         ));
@@ -1189,7 +1190,7 @@ pub fn plot_panel(
                 .filter(|p| p.replaced)
                 .map(|p| [p.time, y(p.conc)]),
             MarkerShape::Diamond,
-            5.0,
+            tokens.size.marker_medium,
             colors.2,
             true,
         ));
@@ -1200,7 +1201,7 @@ pub fn plot_panel(
                 .filter(|p| is_used(p))
                 .map(|p| [p.time, y(p.conc)]),
             MarkerShape::Circle,
-            6.5,
+            tokens.size.marker_large,
             selected_color,
             true,
         ));
@@ -1215,9 +1216,11 @@ pub fn plot_panel(
                         (f64::from(s.x), f64::from(s.y))
                     })
                     .collect();
-                if let Some(i) =
-                    plotdata::nearest(&screen, (f64::from(pos.x), f64::from(pos.y)), 12.0)
-                {
+                if let Some(i) = plotdata::nearest(
+                    &screen,
+                    (f64::from(pos.x), f64::from(pos.y)),
+                    f64::from(tokens.size.hit_radius),
+                ) {
                     clicked_time = shown.get(i).map(|p| p.time);
                 }
             }
@@ -1261,7 +1264,7 @@ fn candidates(
     }
     egui::ScrollArea::vertical()
         .id_salt("candidates")
-        .max_height(130.0)
+        .max_height(tokens.size.list_max_height)
         .show(ui, |ui| {
             egui::Grid::new("candidates-grid")
                 .striped(true)

@@ -43,6 +43,19 @@ pub enum Action {
     Notice(String),
 }
 
+/// What the engine understood of a typed cell, when that is not what was typed (`3,25` is 3.25).
+fn understood_note(typed: &str, answer: &Value) -> Option<String> {
+    let typed = typed.trim();
+    match answer.get("understood")? {
+        Value::Number(n) => {
+            let shown = crate::fmt::exact(n.as_f64()?);
+            (typed != shown).then(|| format!("Read `{typed}` as {shown}."))
+        }
+        Value::Null if !typed.is_empty() => Some(format!("Read `{typed}` as a missing value.")),
+        _ => None,
+    }
+}
+
 /// What the main area shows.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -343,7 +356,14 @@ impl UiApp {
                 } => {
                     let params = json!({ "worksheet": worksheet, "column": column, "row": row, "value": text });
                     match self.call("data.set_cell", params) {
-                        Ok(_) => self.rejected = None,
+                        Ok(answer) => {
+                            self.rejected = None;
+                            // Nothing to say when it was read as typed; no stale message either.
+                            self.notice = understood_note(&text, &answer).map(|text| Notice {
+                                kind: NoticeKind::Info,
+                                text,
+                            });
+                        }
                         Err(_) => self.rejected = Some(Rejected { row, column, text }),
                     }
                     self.refresh_overview();
@@ -457,16 +477,16 @@ impl UiApp {
             .frame(tokens.panel_frame(tokens.colors.panel_alt))
             .show(ctx, |ui| self.status_bar(ui));
         egui::SidePanel::left("project-tree")
-            .default_width(260.0)
-            .width_range(220.0..=420.0)
+            .default_width(tokens.size.tree_width)
+            .width_range(tokens.size.tree_min_width..=tokens.size.tree_max_width)
             .frame(tokens.panel_frame(tokens.colors.panel_alt))
             .show(ctx, |ui| self.tree(ui, &mut actions));
         let showing_nca =
             matches!(self.state.selection, Selection::Analysis(_)) && self.state.nca.is_some();
         if showing_nca {
             egui::SidePanel::right("plot-panel")
-                .default_width(560.0)
-                .min_width(380.0)
+                .default_width(tokens.size.plot_panel_width)
+                .min_width(tokens.size.plot_panel_min_width)
                 .resizable(true)
                 .frame(tokens.panel_frame(tokens.colors.panel))
                 .show(ctx, |ui| {
@@ -633,10 +653,10 @@ impl UiApp {
 
     fn welcome(&self, ui: &mut Ui, tokens: &Tokens, actions: &mut Vec<Action>) {
         let c = &tokens.colors;
-        ui.add_space(tokens.spacing.large * 2.0);
+        ui.add_space(tokens.spacing.xlarge);
         ui.label(
             RichText::new("Pharmacokinetic analysis")
-                .size(tokens.font.heading + 8.0)
+                .size(tokens.font.display)
                 .strong(),
         );
         ui.add_space(tokens.spacing.medium);

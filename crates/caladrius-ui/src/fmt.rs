@@ -51,6 +51,7 @@ pub fn parameter_label(name: &str, extravascular: bool) -> String {
         "aucinf.obs" => "AUCinf".to_owned(),
         "aucinf.pred" => "AUCinf (predicted Clast)".to_owned(),
         "aucpext.obs" => "AUC extrapolated".to_owned(),
+        "aucpext.pred" => "AUC extrapolated (predicted Clast)".to_owned(),
         "lambda.z" => "λz".to_owned(),
         "half.life" => "t½".to_owned(),
         "r.squared" => "R²".to_owned(),
@@ -65,6 +66,28 @@ pub fn parameter_label(name: &str, extravascular: bool) -> String {
         "c0" => "C0".to_owned(),
         other => other.to_owned(),
     }
+}
+
+/// A sentence of the engine with the parameter names it quotes written as the results table
+/// labels them (`aucpext.obs` is `AUC extrapolated`).
+pub fn with_labels(sentence: &str) -> String {
+    // Longer names first: `lambda.z.n.points` before `lambda.z`.
+    const NAMES: [&str; 9] = [
+        "lambda.z.n.points",
+        "aucpext.pred",
+        "aucpext.obs",
+        "adj.r.squared",
+        "span.ratio",
+        "aucinf.pred",
+        "aucinf.obs",
+        "lambda.z",
+        "auclast",
+    ];
+    let mut out = sentence.to_owned();
+    for name in NAMES {
+        out = out.replace(name, &parameter_label(name, true));
+    }
+    out
 }
 
 /// The unit of a parameter from the units of the worksheet columns and the derived units the
@@ -132,6 +155,20 @@ mod tests {
         }
         assert_eq!(number(f64::NAN), "-");
         assert_eq!(number(f64::INFINITY), "-");
+    }
+
+    #[test]
+    fn flag_sentences_use_the_labels_of_the_results_table() {
+        assert_eq!(
+            with_labels(
+                "aucpext.obs is 37.3 % (> 20 %); the AUC to infinity relies mostly on extrapolation"
+            ),
+            "AUC extrapolated is 37.3 % (> 20 %); the AUC to infinity relies mostly on extrapolation"
+        );
+        assert!(
+            with_labels("aucpext.pred is 5 %").starts_with("AUC extrapolated (predicted Clast) is")
+        );
+        assert_eq!(with_labels("nothing to change"), "nothing to change");
     }
 
     #[test]

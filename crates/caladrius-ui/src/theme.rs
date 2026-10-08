@@ -98,8 +98,42 @@ pub struct Spacing {
     pub small: f32,
     pub medium: f32,
     pub large: f32,
+    pub xlarge: f32,
     pub panel_margin: f32,
     pub tree_indent: f32,
+}
+
+/// Sizes of panels, cells and plot parts, in points.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sizes {
+    pub tree_width: f32,
+    pub tree_min_width: f32,
+    pub tree_max_width: f32,
+    pub plot_panel_width: f32,
+    pub plot_panel_min_width: f32,
+    pub cell_width: f32,
+    pub row_height: f32,
+    pub row_number_width: f32,
+    pub text_box_width: f32,
+    pub list_max_height: f32,
+    pub plot_min_height: f32,
+    /// What the plot panel keeps for what is under the plot (the note, the candidate table).
+    pub plot_reserved_height: f32,
+    pub marker_small: f32,
+    pub marker_medium: f32,
+    pub marker_large: f32,
+    /// How near a click must be to a point to select it.
+    pub hit_radius: f32,
+}
+
+/// Line widths.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Strokes {
+    pub thin: f32,
+    pub medium: f32,
+    pub thick: f32,
 }
 
 /// Text sizes in points.
@@ -109,6 +143,8 @@ pub struct Fonts {
     pub small: f32,
     pub body: f32,
     pub heading: f32,
+    pub title: f32,
+    pub display: f32,
     pub monospace: f32,
 }
 
@@ -119,6 +155,8 @@ pub struct Tokens {
     pub colors: Colors,
     pub radius: Radius,
     pub spacing: Spacing,
+    pub size: Sizes,
+    pub stroke: Strokes,
     pub font: Fonts,
 }
 
@@ -288,6 +326,13 @@ mod tests {
         assert_ne!(light.colors.background, dark.colors.background);
         assert_ne!(light.colors.text, dark.colors.text);
         assert!(light.font.body > 0.0 && light.spacing.medium > 0.0 && light.radius.medium > 0.0);
+        assert!(
+            light.size.cell_width > 0.0 && light.size.row_height > 0.0 && light.stroke.thin > 0.0
+        );
+        assert!(
+            light.size.tree_min_width < light.size.tree_width
+                && light.size.tree_width < light.size.tree_max_width
+        );
         // Every colour is set (not the all-zero default) in both themes.
         for tokens in [&light, &dark] {
             let json = serde_json::to_value(&tokens.colors).unwrap();

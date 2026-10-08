@@ -498,6 +498,23 @@ fn parse_typed_number(text: &str) -> Result<Option<f64>, String> {
             "`{t}` has more than one decimal mark; write the number with a single point or comma, without thousands separators"
         ));
     }
+    if let Some(mark) = t.chars().find(|c| *c == '.' || *c == ',') {
+        // One mark followed by exactly three digits after one to three digits that do not start
+        // with a zero is how a thousands separator is written (1,500 or 1.500): it may as well be
+        // a decimal (1.5 written with three decimals), so it is refused rather than guessed.
+        let unsigned = t.trim_start_matches(['+', '-']);
+        if let Some((int, frac)) = unsigned.split_once(mark) {
+            let digits = |s: &str, n: std::ops::RangeInclusive<usize>| {
+                n.contains(&s.len()) && s.chars().all(|c| c.is_ascii_digit())
+            };
+            if digits(int, 1..=3) && digits(frac, 3..=3) && !int.starts_with('0') {
+                let whole = format!("{int}{frac}");
+                return Err(format!(
+                    "`{t}` could be {whole} with a thousands separator or {int}.{frac} with decimals; write {whole} for the first, or {int}.{frac}0 (one more digit) for the second"
+                ));
+            }
+        }
+    }
     let normalised = t.replace(',', ".");
     match normalised.parse::<f64>() {
         Ok(x) if x.is_finite() => Ok(Some(x)),
@@ -767,7 +784,10 @@ pub(crate) const PREVIEW: CommandDef = CommandDef {
                     ("decimal_comma", boolean()),
                     (
                         "rows",
-                        json!({ "type": "integer", "minimum": 0, "maximum": 200 }),
+                        described(
+                            json!({ "type": "integer", "minimum": 0, "maximum": 200 }),
+                            "Rows of each reading to return; at most 200 (a larger number is capped at 200).",
+                        ),
                     ),
                 ],
                 &["csv"],

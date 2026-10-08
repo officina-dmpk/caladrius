@@ -1462,3 +1462,60 @@ fn a_cell_typed_with_either_decimal_mark_is_understood_and_the_answer_says_which
     }
     assert_eq!(e.project(), &before, "a refused entry changes nothing");
 }
+
+#[test]
+fn a_number_that_could_have_a_thousands_separator_is_refused_not_guessed() {
+    let mut e = engine_with_two_subjects();
+    for typed in [
+        "1,500", "1.500", "12,345", "12.345", "-1,500", "+999.999", "123,456",
+    ] {
+        let failure = err(
+            &mut e,
+            "data.set_cell",
+            json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": typed }),
+        );
+        assert_eq!(failure.code, "invalid_number", "{typed}");
+        assert!(failure.message.contains("thousands separator"), "{failure}");
+        assert!(failure.message.contains("Conc"), "{failure}");
+    }
+    // Both ways of writing it are offered in the message.
+    let failure = err(
+        &mut e,
+        "data.set_cell",
+        json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": "1,500" }),
+    );
+    assert!(
+        failure.message.contains("1500") && failure.message.contains("1.5000"),
+        "{failure}"
+    );
+    // What is plainly a decimal is read as one, with either mark.
+    for (typed, number) in [
+        ("1,5", 1.5),
+        ("1.5", 1.5),
+        ("0.500", 0.5),
+        ("0,250", 0.25),
+        ("1234,567", 1234.567),
+        ("1234.567", 1234.567),
+        ("1.50", 1.5),
+        ("12,3456", 12.3456),
+        ("1500", 1500.0),
+        ("1.5000", 1.5),
+    ] {
+        let r = ok(
+            &mut e,
+            "data.set_cell",
+            json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": typed }),
+        );
+        assert_eq!(r["understood"], json!(number), "{typed}");
+    }
+    // More than one mark is refused as before.
+    let failure = err(
+        &mut e,
+        "data.set_cell",
+        json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": "12,345,678" }),
+    );
+    assert!(
+        failure.message.contains("more than one decimal mark"),
+        "{failure}"
+    );
+}

@@ -171,7 +171,7 @@ pub fn screen(ui: &mut Ui, tokens: &Tokens, p: &mut PendingImport, actions: &mut
     let c = &tokens.colors;
     ui.label(
         RichText::new(format!("Import {}", p.name))
-            .size(tokens.font.heading + 4.0)
+            .size(tokens.font.title)
             .strong(),
     );
     ui.label(
@@ -214,7 +214,7 @@ pub fn screen(ui: &mut Ui, tokens: &Tokens, p: &mut PendingImport, actions: &mut
         ui.add_space(tokens.spacing.medium);
         tokens
             .card_frame()
-            .stroke(egui::Stroke::new(1.5_f32, c.error.color()))
+            .stroke(egui::Stroke::new(tokens.stroke.medium, c.error.color()))
             .show(ui, |ui| {
                 ui.label(RichText::new(error).color(c.error.color()));
                 ui.label(

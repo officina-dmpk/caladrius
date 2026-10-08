@@ -448,10 +448,11 @@ impl Worksheet {
         let Some(col) = self.column_by_role(ColumnRole::Subject) else {
             return vec![SINGLE_SUBJECT.to_owned()];
         };
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut out: Vec<String> = Vec::new();
         for row in 0..col.data.len() {
             let label = col.data.text_at(row);
-            if !label.is_empty() && !out.contains(&label) {
+            if !label.is_empty() && seen.insert(label.clone()) {
                 out.push(label);
             }
         }

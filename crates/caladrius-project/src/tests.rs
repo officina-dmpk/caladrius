@@ -725,3 +725,64 @@ fn french_headers_are_recognised() {
         ]
     );
 }
+
+#[test]
+fn many_subjects_are_grouped_without_a_quadratic_search() {
+    // 20 000 subjects of three rows each: grouping must be a hash lookup, not a scan of the groups.
+    let mut text = String::from("id,time,conc\n");
+    for subject in 0..20_000 {
+        for (t, c) in [(0, 0), (1, 5), (2, 3)] {
+            text.push_str(&format!("S{subject},{t},{c}\n"));
+        }
+    }
+    let table = ImportedTable::from_csv(text.as_bytes(), &CsvOptions::default()).unwrap();
+    let start = std::time::Instant::now();
+    let checks = crate::csv::check_table(&table);
+    let checked = start.elapsed();
+    assert!(checks.is_empty());
+    assert!(checked.as_millis() < 100, "check_table took {checked:?}");
+
+    let mut project = Project::new("big");
+    let id = project.add_worksheet("big", table.columns).unwrap();
+    let start = std::time::Instant::now();
+    let subjects = project.worksheet(id).unwrap().subjects();
+    let listed = start.elapsed();
+    assert_eq!(subjects.len(), 20_000);
+    assert_eq!(
+        subjects.first().map(String::as_str),
+        Some("S0"),
+        "order of first appearance"
+    );
+    assert_eq!(subjects.last().map(String::as_str), Some("S19999"));
+    assert!(listed.as_millis() < 100, "subjects took {listed:?}");
+}
+
+#[test]
+fn a_comma_that_may_be_a_thousands_separator_is_noted_under_a_decimal_comma() {
+    let t = ImportedTable::from_csv(b"time;conc\n0;0\n1;1,500\n2;3,25\n", &CsvOptions::default())
+        .unwrap();
+    assert!(t.decimal_comma);
+    assert!(
+        t.notes
+            .iter()
+            .any(|n| n.contains("`1,500`") && n.contains("thousands separator")),
+        "{:?}",
+        t.notes
+    );
+    // No such value, no note.
+    let t = ImportedTable::from_csv(b"time;conc\n0;0\n1;1,5\n2;3,25\n", &CsvOptions::default())
+        .unwrap();
+    assert!(
+        !t.notes.iter().any(|n| n.contains("thousands")),
+        "{:?}",
+        t.notes
+    );
+    // A zero before the mark is a decimal (0,500), not a thousands group.
+    let t =
+        ImportedTable::from_csv(b"time;conc\n0;0,500\n1;1,5\n", &CsvOptions::default()).unwrap();
+    assert!(
+        !t.notes.iter().any(|n| n.contains("thousands")),
+        "{:?}",
+        t.notes
+    );
+}

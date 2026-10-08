@@ -401,6 +401,102 @@ fn no_colour_radius_or_margin_is_written_outside_the_theme() {
     }
 }
 
+/// The text inside the parentheses of each call of `prefix` in `code` (balanced).
+fn call_arguments<'a>(code: &'a str, prefix: &str) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = code[from..].find(prefix) {
+        let start = from + at + prefix.len();
+        let mut depth = 1;
+        let mut end = start;
+        for (i, c) in code[start..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push(&code[start..end]);
+        from = start;
+    }
+    out
+}
+
+/// True when `text` holds a number written in the code: a digit that does not belong to a name.
+fn has_number_literal(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    chars.iter().enumerate().any(|(i, c)| {
+        c.is_ascii_digit()
+            && !chars
+                .get(i.wrapping_sub(1))
+                .is_some_and(|p| p.is_alphanumeric() || *p == '_' || *p == '.')
+    })
+}
+
+#[test]
+fn sizes_and_spacing_are_tokens_not_numbers_in_the_screens() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let calls = [
+        "add_space(",
+        ".width(",
+        ".size(",
+        ".desired_width(",
+        ".max_height(",
+        ".min_height(",
+        ".min_width(",
+        ".default_width(",
+        ".exact_width(",
+        ".width_range(",
+        ".add_sized(",
+        ".height(",
+        ".radius(",
+        "Stroke::new(",
+        "vec2(",
+        ".spacing(",
+        ".indent(",
+    ];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if name == "theme.rs" || name == "tests.rs" || !name.ends_with(".rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let code = text.split("#[cfg(test)]").next().unwrap_or("");
+        for call in calls {
+            for args in call_arguments(code, call) {
+                // `add_sized(size, widget)`: only the size is a layout number.
+                let args = if call == ".add_sized(" {
+                    args.split(']').next().unwrap_or(args)
+                } else {
+                    args
+                };
+                assert!(
+                    !has_number_literal(args),
+                    "{name}: `{call}{args})` has a number written in the code: use a size, spacing, stroke or font token"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_literal_finder_sees_numbers_and_not_names() {
+    assert!(has_number_literal("tokens.spacing.large * 2.0"));
+    assert!(has_number_literal("96"));
+    assert!(has_number_literal("[40.0, row]"));
+    assert!(!has_number_literal("tokens.size.cell_width"));
+    assert!(!has_number_literal("self.tokens.stroke.thin"));
+    assert!(!has_number_literal("x1 + a_2"));
+    assert_eq!(call_arguments("f(a(1), b) g(c)", "f("), vec!["a(1), b"]);
+}
+
 #[test]
 fn the_code_of_the_ui_has_no_file_or_clock_access() {
     // L3 must compile for wasm (golden rule 9): no files, threads, processes or clock here.
@@ -520,4 +616,27 @@ fn the_buttons_do_what_they_say() {
     h.get_by_label("Linear").click();
     h.run_steps(2);
     assert!(!h.state().state.log_axis);
+}
+
+#[test]
+fn the_number_the_engine_understood_is_shown_when_it_differs_from_what_was_typed() {
+    let mut app = with_oral();
+    let set = |app: &mut UiApp, text: &str| {
+        app.perform(vec![Action::SetCell {
+            worksheet: 1,
+            row: 2,
+            column: "Conc".to_owned(),
+            text: text.to_owned(),
+        }]);
+    };
+    set(&mut app, "3,25");
+    assert_eq!(app.notice_text(), Some("Read `3,25` as 3.25."));
+    set(&mut app, "NA");
+    assert_eq!(app.notice_text(), Some("Read `NA` as a missing value."));
+    // What was typed as the engine writes it needs no remark, and the old remark goes away.
+    set(&mut app, "2.5");
+    assert_eq!(app.notice_text(), None);
+    // A refused entry shows the engine's message instead.
+    set(&mut app, "1,500");
+    assert!(app.notice_text().unwrap().contains("thousands separator"));
 }

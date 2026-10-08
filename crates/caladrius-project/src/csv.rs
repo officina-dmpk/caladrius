@@ -245,6 +245,18 @@ fn classify(raw: &str, decimal_comma: bool) -> Cell {
     }
 }
 
+/// One comma followed by exactly three digits after one to three digits that do not start with a
+/// zero: written like a thousands separator, read as a decimal mark under a decimal comma.
+fn looks_like_thousands(text: &str) -> bool {
+    let t = text.trim().trim_start_matches(['+', '-']);
+    t.split_once(',').is_some_and(|(int, frac)| {
+        (1..=3).contains(&int.len())
+            && frac.len() == 3
+            && !int.starts_with('0')
+            && int.chars().chain(frac.chars()).all(|c| c.is_ascii_digit())
+    })
+}
+
 fn type_column(
     name: &str,
     values: Vec<String>,
@@ -258,6 +270,13 @@ fn type_column(
         .count();
     let n_text = cells.iter().filter(|c| matches!(c, Cell::Text)).count();
     if n_numbers > 0 && n_text == 0 {
+        if decimal_comma {
+            if let Some(example) = values.iter().find(|v| looks_like_thousands(v)) {
+                notes.push(format!(
+                    "column `{name}`: values such as `{example}` are read with the comma as the decimal mark; if the comma is a thousands separator, choose the decimal point and open the file again"
+                ));
+            }
+        }
         return ColumnData::Number(
             cells
                 .iter()
@@ -403,7 +422,7 @@ fn numbers_of(column: &Column) -> Option<&Vec<Option<f64>>> {
 }
 
 /// The checks on one table: within each subject the times must not go back, and must not repeat.
-fn check_table(table: &ImportedTable) -> Vec<ReadingCheck> {
+pub(crate) fn check_table(table: &ImportedTable) -> Vec<ReadingCheck> {
     let mut out = Vec::new();
     let Some(time) = table
         .columns
@@ -415,13 +434,18 @@ fn check_table(table: &ImportedTable) -> Vec<ReadingCheck> {
     };
     let subject = table.columns.iter().find(|c| c.role == ColumnRole::Subject);
     let label = |row: usize| subject.map_or_else(String::new, |s| s.data.text_at(row));
+    // Rows by subject: a map from the label to its place, and the groups in order of appearance.
+    let mut place: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut groups: Vec<(String, Vec<(usize, f64)>)> = Vec::new();
     for (row, t) in time.iter().enumerate() {
         let Some(t) = t else { continue };
         let key = label(row);
-        match groups.iter_mut().find(|(k, _)| *k == key) {
+        match place.get(&key).and_then(|i| groups.get_mut(*i)) {
             Some((_, rows)) => rows.push((row, *t)),
-            None => groups.push((key, vec![(row, *t)])),
+            None => {
+                place.insert(key.clone(), groups.len());
+                groups.push((key, vec![(row, *t)]));
+            }
         }
     }
     let of = |key: &str| {

@@ -10,9 +10,6 @@ use crate::fmt;
 use crate::model::{Table, WorksheetInfo};
 use crate::theme::Tokens;
 
-const CELL_WIDTH: f32 = 96.0;
-const ROW_HEIGHT: f32 = 22.0;
-
 /// A cell entry the engine refused, kept so the person sees what was typed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rejected {
@@ -63,12 +60,12 @@ fn cell(
     rejected: Option<&Rejected>,
 ) -> Option<String> {
     let editing: Option<Editing> = ui.data(|d| d.get_temp(id));
-    let size = egui::vec2(CELL_WIDTH, ROW_HEIGHT);
+    let size = egui::vec2(tokens.size.cell_width, tokens.size.row_height);
     match editing {
         Some(mut state) => {
             let response = ui.add_sized(
                 size,
-                egui::TextEdit::singleline(&mut state.text).desired_width(CELL_WIDTH),
+                egui::TextEdit::singleline(&mut state.text).desired_width(tokens.size.cell_width),
             );
             if !state.started {
                 response.request_focus();
@@ -145,7 +142,7 @@ pub fn grid_with(
     let rows = visible_rows(table, info, subject);
     ui.horizontal(|ui| {
         ui.add_sized(
-            [40.0, ROW_HEIGHT],
+            [tokens.size.row_number_width, tokens.size.row_height],
             egui::Label::new(
                 RichText::new("row")
                     .small()
@@ -167,7 +164,7 @@ pub fn grid_with(
                 .unwrap_or_default();
             let _ = i;
             ui.add_sized(
-                [CELL_WIDTH, ROW_HEIGHT],
+                [tokens.size.cell_width, tokens.size.row_height],
                 egui::Label::new(RichText::new(format!("{name}{unit}")).strong().color(
                     if role == "other" {
                         tokens.colors.text_muted.color()
@@ -178,12 +175,12 @@ pub fn grid_with(
             );
         }
     });
-    let height = ROW_HEIGHT * visible.min(rows.len().max(1)) as f32;
+    let height = tokens.size.row_height * visible.min(rows.len().max(1)) as f32;
     egui::ScrollArea::vertical()
         .id_salt(("sheet-rows", info.id))
-        .max_height(height + 4.0)
+        .max_height(height + tokens.spacing.small)
         .auto_shrink([false, true])
-        .show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
+        .show_rows(ui, tokens.size.row_height, rows.len(), |ui, range| {
             for pos in range {
                 let Some(&row_index) = rows.get(pos) else {
                     continue;
@@ -193,7 +190,7 @@ pub fn grid_with(
                 };
                 ui.horizontal(|ui| {
                     ui.add_sized(
-                        [40.0, ROW_HEIGHT],
+                        [tokens.size.row_number_width, tokens.size.row_height],
                         egui::Label::new(
                             RichText::new((row_index + 1).to_string())
                                 .small()
@@ -238,11 +235,7 @@ pub fn screen(
 ) {
     let c = &tokens.colors;
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(&info.name)
-                .size(tokens.font.heading + 4.0)
-                .strong(),
-        );
+        ui.label(RichText::new(&info.name).size(tokens.font.title).strong());
         ui.label(
             RichText::new(format!(
                 "{} rows, {} subject{}",
@@ -301,7 +294,7 @@ pub fn screen(
                 let mut text: String = ui
                     .data(|d| d.get_temp::<String>(id))
                     .unwrap_or_else(|| col.unit.clone().unwrap_or_default());
-                let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(90.0));
+                let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(tokens.size.text_box_width));
                 if response.changed() {
                     ui.data_mut(|d| d.insert_temp(id, text.clone()));
                 }
