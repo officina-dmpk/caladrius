@@ -6,3 +6,4 @@
 - 2026-10-08 T-002 (reader): specs/nca.md (61 rules: 50 documented, 11 assumed; 42-row vocabulary; 8 worked examples; 15 open items) and specs/sources.md; reference documentation NOT used (terms of use), Q-005..Q-008 raised.
 - 2026-10-08 T-004a (engine): caladrius-nca types, validation (16 tests), cleaning, AUC/AUMC rules (linear, lin-up/log-down, lin-log), observed parameters; 9/21 oracle tests green; review: 7 findings fixed; commits ac432b2, 54ce34e.
 - 2026-10-08 T-005 (oracle): synthetic_lz profiles (D1, D2, searched subjects) settle O-01 (tolerance reading, strict >, most points) and O-02 (positive-slope filter after selection); 2 new oracle cases x 116 values, 16 oracle_synthetic tests, 6 testkit discrimination tests.
+- 2026-10-08 T-004b (engine): lambda_z.rs and extrapolation.rs; terminal_phase and extrapolation green on 6 oracle cases (17/21 public, 14/16 synthetic); new NcaOptions::lambda_z_selection; commit 48feaed; review approved.
