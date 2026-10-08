@@ -82,6 +82,8 @@ pub fn command_ids() -> Vec<&'static str> {
 pub struct Engine {
     pub(crate) project: Project,
     pub(crate) history: History,
+    /// Counts the commands that changed the project (see [`Engine::revision`]).
+    pub(crate) revision: u64,
 }
 
 impl Engine {
@@ -95,6 +97,7 @@ impl Engine {
         Self {
             project,
             history: History::default(),
+            revision: 0,
         }
     }
 
@@ -108,11 +111,18 @@ impl Engine {
         &self.history
     }
 
+    /// Counts the commands that changed the project. The project cannot change without it
+    /// moving, so a caller can cache something computed from the project (such as "differs from
+    /// the saved one") and recompute it only when this number changes.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// Executes command `id` with JSON `params` (`null` means none) and records it in the
     /// history, whether it succeeds or not. A failed command leaves the project unchanged.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, CommandError> {
         let recorded = params.clone();
-        let (outcome, mutates) = match commands::find(id) {
+        let (outcome, mut mutates) = match commands::find(id) {
             Some(command) => ((command.run)(self, params), command.mutates),
             None => (
                 Err(CommandError::new(
@@ -125,6 +135,15 @@ impl Engine {
                 false,
             ),
         };
+        // `model.simulate` only reads, except when it is asked to store: then it changed the project.
+        if let Ok(answer) = &outcome {
+            if id == "model.simulate" && answer.get("analysis").is_some_and(|a| !a.is_null()) {
+                mutates = true;
+            }
+        }
+        if mutates && outcome.is_ok() {
+            self.revision = self.revision.wrapping_add(1);
+        }
         self.history.push(id, recorded, &outcome, mutates);
         outcome
     }

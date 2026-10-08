@@ -199,13 +199,13 @@ fn a_dropped_project_asks_first_and_replaces_the_project_when_allowed() {
     let wanted = first.engine().project().clone();
     let mut app = with_oral();
     edit_a_cell(&mut app);
-    app.open_project_guarded("first.caladrius.json", bytes.clone());
+    app.open_project_guarded("first.caladrius.json", bytes.clone(), None);
     assert!(matches!(app.guard(), Some(Guarded::OpenBytes { .. })));
     app.perform(vec![Action::GuardDiscard]);
     assert_eq!(app.engine().project(), &wanted);
     assert_eq!(app.file_name(), Some("first.caladrius.json"));
     // Clean: no question.
-    app.open_project_guarded("first.caladrius.json", bytes);
+    app.open_project_guarded("first.caladrius.json", bytes, None);
     assert!(app.guard().is_none());
 }
 
@@ -300,7 +300,9 @@ fn the_file_menu_and_the_shortcuts_reach_the_same_actions() {
 #[test]
 fn project_files_are_recognised_by_their_name() {
     assert!(is_project_file("study.caladrius.json"));
-    assert!(is_project_file("STUDY.JSON"));
+    assert!(is_project_file("STUDY.CALADRIUS.JSON"));
+    assert!(!is_project_file("data.json"));
+    assert!(!is_project_file("STUDY.JSON"));
     assert!(!is_project_file("study.csv"));
     assert!(!is_project_file("json"));
 }
@@ -401,4 +403,54 @@ fn project_describe_and_the_history_are_untouched_by_the_file_flow() {
             .iter()
             .any(|e| e.command == "project.new")
     );
+}
+
+#[test]
+fn the_token_of_a_dropped_project_comes_back_only_when_the_file_was_opened() {
+    let mut first = with_analysis();
+    first.perform(vec![Action::SaveProject]);
+    let (_, bytes, _) = saved(&mut first);
+    // Clean: opened at once, the token comes back.
+    let mut app = UiApp::new();
+    app.open_project_guarded("a.caladrius.json", bytes.clone(), Some(7));
+    assert_eq!(app.take_opened_token(), Some(7));
+    assert_eq!(app.take_opened_token(), None);
+    // Modified: it waits behind the question, with no token, until the person answers.
+    edit_a_cell(&mut app);
+    app.open_project_guarded("b.caladrius.json", bytes.clone(), Some(8));
+    assert_eq!(app.take_opened_token(), None);
+    app.perform(vec![Action::GuardCancel]);
+    assert_eq!(app.take_opened_token(), None);
+    assert_eq!(app.file_name(), Some("a.caladrius.json"));
+    app.open_project_guarded("b.caladrius.json", bytes.clone(), Some(9));
+    app.perform(vec![Action::GuardDiscard]);
+    assert_eq!(app.take_opened_token(), Some(9));
+    assert_eq!(app.file_name(), Some("b.caladrius.json"));
+    // A file that cannot be opened gives no token.
+    app.open_project_guarded("c.caladrius.json", b"not a project".to_vec(), Some(10));
+    assert_eq!(app.take_opened_token(), None);
+    assert_eq!(app.file_name(), Some("b.caladrius.json"));
+}
+
+#[test]
+fn the_modified_marker_follows_the_engine_without_comparing_on_every_frame() {
+    let mut app = with_oral();
+    assert!(app.is_dirty());
+    app.perform(vec![Action::SaveProject]);
+    let _ = saved(&mut app);
+    app.project_saved("s.caladrius.json");
+    assert!(!app.is_dirty());
+    // A simulation stored through the engine is a change; so is any command that edits.
+    app.perform(vec![Action::NewSimulation, Action::SimSave]);
+    assert!(app.is_dirty());
+    app.perform(vec![Action::SaveProject]);
+    let _ = saved(&mut app);
+    app.project_saved("s.caladrius.json");
+    assert!(!app.is_dirty());
+    // A read, or a live curve, is not.
+    app.perform(vec![Action::SimChanged, Action::DescribeProject]);
+    assert!(!app.is_dirty());
+    // An edit of the data is a change.
+    edit_a_cell(&mut app);
+    assert!(app.is_dirty());
 }

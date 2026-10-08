@@ -54,10 +54,16 @@ pub fn settings_path() -> Option<PathBuf> {
 
 /// The stored settings: `Ok(None)` when there is no file yet (a first start).
 pub fn read_settings() -> Result<Option<String>, String> {
-    let Some(path) = settings_path() else {
-        return Ok(None);
-    };
-    match std::fs::read_to_string(&path) {
+    match settings_path() {
+        Some(path) => read_settings_at(&path),
+        None => Ok(None),
+    }
+}
+
+/// The settings file at `path`: `Ok(None)` when it does not exist, an error sentence when it
+/// exists and cannot be read.
+pub fn read_settings_at(path: &std::path::Path) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("cannot read {}: {e}", path.display())),
@@ -196,6 +202,22 @@ mod tests {
             locale_from_reg("ERROR: The system was unable to find the specified registry key"),
             None
         );
+    }
+
+    #[test]
+    fn a_missing_settings_file_is_a_first_start_and_an_unreadable_one_is_a_sentence() {
+        let dir = std::env::temp_dir().join(format!("caladrius-read-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // No file: a first start, not an error.
+        assert_eq!(read_settings_at(&dir.join("settings.json")), Ok(None));
+        // A file: its text.
+        let file = dir.join("there.json");
+        std::fs::write(&file, "{}").unwrap();
+        assert_eq!(read_settings_at(&file), Ok(Some("{}".to_owned())));
+        // Something that exists but cannot be read as a file (here a folder in its place).
+        let error = read_settings_at(&dir).unwrap_err();
+        assert!(error.starts_with("cannot read "), "{error}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

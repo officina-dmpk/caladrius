@@ -1645,3 +1645,46 @@ fn a_stored_simulation_can_be_updated_in_place() {
     assert_eq!(missing.code, "unknown_analysis");
     assert_eq!(e.project().analyses().len(), 1);
 }
+
+#[test]
+fn a_simulation_that_stores_is_a_change_of_the_project_in_the_history_and_a_live_one_is_not() {
+    let mut e = Engine::new();
+    let live = json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": 5, "k": 0.2 },
+                       "times": [0, 1, 2] });
+    ok(&mut e, "model.simulate", live.clone());
+    assert_eq!(e.revision(), 0);
+    let mut stored = live.clone();
+    stored["store"] = json!(true);
+    let first = ok(&mut e, "model.simulate", stored.clone());
+    assert_eq!(e.revision(), 1);
+    // Updating the same analysis is a change too.
+    stored["analysis"] = first["analysis"].clone();
+    stored["dose"] = json!(20);
+    ok(&mut e, "model.simulate", stored);
+    assert_eq!(e.revision(), 2);
+    // A refused store changes nothing and moves nothing.
+    let refused = json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": -5, "k": 0.2 },
+                          "times": [1], "store": true });
+    err(&mut e, "model.simulate", refused);
+    assert_eq!(e.revision(), 2);
+    let flags: Vec<(String, bool)> = e
+        .history()
+        .entries()
+        .iter()
+        .map(|h| (h.command.clone(), h.changed_project))
+        .collect();
+    assert_eq!(
+        flags,
+        vec![
+            ("model.simulate".to_owned(), false),
+            ("model.simulate".to_owned(), true),
+            ("model.simulate".to_owned(), true),
+            ("model.simulate".to_owned(), false),
+        ]
+    );
+    // Commands that read leave the revision alone; ones that change the project move it.
+    ok(&mut e, "project.describe", json!({}));
+    assert_eq!(e.revision(), 2);
+    ok(&mut e, "project.new", json!({}));
+    assert_eq!(e.revision(), 3);
+}

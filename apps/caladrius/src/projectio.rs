@@ -21,7 +21,18 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .unwrap_or_default();
     name.push(".part");
     temp.set_file_name(name);
-    std::fs::write(&temp, bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    // The bytes are on the disk, not only in the system's cache, before the file replaces the
+    // old one: a power cut leaves the old project or the new one, never an empty file.
+    let write_and_sync = |temp: &Path| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut file = std::fs::File::create(temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    };
+    write_and_sync(&temp).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        format!("cannot write {}: {e}", path.display())
+    })?;
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         format!("cannot replace {}: {e}", path.display())

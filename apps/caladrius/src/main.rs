@@ -68,6 +68,11 @@ struct Desktop {
     project_path: Option<PathBuf>,
     /// The title last given to the window.
     title: String,
+    /// The project file that was dropped or given on the command line and is waiting for the
+    /// answer to "save the changes?": its token and path. The path becomes the project's file
+    /// only when the interface says that file was opened.
+    queued: Option<(u64, PathBuf)>,
+    next_token: u64,
 }
 
 impl Desktop {
@@ -76,6 +81,8 @@ impl Desktop {
             ui,
             project_path: None,
             title: String::new(),
+            queued: None,
+            next_token: 1,
         }
     }
 
@@ -85,8 +92,11 @@ impl Desktop {
         if is_project_file(&name) {
             match projectio::read(path) {
                 Ok((name, bytes)) => {
-                    self.ui.open_project_guarded(&name, bytes);
-                    self.follow_project(path);
+                    let token = self.next_token;
+                    self.next_token += 1;
+                    self.queued = Some((token, path.to_path_buf()));
+                    self.ui.open_project_guarded(&name, bytes, Some(token));
+                    self.sync();
                 }
                 Err(message) => self.ui.perform(vec![Action::Notice(message)]),
             }
@@ -102,9 +112,16 @@ impl Desktop {
     /// settings (a first start) the locale suggests the decimal mark, and the settings page
     /// shows that it did.
     fn start_settings(&mut self) {
-        self.ui
-            .set_system_locale(config::system_locale().as_deref());
-        match config::read_settings() {
+        self.start_settings_from(config::system_locale(), config::read_settings());
+    }
+
+    fn start_settings_from(
+        &mut self,
+        locale: Option<String>,
+        stored: Result<Option<String>, String>,
+    ) {
+        self.ui.set_system_locale(locale.as_deref());
+        match stored {
             Ok(Some(text)) => {
                 self.ui.set_settings_json(&text);
             }
@@ -113,10 +130,20 @@ impl Desktop {
         }
     }
 
-    /// Remembers `path` as the project's file when the interface now holds that file.
-    fn follow_project(&mut self, path: &Path) {
-        if self.ui.file_name() == Some(projectio::display_name(path).as_str()) {
-            self.project_path = Some(path.to_path_buf());
+    /// Takes what the interface reports about files: a dropped project that was opened (after
+    /// the question, if there was one) becomes the project's file; a new project has none.
+    fn sync(&mut self) {
+        if let Some(token) = self.ui.take_opened_token() {
+            if let Some((queued, path)) = self.queued.take() {
+                if queued == token {
+                    self.project_path = Some(path);
+                } else {
+                    self.queued = Some((queued, path));
+                }
+            }
+        }
+        if self.ui.file_name().is_none() {
+            self.project_path = None;
         }
     }
 
@@ -126,14 +153,20 @@ impl Desktop {
             .set_title("Open a project")
             .pick_file();
         if let Some(path) = picked {
-            match projectio::read(&path) {
-                Ok((name, bytes)) => {
-                    if self.ui.open_project(&name, &bytes) {
-                        self.project_path = Some(path);
-                    }
+            self.open_project_file(path);
+        }
+    }
+
+    /// Opens the project file the person chose in the dialog (the question about unsaved
+    /// changes was asked before the dialog). It becomes the project's file only if it opened.
+    fn open_project_file(&mut self, path: PathBuf) {
+        match projectio::read(&path) {
+            Ok((name, bytes)) => {
+                if self.ui.open_project(&name, &bytes) {
+                    self.project_path = Some(path);
                 }
-                Err(message) => self.ui.perform(vec![Action::Notice(message)]),
             }
+            Err(message) => self.ui.perform(vec![Action::Notice(message)]),
         }
     }
 
@@ -212,9 +245,7 @@ impl eframe::App for Desktop {
         }
         self.ui.ui(ctx);
         self.serve(ctx);
-        if self.ui.file_name().is_none() {
-            self.project_path = None;
-        }
+        self.sync();
         let title = self.ui.window_title();
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
@@ -330,6 +361,192 @@ mod tests {
             ("study.csv", b"time,conc\n0,1\n".as_slice())
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const CSV_ONE: &str = "time,conc,dose\n0,0,10\n1,5,10\n2,3,10\n";
+    const CSV_TWO: &str = "time,conc,dose\n0,0,20\n1,9,20\n2,4,20\n4,2,20\n";
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("caladrius-desk-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The bytes of a saved project holding one worksheet made from `csv`.
+    fn project_with(csv: &str) -> Vec<u8> {
+        let mut ui = UiApp::new();
+        ui.load_csv("study.csv", csv.as_bytes());
+        ui.perform(vec![Action::ImportConfirm, Action::SaveProject]);
+        ui.take_requests()
+            .into_iter()
+            .find_map(|r| match r {
+                Request::SaveProject { bytes, .. } => Some(bytes),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    fn make_dirty(desktop: &mut Desktop) {
+        desktop.ui.load_csv("more.csv", CSV_ONE.as_bytes());
+        desktop.ui.perform(vec![Action::ImportConfirm]);
+        assert!(desktop.ui.is_dirty());
+    }
+
+    #[test]
+    fn a_dropped_project_waits_for_the_answer_and_save_never_overwrites_the_wrong_file() {
+        let ctx = egui::Context::default();
+        // The dropped file has another name, and the same name as the current one.
+        for same_name in [false, true] {
+            let dir = scratch(if same_name { "same" } else { "other" });
+            let first = dir.join("a").join("p.caladrius.json");
+            let second = dir.join("b").join(if same_name {
+                "p.caladrius.json"
+            } else {
+                "q.caladrius.json"
+            });
+            for path in [&first, &second] {
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            }
+            std::fs::write(&first, project_with(CSV_ONE)).unwrap();
+            std::fs::write(&second, project_with(CSV_TWO)).unwrap();
+            let first_bytes = std::fs::read(&first).unwrap();
+            let second_bytes = std::fs::read(&second).unwrap();
+
+            let mut desktop = Desktop::new(UiApp::new());
+            desktop.open(&first);
+            assert_eq!(desktop.project_path.as_deref(), Some(first.as_path()));
+            make_dirty(&mut desktop);
+            // The second file only waits behind the question: the project's file is still the first.
+            desktop.open(&second);
+            assert!(desktop.ui.guard().is_some());
+            assert_eq!(desktop.project_path.as_deref(), Some(first.as_path()));
+            assert_eq!(desktop.ui.file_name(), Some("p.caladrius.json"));
+            // Cancel keeps everything as it was.
+            desktop.ui.perform(vec![Action::GuardCancel]);
+            desktop.sync();
+            assert_eq!(desktop.project_path.as_deref(), Some(first.as_path()));
+            // Ask again, answer the question with "Don't save": the second file is now the project's file.
+            desktop.open(&second);
+            desktop.ui.perform(vec![Action::GuardDiscard]);
+            desktop.sync();
+            assert_eq!(desktop.project_path.as_deref(), Some(second.as_path()));
+            // Edit and save: the second file is written, the first is untouched.
+            make_dirty(&mut desktop);
+            desktop.ui.perform(vec![Action::SaveProject]);
+            desktop.serve(&ctx);
+            assert!(!desktop.ui.is_dirty());
+            assert_eq!(std::fs::read(&first).unwrap(), first_bytes);
+            assert_ne!(std::fs::read(&second).unwrap(), second_bytes);
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn answering_save_writes_the_current_file_first_then_opens_the_dropped_one() {
+        let ctx = egui::Context::default();
+        let dir = scratch("save-first");
+        let first = dir.join("a.caladrius.json");
+        let second = dir.join("b.caladrius.json");
+        std::fs::write(&first, project_with(CSV_ONE)).unwrap();
+        std::fs::write(&second, project_with(CSV_TWO)).unwrap();
+        let first_bytes = std::fs::read(&first).unwrap();
+        let second_bytes = std::fs::read(&second).unwrap();
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.open(&first);
+        make_dirty(&mut desktop);
+        desktop.open(&second);
+        desktop.ui.perform(vec![Action::GuardSave]);
+        desktop.serve(&ctx);
+        desktop.sync();
+        // The changes went to the first file, then the second was opened and is now the file.
+        assert_ne!(std::fs::read(&first).unwrap(), first_bytes);
+        assert_eq!(std::fs::read(&second).unwrap(), second_bytes);
+        assert_eq!(desktop.project_path.as_deref(), Some(second.as_path()));
+        assert_eq!(desktop.ui.file_name(), Some("b.caladrius.json"));
+        assert!(!desktop.ui.is_dirty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_project_chosen_in_the_dialog_is_the_file_only_if_it_opened_and_new_forgets_it() {
+        let dir = scratch("dialog");
+        let good = dir.join("good.caladrius.json");
+        let bad = dir.join("bad.json");
+        std::fs::write(&good, project_with(CSV_ONE)).unwrap();
+        std::fs::write(&bad, "{ not a project").unwrap();
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.open_project_file(good.clone());
+        assert_eq!(desktop.project_path.as_deref(), Some(good.as_path()));
+        // A file that is not a project, and one that is not there: nothing changes, a sentence says why.
+        desktop.open_project_file(bad);
+        assert_eq!(desktop.project_path.as_deref(), Some(good.as_path()));
+        assert!(
+            desktop
+                .ui
+                .notice_text()
+                .unwrap()
+                .contains("cannot be opened")
+        );
+        desktop.open_project_file(dir.join("missing.caladrius.json"));
+        assert_eq!(desktop.project_path.as_deref(), Some(good.as_path()));
+        assert!(desktop.ui.notice_text().unwrap().contains("cannot read"));
+        // A new project has no file.
+        desktop.ui.perform(vec![Action::NewProject]);
+        desktop.sync();
+        assert!(desktop.project_path.is_none());
+        // A dropped file that is not named like a project is read as a CSV, not as a project.
+        let csv = dir.join("study.csv");
+        std::fs::write(&csv, CSV_ONE).unwrap();
+        desktop.open(&csv);
+        assert!(desktop.ui.pending_import().is_some());
+        assert!(desktop.project_path.is_none());
+        let json = dir.join("data.json");
+        std::fs::write(&json, "{}").unwrap();
+        desktop.open(&json);
+        assert!(desktop.project_path.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_settings_at_start_come_from_the_file_or_from_the_locale_or_say_why_not() {
+        use caladrius_ui::settings::{DecimalMark, Settings};
+        // No file: a first start, the locale suggests the comma and the page will show it.
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.start_settings_from(Some("fr-FR".to_owned()), Ok(None));
+        assert_eq!(desktop.ui.settings.decimal_mark, DecimalMark::Comma);
+        assert!(desktop.ui.settings.locale.mark_from_system);
+        // A stored file wins over the locale.
+        let stored = Settings {
+            significant_digits: 6,
+            ..Settings::default()
+        };
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.start_settings_from(Some("fr-FR".to_owned()), Ok(Some(stored.to_json())));
+        assert_eq!(desktop.ui.settings.significant_digits, 6);
+        assert_eq!(desktop.ui.settings.decimal_mark, DecimalMark::Point);
+        assert_eq!(desktop.ui.settings.locale.system.as_deref(), Some("fr-FR"));
+        // A file that cannot be read: the defaults and a sentence; so for one that is damaged.
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.start_settings_from(
+            None,
+            Err("cannot read settings.json: access denied".to_owned()),
+        );
+        assert_eq!(desktop.ui.settings, Settings::default());
+        assert_eq!(
+            desktop.ui.notice_text(),
+            Some("cannot read settings.json: access denied")
+        );
+        let mut desktop = Desktop::new(UiApp::new());
+        desktop.start_settings_from(None, Ok(Some("{ broken".to_owned())));
+        assert_eq!(desktop.ui.settings, Settings::default());
+        assert!(
+            desktop
+                .ui
+                .notice_text()
+                .unwrap()
+                .ends_with("the default settings are used.")
+        );
     }
 
     #[test]

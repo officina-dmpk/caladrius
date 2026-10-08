@@ -263,7 +263,7 @@ impl UiApp {
             system_theme: None,
             theme_error,
         };
-        app.file.saved = app.engine.project().clone();
+        app.mark_saved();
         app.refresh_overview();
         app
     }
@@ -651,7 +651,7 @@ impl UiApp {
         for file in dropped {
             if let Some(bytes) = file.bytes {
                 if crate::projectfile::is_project_file(&file.name) {
-                    self.open_project_guarded(&file.name, bytes.to_vec());
+                    self.open_project_guarded(&file.name, bytes.to_vec(), None);
                 } else {
                     self.load_csv(&file.name, &bytes);
                 }

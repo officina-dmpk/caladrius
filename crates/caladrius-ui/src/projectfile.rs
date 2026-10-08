@@ -4,6 +4,8 @@
 //! an open is bytes handed back with [`UiApp::open_project`]. A project is modified when it
 //! differs from the one last saved or opened.
 
+use std::cell::Cell;
+
 use caladrius_engine::Project;
 use serde_json::{Value, json};
 
@@ -17,8 +19,14 @@ pub enum Guarded {
     NewProject,
     /// Ask for a project file to open.
     OpenProject,
-    /// Open a project file that is already read (dropped on the window, or given on the command line).
-    OpenBytes { name: String, bytes: Vec<u8> },
+    /// Open a project file that is already read (dropped on the window, or given on the command
+    /// line). `token` is the program's own mark for the file; it is given back by
+    /// [`UiApp::take_opened_token`] once the file has really been opened.
+    OpenBytes {
+        name: String,
+        bytes: Vec<u8>,
+        token: Option<u64>,
+    },
     /// Close the application.
     Close,
 }
@@ -31,6 +39,12 @@ pub(crate) struct FileState {
     pub name: Option<String>,
     /// The project as last saved or opened: what "modified" is measured against.
     pub saved: Project,
+    /// Changes whenever `saved` is replaced.
+    pub saved_generation: u64,
+    /// The token of the file opened last through [`Guarded::OpenBytes`], until it is taken.
+    pub opened_token: Option<u64>,
+    /// `(engine revision, saved generation, modified)`: the last answer of [`UiApp::is_dirty`].
+    pub dirty_cache: Cell<Option<(u64, u64, bool)>>,
     /// The question on screen, if any.
     pub guard: Option<Guarded>,
     /// What to do once the save that was asked for has been written.
@@ -41,16 +55,39 @@ pub(crate) struct FileState {
     pub may_close: bool,
 }
 
-/// True for the name of a project file (`study.caladrius.json`, or any `.json`).
+/// True for the name of a project file (`study.caladrius.json`). A file dropped on the window or
+/// given on the command line is a project only if it is named so; the Open dialog also offers
+/// any `.json` file, because the person chose it.
 pub fn is_project_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".caladrius.json") || lower.ends_with(".json")
+    name.to_ascii_lowercase().ends_with(".caladrius.json")
 }
 
 impl UiApp {
     /// True when the project differs from the one last saved or opened.
     pub fn is_dirty(&self) -> bool {
-        self.engine.project() != &self.file.saved
+        // The project can only change through a command, which moves the engine's revision, so the
+        // comparison is made again only when that number or the saved project has changed.
+        let key = (self.engine.revision(), self.file.saved_generation);
+        if let Some((revision, generation, dirty)) = self.file.dirty_cache.get() {
+            if (revision, generation) == key {
+                return dirty;
+            }
+        }
+        let dirty = self.engine.project() != &self.file.saved;
+        self.file.dirty_cache.set(Some((key.0, key.1, dirty)));
+        dirty
+    }
+
+    /// Takes the project as it is now for the saved one (the program wrote it, or it was opened).
+    pub(crate) fn mark_saved(&mut self) {
+        self.file.saved = self.engine.project().clone();
+        self.file.saved_generation = self.file.saved_generation.wrapping_add(1);
+    }
+
+    /// The token given with a dropped project file, once that file has been opened (after the
+    /// question, if there was one). `None` while it waits, or when it was never opened.
+    pub fn take_opened_token(&mut self) -> Option<u64> {
+        self.file.opened_token.take()
     }
 
     /// The name of the file the project is saved in, if it has one.
@@ -109,8 +146,10 @@ impl UiApp {
         match what {
             Guarded::NewProject => self.new_project(),
             Guarded::OpenProject => self.requests.push(Request::OpenProject),
-            Guarded::OpenBytes { name, bytes } => {
-                self.open_project(&name, &bytes);
+            Guarded::OpenBytes { name, bytes, token } => {
+                if self.open_project(&name, &bytes) {
+                    self.file.opened_token = token;
+                }
             }
             Guarded::Close => {
                 self.file.may_close = true;
@@ -177,11 +216,13 @@ impl UiApp {
 
     /// The program wrote the file `name`: the project is no longer modified.
     pub fn project_saved(&mut self, name: &str) {
-        self.file.saved = self
-            .file
-            .pending_save
-            .take()
-            .unwrap_or_else(|| self.engine.project().clone());
+        match self.file.pending_save.take() {
+            Some(project) => {
+                self.file.saved = project;
+                self.file.saved_generation = self.file.saved_generation.wrapping_add(1);
+            }
+            None => self.mark_saved(),
+        }
         self.file.name = Some(name.to_owned());
         self.info(format!("Saved {name}."));
         if let Some(what) = self.file.after_save.take() {
@@ -210,7 +251,7 @@ impl UiApp {
         match self.engine.load_bytes(bytes) {
             Ok(done) => {
                 self.reset_views();
-                self.file.saved = self.engine.project().clone();
+                self.mark_saved();
                 self.file.name = Some(name.to_owned());
                 let note = done
                     .get("history_note")
@@ -234,18 +275,21 @@ impl UiApp {
         }
     }
 
-    /// A project file that is already read (dropped on the window): asks first if work would be lost.
-    pub fn open_project_guarded(&mut self, name: &str, bytes: Vec<u8>) {
+    /// A project file that is already read (dropped on the window): asks first if work would be
+    /// lost. `token` comes back from [`UiApp::take_opened_token`] when, and only when, the file
+    /// was opened.
+    pub fn open_project_guarded(&mut self, name: &str, bytes: Vec<u8>, token: Option<u64>) {
         self.guarded(Guarded::OpenBytes {
             name: name.to_owned(),
             bytes,
+            token,
         });
     }
 
     fn new_project(&mut self) {
         if self.call("project.new", json!({})).is_ok() {
             self.reset_views();
-            self.file.saved = self.engine.project().clone();
+            self.mark_saved();
             self.file.name = None;
             self.info("New project.".to_owned());
         }
