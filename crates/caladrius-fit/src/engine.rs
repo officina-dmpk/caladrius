@@ -92,6 +92,29 @@ impl<'a> Problem<'a> {
                 "must be at most 100000 (50 is usual)",
             ));
         }
+        let f = &o.flags;
+        let checks = [
+            ("flags.max_cv_percent", f.max_cv_percent, 0.0, f64::MAX),
+            ("flags.max_abs_correlation", f.max_abs_correlation, 0.0, 1.0),
+            (
+                "flags.max_condition_number",
+                f.max_condition_number,
+                1.0,
+                f64::MAX,
+            ),
+        ];
+        for (option, value, lo, hi) in checks {
+            if let Some(x) = value {
+                if !(x >= lo && x <= hi) {
+                    return Err(invalid_option(
+                        option,
+                        &format!(
+                            "{x} must be a finite number between {lo} and {hi}, or null to turn the flag off"
+                        ),
+                    ));
+                }
+            }
+        }
         if o.n_curve == 1 || o.n_curve > MAX_CURVE_POINTS {
             return Err(invalid_option(
                 "n_curve",
@@ -621,6 +644,28 @@ impl<'a> Problem<'a> {
             if self.options.criterion == Criterion::RelativeDecrease && met {
                 status = FitStatus::Converged;
                 break;
+            }
+        }
+        // With predicted-value weights each step lowers the WRSS of its own (frozen) weights, which
+        // does not guarantee that the WRSS with the weights of the new estimates falls: from a far
+        // start it can explode. A fit worse than its start is not converged: return the best
+        // iterate with `no_decrease`.
+        if self.weighting.uses_predictions() {
+            let start = trace.first().map_or(f64::NAN, |row| row.wrss);
+            let end = wrss_own(&pred);
+            if !end.is_finite() || end > start {
+                let best = trace
+                    .iter()
+                    .filter(|row| row.wrss.is_finite())
+                    .min_by(|a, b| a.wrss.total_cmp(&b.wrss))
+                    .map(|row| row.estimates.clone());
+                if let Some(best) = best {
+                    if let Some(best_pred) = self.predict(&best) {
+                        theta = best;
+                        pred = best_pred;
+                    }
+                }
+                status = FitStatus::NoDecrease;
             }
         }
         result::build(self, theta, pred, trace, status)

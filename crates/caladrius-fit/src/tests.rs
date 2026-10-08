@@ -385,9 +385,12 @@ fn a_far_start_under_predicted_value_weights_is_not_converged() {
         options,
     };
     let r = run(&input).unwrap();
-    if r.status() == FitStatus::Converged {
+    let start = r.trace()[0].wrss;
+    let wrss = r.get("wrss").unwrap();
+    if matches!(r.status(), FitStatus::Converged | FitStatus::AtBound) {
         // Only acceptable if it actually moved to the solution.
         assert!(r.trace().len() > 1, "converged at the initial estimates");
+        assert!(wrss <= start, "{wrss} > {start}");
         assert!(
             (r.get("estimate.v").unwrap() - 10.0).abs() < 1.0,
             "{:?} {:?}",
@@ -395,4 +398,6 @@ fn a_far_start_under_predicted_value_weights_is_not_converged() {
             r.values()
         );
     }
+    // Whatever the status, the result is never worse than the start (T-011b review).
+    assert!(wrss <= start, "{:?}: {wrss} > {start}", r.status());
 }

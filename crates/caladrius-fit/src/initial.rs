@@ -136,7 +136,10 @@ pub fn initial_estimates(
                 ModelId::Oral1Lag => match fixed.get("tlag") {
                     Some(&t) => t,
                     // The two lines meet at the lag time; 0 if they meet before the dose.
-                    None => ((a1 - a2) / (k - ka_raw)).max(0.0),
+                    // Kept below the first sample, so that the model predicts something there.
+                    None => ((a1 - a2) / (k - ka_raw))
+                        .max(0.0)
+                        .min(0.9 * data.first().map_or(0.0, |p| p.0)),
                 },
                 _ => 0.0,
             };
@@ -155,6 +158,11 @@ pub fn initial_estimates(
             let dur = fixed.get("dur").copied().ok_or_else(|| {
                 unavailable("the input duration `dur` must be given as a fixed parameter")
             })?;
+            if !(dur.is_finite() && dur > 0.0) {
+                return Err(unavailable(format!(
+                    "the fixed input duration `dur` = {dur} must be a finite number > 0"
+                )));
+            }
             let fitted_lag = model == ModelId::Oral0Lag && !fixed.contains_key("tlag");
             let tlag = fixed.get("tlag").copied().unwrap_or(0.0);
             let (a1, k, _) = terminal_line(dose, &data, dur + tlag)?;

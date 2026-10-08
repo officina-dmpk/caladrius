@@ -177,7 +177,8 @@ pub(crate) fn flags(t: &FlagThresholds, x: &Inputs<'_>) -> Vec<FitFlag> {
     match x.status {
         FitStatus::Converged | FitStatus::AtBound => {
             if let Some((lambda, step)) = x.last_step {
-                if lambda > 0.0 || step < 1.0 {
+                // Damped, or shortened to a quarter or less: ordinary halvings are not flagged.
+                if lambda > 0.0 || step <= 0.25 {
                     out.push(FitFlag::WeakConvergence { lambda, step });
                 }
             }
@@ -264,6 +265,9 @@ mod tests {
         };
         let t = FlagThresholds::default();
         assert!(flags(&t, &inputs(Some((0.0, 1.0)))).is_empty());
+        // An ordinary halving is not flagged; a step of a quarter or less is.
+        assert!(flags(&t, &inputs(Some((0.0, 0.5)))).is_empty());
+        assert_eq!(flags(&t, &inputs(Some((0.0, 0.25)))).len(), 1);
         assert_eq!(
             flags(&t, &inputs(Some((1e-3, 0.5)))),
             vec![FitFlag::WeakConvergence {

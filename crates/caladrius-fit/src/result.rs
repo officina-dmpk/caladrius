@@ -128,7 +128,11 @@ impl FitResult {
     }
 
     /// The same, weighted: √w_i·∂f(t_i)/∂θ_j.
+    /// Empty when the final weights are undefined.
     pub fn weighted_partials(&self) -> Vec<Vec<f64>> {
+        if self.observations.iter().any(|o| !o.weight.is_finite()) {
+            return Vec::new();
+        }
         self.partials
             .iter()
             .map(|column| {

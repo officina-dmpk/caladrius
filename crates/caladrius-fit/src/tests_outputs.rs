@@ -286,3 +286,66 @@ fn new_options_round_trip_and_refuse_typos() {
     assert!(serde_json::from_str::<Bounds>(r#"{"lowr":1}"#).is_err());
     assert!(serde_json::from_str::<FlagThresholds>(r#"{"max_cv":1}"#).is_err());
 }
+
+// ---- T-011b review fixes ----
+
+#[test]
+fn a_zero_duration_and_a_late_lag_are_handled() {
+    let t = [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0];
+    let c = [1.0, 2.0, 4.0, 3.0, 2.5, 1.5, 1.0, 0.4];
+    for dur in [0.0, -1.0] {
+        let fixed = BTreeMap::from([("dur".to_string(), dur)]);
+        let e = initial_estimates(ModelId::IvInfusion, 100.0, &t, &c, &fixed).unwrap_err();
+        assert!(e.to_string().contains("`dur`"), "{e}");
+    }
+    // Whatever the intersection of the lines, the generated lag stays below the first sample.
+    let e = initial_estimates(ModelId::Oral1Lag, 100.0, &F4_T, &f4_conc(), &none()).unwrap();
+    assert!(e["tlag"] < F4_T[0]);
+    let late: Vec<f64> = F4_T
+        .iter()
+        .map(|t| {
+            let s = t - 0.45;
+            if s <= 0.0 {
+                0.0
+            } else {
+                12.5 * ((-0.2 * s).exp() - (-s).exp())
+            }
+        })
+        .collect();
+    let e = initial_estimates(ModelId::Oral1Lag, 100.0, &F4_T, &late, &none()).unwrap();
+    assert!(e["tlag"] < F4_T[0], "{}", e["tlag"]);
+}
+
+#[test]
+fn flag_thresholds_are_range_checked() {
+    for (name, flags) in [
+        (
+            "flags.max_cv_percent",
+            FlagThresholds {
+                max_cv_percent: Some(-1.0),
+                ..FlagThresholds::default()
+            },
+        ),
+        (
+            "flags.max_abs_correlation",
+            FlagThresholds {
+                max_abs_correlation: Some(1.5),
+                ..FlagThresholds::default()
+            },
+        ),
+        (
+            "flags.max_condition_number",
+            FlagThresholds {
+                max_condition_number: Some(f64::NAN),
+                ..FlagThresholds::default()
+            },
+        ),
+    ] {
+        let mut i = spec_input();
+        i.options.flags = flags;
+        match run(&i) {
+            Err(FitError::InvalidOption { option, .. }) => assert_eq!(option, name),
+            other => panic!("{name}: {other:?}"),
+        }
+    }
+}
