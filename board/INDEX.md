@@ -38,5 +38,5 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-026 | caladrius-ui second slice: model fit page with live curve, diagnostics plots, simulation page | interface | done | T-024 |
 | T-027 | caladrius-ui third slice: project save/load, command palette, settings page, T-026 follow-ups | interface | done | T-026 |
 | T-028 | Release scaffolding for v0.1.0: GitHub Actions CI, CITATION.cff, conformance wording fix | interface | done | T-027 |
-| T-029 | Honest validation claims: coverage table per model, tolerance note, missing fit oracles (infusion, zero-order, lag) | oracle | todo | T-021 |
+| T-029 | Honest validation claims: coverage table per model, tolerance note, missing fit oracles (infusion, zero-order, lag) | oracle | done | T-021 |
 | T-030 | Closed-form derivatives for infusion, zero-order and lag models; xtask fit conformance with fixed parameters | engine | todo | T-029 |
