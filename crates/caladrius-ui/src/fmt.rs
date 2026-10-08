@@ -125,6 +125,11 @@ pub fn parameter_unit(
     }
 }
 
+/// A sentence without the backticks the engine puts around identifiers: `v` is shown as v.
+pub fn plain(text: &str) -> String {
+    text.replace('`', "")
+}
+
 /// `snake_case` as words: `no_valid_fit` is `no valid fit`.
 pub fn words(code: &str) -> String {
     code.replace('_', " ")

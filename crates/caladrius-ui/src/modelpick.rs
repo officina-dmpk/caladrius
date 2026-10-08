@@ -41,7 +41,7 @@ pub fn picker(ui: &mut Ui, tokens: &Tokens, input: &mut Input, lag: &mut bool, w
     let model = modelinfo::pick(*input, *lag);
     ui.label(
         RichText::new(format!(
-            "Compartments: 1.  Model `{}`.  {what}: {}.",
+            "Compartments: 1.  Model {}.  {what}: {}.",
             model.id,
             model
                 .parameters

@@ -7,12 +7,15 @@ use serde_json::Value;
 
 use crate::app::{Notice, NoticeKind, Selection, UiApp};
 use crate::fit::{self, FitPage};
+use crate::fmt;
 use crate::sim::SimPage;
 
 impl UiApp {
     /// A command that is asked at every change: its refusal is a sentence for the page.
     fn ask(&mut self, id: &str, params: Value) -> Result<Value, String> {
-        self.engine.execute(id, params).map_err(|e| e.message)
+        self.engine
+            .execute(id, params)
+            .map_err(|e| fmt::plain(&e.message))
     }
 
     fn info_notice(&mut self, text: &str) {

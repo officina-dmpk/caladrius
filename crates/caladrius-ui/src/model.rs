@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::fmt;
+
 /// Reads `value` as `T`, or the default of `T` when it does not fit.
 pub fn read<T: for<'de> Deserialize<'de> + Default>(value: &Value) -> T {
     serde_json::from_value(value.clone()).unwrap_or_default()
@@ -285,6 +287,9 @@ impl NcaOk {
     }
 }
 
+/// Shown when a stored result does not have the shape the page expects.
+const UNREADABLE: &str = "the result could not be read";
+
 /// An NCA outcome: a result or the message of the error.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -322,9 +327,12 @@ impl NcaView {
         if view.get("kind").and_then(Value::as_str) != Some("nca") {
             return None;
         }
-        let subject = view
-            .pointer("/result/subjects/0")
-            .map(|v| serde_json::from_value::<SubjectResult>(v.clone()).unwrap_or_default());
+        let subject = view.pointer("/result/subjects/0").map(|v| {
+            serde_json::from_value::<SubjectResult>(v.clone()).unwrap_or_else(|_| SubjectResult {
+                outcome: Outcome::Error(UNREADABLE.to_owned()),
+                ..SubjectResult::default()
+            })
+        });
         Some(NcaView {
             id: view.get("id").and_then(Value::as_u64).unwrap_or(0),
             label: view
@@ -451,12 +459,19 @@ impl FitView {
                 .and_then(Value::as_u64)
                 .unwrap_or(0) as usize,
             n_missing: result.get("n_missing").and_then(Value::as_u64).unwrap_or(0) as usize,
-            outcome: result
-                .get("outcome")
-                .map(|o| serde_json::from_value(o.clone()).unwrap_or_default())
-                .unwrap_or_default(),
-            flag_messages: read(result.get("flag_messages").unwrap_or(&Value::Null)),
-            status_message: text("status_message"),
+            // No outcome: no result yet. An outcome that cannot be read is said so, not hidden.
+            outcome: result.get("outcome").map_or(FitOutcome::Missing, |o| {
+                match serde_json::from_value::<FitOutcome>(o.clone()) {
+                    Ok(FitOutcome::Error(message)) => FitOutcome::Error(fmt::plain(&message)),
+                    Ok(outcome) => outcome,
+                    Err(_) => FitOutcome::Error(UNREADABLE.to_owned()),
+                }
+            }),
+            flag_messages: read::<Vec<String>>(result.get("flag_messages").unwrap_or(&Value::Null))
+                .iter()
+                .map(|m| fmt::plain(m))
+                .collect(),
+            status_message: fmt::plain(&text("status_message")),
         })
     }
 

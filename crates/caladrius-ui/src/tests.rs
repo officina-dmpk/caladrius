@@ -825,12 +825,20 @@ fn too_few_points_give_a_sentence_not_a_crash() {
     app.load_csv("two.csv", b"time,conc,dose\n1,5,10\n2,3,10\n");
     app.perform(vec![Action::ImportConfirm, Action::NewFit]);
     let page = app.fit_page().unwrap();
-    assert!(page.start_error.is_some() || page.preview.error.is_some());
+    let sentence = "initial estimates cannot be generated: the terminal phase has fewer than 3 usable declining points after the peak; enter initial estimates for the parameters";
+    assert_eq!(page.start_error.as_deref(), Some(sentence));
+    assert!(page.preview.curve.is_empty() && page.preview.wrss.is_none());
     app.perform(vec![Action::RunFit]);
     let page = app.fit_page().unwrap();
-    assert!(page.error.is_some() || page.ok().is_some());
+    assert_eq!(page.error.as_deref(), Some(sentence));
+    assert!(page.view.is_none() && app.engine().project().analyses().is_empty());
     let mut h = harness(app);
     h.run_steps(3);
+    assert!(
+        h.query_all_by_label_contains("initial estimates cannot be generated")
+            .next()
+            .is_some()
+    );
 }
 
 #[test]
@@ -981,7 +989,16 @@ fn a_simulation_with_odd_values_gives_a_curve_or_a_sentence_never_a_crash() {
     }
     app.perform(vec![Action::SimChanged]);
     let page = app.sim_page().unwrap();
-    assert!(page.result.is_some() || page.error.is_some());
+    // End = 1e-9 is a valid (tiny) window: a curve, no error, and the same curve as the engine's.
+    assert_eq!(page.error, None);
+    let result = page.result.as_ref().unwrap();
+    assert!(!result.curve().is_empty());
+    assert!(
+        result
+            .curve()
+            .iter()
+            .all(|p| p[0].is_finite() && p[1].is_finite())
+    );
     harness(app).run_steps(3);
 }
 
@@ -1061,4 +1078,137 @@ fn the_pages_state_is_data() {
     let back: UiState = serde_json::from_str(&text).unwrap();
     assert_eq!(back.fit.as_ref().map(|p| p.model().id), Some("pk1.oral_1"));
     assert_eq!(back.fit.unwrap().initial, app.fit_page().unwrap().initial);
+}
+
+// ---- fit errors, each a readable sentence (golden rule 6) ---------------------------------
+
+/// The fit page with the oral model and these starting values (every parameter given).
+fn fit_from(lag: bool, start: &[(&str, f64)]) -> UiApp {
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.lag = lag;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    if let Some(page) = app.state.fit.as_mut() {
+        for (name, value) in start {
+            page.initial.insert((*name).to_owned(), *value);
+        }
+    }
+    app.perform(vec![Action::FitChanged { regenerate: false }]);
+    app
+}
+
+#[test]
+fn a_fit_that_does_not_converge_says_so_in_the_headline() {
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.set_option(&["max_iterations"], serde_json::json!(1));
+    }
+    app.perform(vec![Action::RunFit]);
+    let page = app.fit_page().unwrap();
+    assert_eq!(page.error, None);
+    let view = page.view.as_ref().unwrap();
+    let ok = view.ok().unwrap();
+    assert_ne!(ok.status, "converged");
+    assert!(!view.status_message.is_empty() && view.status_message != "converged");
+    let headline = view.status_message.clone();
+    let mut h = harness(app);
+    h.run_steps(3);
+    let mut shown = headline.chars();
+    let first = shown.next().unwrap().to_uppercase().collect::<String>() + shown.as_str();
+    h.get_by_label(&first);
+    assert!(h.query_by_label("Converged").is_none());
+}
+
+#[test]
+fn a_singular_fit_names_the_identifiability_problem() {
+    // A lag time past the last sample leaves the data blind to every parameter.
+    let mut app = fit_from(
+        true,
+        &[("v", 10.0), ("k", 0.1), ("ka", 1.0), ("tlag", 50.0)],
+    );
+    app.perform(vec![Action::RunFit]);
+    let page = app.fit_page().unwrap();
+    assert_eq!(page.error, None);
+    let view = page.view.as_ref().unwrap();
+    assert_eq!(view.ok().unwrap().status, "singular");
+    let sentence = "the parameters are not all identifiable from these data (singular Jacobian); fix a parameter or use a simpler model";
+    assert_eq!(view.status_message, sentence);
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.get_by_label("The parameters are not all identifiable from these data (singular Jacobian); fix a parameter or use a simpler model");
+}
+
+#[test]
+fn a_negative_starting_value_is_refused_with_the_parameter_named() {
+    let mut app = fit_from(false, &[("v", -1.0), ("k", 0.1), ("ka", 1.0)]);
+    // The live objective already says so, and nothing is fitted or stored.
+    let page = app.fit_page().unwrap();
+    assert_eq!(
+        page.preview.error.as_deref(),
+        Some("parameter v = -1 is not a finite number > 0; correct its value")
+    );
+    app.perform(vec![Action::RunFit]);
+    let page = app.fit_page().unwrap();
+    assert_eq!(
+        page.error.as_deref(),
+        Some(
+            "the initial estimate of v (-1) lies outside its bounds [-0.000001, inf]; move it inside or widen the bounds"
+        )
+    );
+    assert!(page.view.is_none() && app.engine().project().analyses().is_empty());
+    let mut h = harness(app);
+    h.run_steps(3);
+    assert!(
+        h.query_all_by_label_contains("the initial estimate of v (-1)")
+            .next()
+            .is_some()
+    );
+}
+
+#[test]
+fn an_unreadable_stored_outcome_is_an_error_sentence_not_no_result() {
+    use crate::model::{FitOutcome, FitView, NcaView, Outcome};
+    let fit = |outcome: Option<serde_json::Value>| {
+        let mut result = serde_json::json!({ "subject": "A" });
+        if let Some(o) = outcome {
+            result["outcome"] = o;
+        }
+        FitView::from_value(&serde_json::json!({ "kind": "fit", "id": 1, "result": result }))
+            .unwrap()
+            .outcome
+    };
+    // No outcome at all is "no result yet"; a malformed one says it cannot be read.
+    assert_eq!(fit(None), FitOutcome::Missing);
+    assert_eq!(
+        fit(Some(serde_json::json!({ "ok": "not a fit" }))),
+        FitOutcome::Error("the result could not be read".to_owned())
+    );
+    assert_eq!(
+        fit(Some(serde_json::json!(42))),
+        FitOutcome::Error("the result could not be read".to_owned())
+    );
+    // An error from the engine is kept, without the backticks around identifiers.
+    assert_eq!(
+        fit(Some(serde_json::json!({ "error": "parameter `v` is bad" }))),
+        FitOutcome::Error("parameter v is bad".to_owned())
+    );
+    let nca = NcaView::from_value(&serde_json::json!({
+        "kind": "nca", "id": 2, "result": { "subjects": [ { "outcome": { "ok": 7 } } ] }
+    }))
+    .unwrap();
+    assert_eq!(
+        nca.subject.unwrap().outcome,
+        Outcome::Error("the result could not be read".to_owned())
+    );
+}
+
+#[test]
+fn the_engines_backticks_do_not_reach_the_screen() {
+    assert_eq!(crate::fmt::plain("parameter `v` = 0"), "parameter v = 0");
+    let app = with_fit();
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.get_by_label_contains("Model pk1.oral_1");
+    assert!(h.query_by_label_contains("`").is_none());
 }

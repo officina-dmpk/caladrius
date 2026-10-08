@@ -77,6 +77,7 @@ pub struct Colors {
     pub plot_grid: Rgba,
     pub series_observed: Rgba,
     pub series_selected: Rgba,
+    pub series_start: Rgba,
     pub series_fit: Rgba,
     pub series_replaced: Rgba,
     pub series_other: Rgba,

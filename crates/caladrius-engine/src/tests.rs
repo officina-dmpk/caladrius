@@ -1567,3 +1567,41 @@ fn the_objective_at_the_starting_values_is_the_first_row_of_a_fit() {
     );
     assert_eq!(bad.code, "fit_error");
 }
+
+#[test]
+fn evaluating_odd_starting_values_gives_a_readable_fit_error_not_a_panic() {
+    let mut e = engine_with_two_subjects();
+    // Zero, null (what a NaN becomes in JSON) and non-numeric starting values.
+    for initial in [
+        json!({ "v": 0, "k": 0.1, "ka": 1 }),
+        json!({ "v": 10, "k": 0, "ka": 1 }),
+        json!({ "v": null, "k": 0.1, "ka": 1 }),
+        json!({ "v": "NaN", "k": 0.1, "ka": 1 }),
+        json!({ "v": 1e308, "k": 1e308, "ka": 1e308 }),
+    ] {
+        let params =
+            json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1", "initial": initial });
+        match e.execute("fit.evaluate", params) {
+            Err(failure) => {
+                assert!(!failure.message.is_empty(), "{initial}");
+                assert!(
+                    ["fit_error", "invalid_parameters"].contains(&failure.code.as_str()),
+                    "{initial}: {failure}"
+                );
+            }
+            Ok(value) => assert!(value["wrss"].is_number(), "{initial}: {value}"),
+        }
+    }
+    // An exact NaN cannot be typed in JSON, but the zero volume is a refusal with a sentence.
+    let zero = err(
+        &mut e,
+        "fit.evaluate",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1", "initial": { "v": 0, "k": 0.1, "ka": 1 } }),
+    );
+    assert_eq!(zero.code, "fit_error");
+    assert!(
+        zero.message.contains("`v` = 0") && zero.message.contains("correct its value"),
+        "{zero}"
+    );
+    assert!(e.project().analyses().is_empty());
+}

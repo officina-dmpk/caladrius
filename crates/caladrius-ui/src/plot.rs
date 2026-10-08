@@ -20,6 +20,8 @@ pub enum Tone {
     Replaced,
     Fit,
     Selected,
+    /// The curve of the starting values, apart from the observed points and the chosen range.
+    Start,
 }
 
 impl Tone {
@@ -31,6 +33,7 @@ impl Tone {
             Tone::Replaced => c.series_replaced.color(),
             Tone::Fit => c.series_fit.color(),
             Tone::Selected => c.series_selected.color(),
+            Tone::Start => c.series_start.color(),
         }
     }
 }

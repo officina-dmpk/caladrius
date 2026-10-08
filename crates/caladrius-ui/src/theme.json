@@ -21,6 +21,7 @@
       "plot_grid": "#e1e5ec",
       "series_observed": "#33415c",
       "series_selected": "#2255c4",
+      "series_start": "#00897b",
       "series_fit": "#c62828",
       "series_replaced": "#9a4d00",
       "series_other": "#8b95a7"
@@ -52,6 +53,7 @@
       "plot_grid": "#2a3342",
       "series_observed": "#c3cde0",
       "series_selected": "#6c9bff",
+      "series_start": "#2ee6c0",
       "series_fit": "#ff7b72",
       "series_replaced": "#f0a04b",
       "series_other": "#6f7b90"

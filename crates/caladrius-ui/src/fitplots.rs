@@ -92,7 +92,7 @@ pub fn plot_panel(
                 let (tone, weight) = if page.ok().is_some() {
                     (Tone::Other, Weight::Medium)
                 } else {
-                    (Tone::Selected, Weight::Thick)
+                    (Tone::Start, Weight::Thick)
                 };
                 line_sets.push(LineSet::new(
                     "Starting values",

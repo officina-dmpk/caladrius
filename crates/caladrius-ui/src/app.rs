@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use crate::fit::FitPage;
 use crate::fitform;
 use crate::fitplots;
+use crate::fmt;
 use crate::import::{self, PendingImport};
 use crate::model::{Overview, Status, Table, WorksheetInfo, read};
 use crate::nca::{self, NcaPage};
@@ -239,11 +240,12 @@ impl UiApp {
         match self.engine.execute(id, params) {
             Ok(v) => Ok(v),
             Err(e) => {
+                let message = fmt::plain(&e.message);
                 self.notice = Some(Notice {
                     kind: NoticeKind::Error,
-                    text: e.message.clone(),
+                    text: message.clone(),
                 });
-                Err(e.message)
+                Err(message)
             }
         }
     }
