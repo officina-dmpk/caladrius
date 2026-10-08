@@ -96,6 +96,15 @@ impl Kind {
             Kind::Fit => "group",
         }
     }
+
+    /// The plural of `parameter_title`, for the summary table header.
+    fn parameter_plural(self) -> &'static str {
+        match self {
+            Kind::Nca => "parameters",
+            Kind::Model => "quantities",
+            Kind::Fit => "groups",
+        }
+    }
 }
 
 /// The outcome of one oracle case.
@@ -501,9 +510,9 @@ fn render(reports: &[CaseReport]) -> String {
             of_kind.len()
         ));
         out.push_str(&format!(
-            "| case | {} | {}s fully validated | values validated | % | documented differences |\n",
+            "| case | {} | {} fully validated | values validated | % | documented differences |\n",
             kind.headers().join(" | "),
-            kind.parameter_title()
+            kind.parameter_plural()
         ));
         out.push_str(&format!(
             "|---|{}---|---|---|---|\n",
@@ -951,6 +960,19 @@ mod tests {
         assert!(check_unique_names(&[report("a", 1, 1), report("b", 1, 1)]).is_ok());
         let err = check_unique_names(&[report("same", 1, 1), model]).unwrap_err();
         assert!(err.to_string().contains("`same`"), "{err}");
+    }
+
+    #[test]
+    fn summary_headers_use_correct_plurals() {
+        let mut model = report("m", 1, 1);
+        model.kind = Kind::Model;
+        let mut fit = report("f", 1, 1);
+        fit.kind = Kind::Fit;
+        let text = render(&[report("a", 1, 1), model, fit]);
+        assert!(text.contains("| parameters fully validated |"));
+        assert!(text.contains("| quantities fully validated |"));
+        assert!(text.contains("| groups fully validated |"));
+        assert!(!text.contains("quantitys"));
     }
 
     #[test]

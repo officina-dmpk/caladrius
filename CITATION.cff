@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use Caladrius, please cite it as below."
+title: Caladrius
+abstract: "Open-source pharmacokinetic analysis in Rust: non-compartmental analysis, individual compartmental models and weighted least-squares fitting."
+type: software
+authors:
+  - family-names: Ragued
+    given-names: Abdou
+version: 0.1.0
+date-released: 2026-10-09
+license: MIT OR Apache-2.0
+repository-code: https://github.com/officina-dmpk/caladrius
