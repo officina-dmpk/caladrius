@@ -14,6 +14,7 @@ use crate::model::{
 use crate::plot::{self, Dot, LineSet, PointSet, Tone, Weight};
 use crate::plotdata::{self, Pt};
 use crate::theme::Tokens;
+use crate::widgets::{combo, error_box, section, threshold, units_line};
 
 /// The route of administration as the page offers it.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -227,63 +228,6 @@ impl NcaPage {
 
 // ---- small controls ----------------------------------------------------------------------
 
-fn combo(ui: &mut Ui, id: &str, current: &str, choices: &[(&str, &str)]) -> Option<String> {
-    let shown = choices
-        .iter()
-        .find(|(v, _)| *v == current)
-        .map_or(current, |(_, l)| *l);
-    let mut chosen = None;
-    egui::ComboBox::from_id_salt(id)
-        .selected_text(shown)
-        .show_ui(ui, |ui| {
-            for (value, label) in choices {
-                if ui.selectable_label(*value == current, *label).clicked() && *value != current {
-                    chosen = Some((*value).to_owned());
-                }
-            }
-        });
-    chosen
-}
-
-/// A threshold that can be switched off: a checkbox and a number. Returns the new setting when it
-/// changed (`Some(None)` for off).
-fn threshold(
-    ui: &mut Ui,
-    label: &str,
-    current: Option<f64>,
-    when_on: f64,
-    range: std::ops::RangeInclusive<f64>,
-    speed: f64,
-) -> Option<Option<f64>> {
-    let mut changed = None;
-    ui.horizontal(|ui| {
-        let mut on = current.is_some();
-        if ui.checkbox(&mut on, label).changed() {
-            changed = Some(on.then_some(current.unwrap_or(when_on)));
-        }
-        if let Some(mut value) = current {
-            if ui
-                .add(egui::DragValue::new(&mut value).range(range).speed(speed))
-                .changed()
-            {
-                changed = Some(Some(value));
-            }
-        }
-    });
-    changed
-}
-
-fn section(ui: &mut Ui, tokens: &Tokens, title: &str, body: impl FnOnce(&mut Ui)) {
-    ui.add_space(tokens.spacing.medium);
-    ui.label(
-        RichText::new(title)
-            .size(tokens.font.heading)
-            .color(tokens.colors.text.color()),
-    );
-    ui.separator();
-    body(ui);
-}
-
 // ---- the page ----------------------------------------------------------------------------
 
 /// The page body: data, route and dose, options, results.
@@ -470,29 +414,6 @@ pub fn unit_notes(info: &WorksheetInfo) -> Vec<String> {
         );
     }
     lines
-}
-
-fn units_line(ui: &mut Ui, tokens: &Tokens, info: &WorksheetInfo) {
-    let unit = |role: &str| info.unit_of(role).unwrap_or("not set").to_owned();
-    ui.label(
-        RichText::new(format!(
-            "Units: time {}, concentration {}, dose {}",
-            unit("time"),
-            unit("concentration"),
-            unit("dose")
-        ))
-        .color(tokens.colors.text_muted.color()),
-    );
-}
-
-fn error_box(ui: &mut Ui, tokens: &Tokens, text: &str) {
-    let c = &tokens.colors;
-    tokens
-        .card_frame()
-        .stroke(egui::Stroke::new(tokens.stroke.medium, c.error.color()))
-        .show(ui, |ui| {
-            ui.label(RichText::new(text).color(c.error.color()));
-        });
 }
 
 fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut NcaPage, changed: &mut bool) {

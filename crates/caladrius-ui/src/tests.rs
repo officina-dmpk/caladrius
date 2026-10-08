@@ -640,3 +640,425 @@ fn the_number_the_engine_understood_is_shown_when_it_differs_from_what_was_typed
     set(&mut app, "1,500");
     assert!(app.notice_text().unwrap().contains("thousands separator"));
 }
+
+// ---- model fit and simulation ------------------------------------------------------------
+
+fn with_fit() -> UiApp {
+    let mut app = with_oral();
+    app.perform(vec![Action::NewFit]);
+    app
+}
+
+fn fitted() -> UiApp {
+    let mut app = with_fit();
+    app.perform(vec![Action::RunFit]);
+    app
+}
+
+#[test]
+fn a_new_fit_prefills_the_starting_values_and_draws_the_live_curve() {
+    let mut app = with_fit();
+    assert_eq!(app.state.selection, Selection::NewFit);
+    let page = app.fit_page().unwrap().clone();
+    assert_eq!(page.model().id, "pk1.oral_1");
+    // The starting values are the ones the engine generates from the data.
+    let generated = app
+        .engine_mut()
+        .execute("fit.initial_estimates", page.initial_params())
+        .unwrap();
+    for name in ["v", "k", "ka"] {
+        assert_eq!(
+            page.initial.get(name).copied(),
+            generated["initial"][name].as_f64()
+        );
+    }
+    // The curve and the objective come from the engine's commands, at the starting values.
+    assert_eq!(
+        page.preview.curve.len(),
+        crate::fit::defaults::PREVIEW_POINTS
+    );
+    let simulated = app
+        .engine_mut()
+        .execute("model.simulate", page.simulate_params(24.0).unwrap())
+        .unwrap();
+    let curve: crate::model::Simulation = crate::model::read(&simulated);
+    assert_eq!(page.preview.curve, curve.curve());
+    let evaluated = app
+        .engine_mut()
+        .execute("fit.evaluate", page.evaluate_params())
+        .unwrap();
+    assert_eq!(page.preview.wrss, evaluated["wrss"].as_f64());
+    assert_eq!(page.preview.dose, Some(100.0));
+    // Nothing was stored by looking: the project holds the worksheet only.
+    assert!(app.engine().project().analyses().is_empty());
+}
+
+#[test]
+fn editing_a_starting_value_moves_the_curve_and_the_objective() {
+    let mut app = with_fit();
+    let before = app.fit_page().unwrap().preview.clone();
+    if let Some(page) = app.state.fit.as_mut() {
+        if let Some(v) = page.initial.get_mut("ka") {
+            *v *= 3.0;
+        }
+    }
+    app.perform(vec![Action::FitChanged { regenerate: false }]);
+    let after = app.fit_page().unwrap().preview.clone();
+    assert_ne!(before.curve, after.curve);
+    assert!(
+        after.wrss.unwrap() > before.wrss.unwrap(),
+        "a worse start costs more"
+    );
+    // The values the person typed survive; they are not generated again.
+    assert!(app.fit_page().unwrap().initial["ka"] > 3.0);
+}
+
+#[test]
+fn fitting_stores_an_analysis_and_shows_estimates_with_precision_and_both_intervals() {
+    let mut app = fitted();
+    let Selection::Analysis(id) = app.state.selection.clone() else {
+        panic!("the fit page should now show the analysis");
+    };
+    assert_eq!(app.engine().project().analyses().len(), 1);
+    let page = app.fit_page().unwrap().clone();
+    let ok = page.ok().unwrap();
+    assert_eq!(ok.status, "converged");
+    assert!((ok.value("estimate.v").unwrap() / 20.0 - 1.0).abs() < 0.01);
+    for key in [
+        "se.v",
+        "cv_percent.v",
+        "ci_lo.v",
+        "ci_hi.v",
+        "planar_lo.v",
+        "planar_hi.v",
+        "estimate.cl",
+        "estimate.half_life",
+        "wrss",
+        "aic",
+    ] {
+        assert!(ok.value(key).is_some(), "{key}");
+    }
+    assert_eq!(page.view.as_ref().unwrap().status_message, "converged");
+    // The page comes back from the stored analysis, with the values it was run from.
+    app.perform(vec![Action::Select(Selection::Worksheet(1))]);
+    app.perform(vec![Action::Select(Selection::Analysis(id))]);
+    let back = app.fit_page().unwrap();
+    assert_eq!(back.analysis, Some(id));
+    assert_eq!(back.initial, page.initial);
+    assert_eq!(back.model().id, "pk1.oral_1");
+    assert!(back.ok().is_some());
+    assert!(app.nca_page().is_none(), "the NCA page is not left behind");
+}
+
+#[test]
+fn a_poor_fit_is_flagged_with_sentences_that_say_what_to_check() {
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = crate::modelinfo::Input::Bolus;
+    }
+    app.perform(vec![
+        Action::FitChanged { regenerate: true },
+        Action::RunFit,
+    ]);
+    let page = app.fit_page().unwrap();
+    let view = page.view.as_ref().unwrap();
+    assert!(!view.flag_messages.is_empty());
+    assert!(view.ok().unwrap().flags.iter().any(|f| f.code == "high_cv"));
+    assert!(view.flag_messages.iter().any(|m| m.contains("CV")));
+}
+
+#[test]
+fn the_route_picks_the_model_and_the_starting_values_follow() {
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.lag = true;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    let page = app.fit_page().unwrap();
+    assert_eq!(page.model().id, "pk1.oral_1_lag");
+    assert!(page.initial.contains_key("tlag"));
+    // An infusion has a fixed duration: it is not among the fitted parameters.
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = crate::modelinfo::Input::Infusion;
+        page.duration = 0.5;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    let page = app.fit_page().unwrap();
+    assert_eq!(page.model().id, "pk1.iv_infusion");
+    assert!(!page.initial.contains_key("dur") && page.initial.contains_key("v"));
+    assert_eq!(page.run_params()["options"]["fixed"]["dur"], 0.5);
+    assert!(page.preview.curve.len() > 2, "{:?}", page.preview.error);
+}
+
+const NO_DOSE: &[u8] = b"time,conc\n0,0\n0.5,2.2\n1,3.3\n2,4\n4,3.6\n8,2.5\n24,0.5\n";
+
+#[test]
+fn a_worksheet_without_a_dose_says_what_to_do_and_the_person_can_enter_one() {
+    let mut app = UiApp::new();
+    app.load_csv("nodose.csv", NO_DOSE);
+    app.perform(vec![Action::ImportConfirm, Action::NewFit]);
+    let page = app.fit_page().unwrap();
+    assert!(page.initial.is_empty() || page.start_error.is_some());
+    assert!(page.start_error.as_deref().unwrap().contains("dose"));
+    assert!(page.preview.curve.is_empty());
+    // Both states draw.
+    let mut h = harness(app);
+    h.run_steps(3);
+    let mut app = UiApp::new();
+    app.load_csv("nodose.csv", NO_DOSE);
+    app.perform(vec![Action::ImportConfirm, Action::NewFit]);
+    // Entering the dose here fixes it.
+    if let Some(page) = app.state.fit.as_mut() {
+        page.dose_override = Some(100.0);
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    let page = app.fit_page().unwrap();
+    assert!(page.start_error.is_none() && !page.initial.is_empty());
+    assert!(!page.preview.curve.is_empty());
+    harness(app).run_steps(3);
+}
+
+#[test]
+fn too_few_points_give_a_sentence_not_a_crash() {
+    let mut app = UiApp::new();
+    app.load_csv("two.csv", b"time,conc,dose\n1,5,10\n2,3,10\n");
+    app.perform(vec![Action::ImportConfirm, Action::NewFit]);
+    let page = app.fit_page().unwrap();
+    assert!(page.start_error.is_some() || page.preview.error.is_some());
+    app.perform(vec![Action::RunFit]);
+    let page = app.fit_page().unwrap();
+    assert!(page.error.is_some() || page.ok().is_some());
+    let mut h = harness(app);
+    h.run_steps(3);
+}
+
+#[test]
+fn a_data_edit_makes_the_fit_stale_and_run_again_refreshes_it() {
+    let mut app = fitted();
+    app.perform(vec![Action::SetCell {
+        worksheet: 1,
+        row: 4,
+        column: "Conc".to_owned(),
+        text: "4,2".to_owned(),
+    }]);
+    assert!(app.fit_page().unwrap().preview.wrss.is_some());
+    let id = app.fit_page().unwrap().analysis.unwrap();
+    app.perform(vec![Action::Select(Selection::Analysis(id))]);
+    assert!(app.fit_page().unwrap().status().is_stale());
+    let mut h = harness(app);
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Out of date").count() >= 1);
+    h.get_by_label("Run again").click();
+    h.run_steps(3);
+    assert_eq!(h.state().fit_page().unwrap().status(), Status::Fresh);
+}
+
+#[test]
+fn the_defaults_the_page_shows_are_the_engines() {
+    use crate::fit::defaults;
+    let app = fitted();
+    let options = &app.fit_page().unwrap().view.as_ref().unwrap().spec["options"];
+    assert_eq!(options["max_iterations"], defaults::MAX_ITERATIONS);
+    assert_eq!(options["convergence"], defaults::CONVERGENCE);
+    assert_eq!(options["increment"], defaults::INCREMENT);
+    assert_eq!(options["confidence_level"], defaults::CONFIDENCE_LEVEL);
+    assert_eq!(options["flags"]["max_cv_percent"], defaults::MAX_CV_PERCENT);
+    assert_eq!(
+        options["flags"]["max_abs_correlation"],
+        defaults::MAX_ABS_CORRELATION
+    );
+    assert_eq!(
+        options["flags"]["max_condition_number"],
+        defaults::MAX_CONDITION_NUMBER
+    );
+    assert_eq!(
+        options["flags"]["min_degrees_of_freedom"].as_f64(),
+        Some(defaults::MIN_DEGREES_OF_FREEDOM)
+    );
+}
+
+#[test]
+fn options_and_weighting_reach_the_engine() {
+    // No zero concentration, so every weighting can be used.
+    let mut app = UiApp::new();
+    app.load_csv(
+        "positive.csv",
+        b"time,conc,dose
+0.25,1.279,100
+0.5,2.195,100
+1,3.293,100
+2,3.971,100
+4,3.611,100
+6,2.989,100
+8,2.451,100
+12,1.643,100
+24,0.495,100
+",
+    );
+    app.perform(vec![Action::ImportConfirm, Action::NewFit]);
+    if let Some(page) = app.state.fit.as_mut() {
+        page.weighting = "inv_y".to_owned();
+        page.set_option(&["max_iterations"], json!(7));
+        page.set_option(&["flags", "max_cv_percent"], json!(0.5));
+    }
+    app.perform(vec![
+        Action::FitChanged { regenerate: false },
+        Action::RunFit,
+    ]);
+    let page = app.fit_page().unwrap();
+    assert!(page.error.is_none(), "{:?}", page.error);
+    let spec = &page.view.as_ref().unwrap().spec;
+    assert_eq!(spec["weighting"], "inv_y");
+    assert_eq!(spec["options"]["max_iterations"], 7);
+    assert_eq!(spec["options"]["flags"]["max_cv_percent"], 0.5);
+}
+
+#[test]
+fn a_weighting_the_data_cannot_take_says_what_to_change() {
+    let mut app = with_fit();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.weighting = "inv_y".to_owned();
+    }
+    app.perform(vec![
+        Action::FitChanged { regenerate: false },
+        Action::RunFit,
+    ]);
+    let page = app.fit_page().unwrap();
+    let message = page.error.as_deref().unwrap();
+    assert!(message.contains("choose another weighting"), "{message}");
+    assert!(page.view.is_none() && app.engine().project().analyses().is_empty());
+    harness(app).run_steps(3);
+}
+
+#[test]
+fn the_simulation_page_draws_the_engines_curve_and_saves_an_analysis() {
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation]);
+    assert_eq!(app.state.selection, Selection::NewSimulation);
+    let page = app.sim_page().unwrap().clone();
+    let result = page.result.clone().unwrap();
+    assert_eq!(result.times.len(), crate::fit::defaults::PREVIEW_POINTS);
+    let direct = app
+        .engine_mut()
+        .execute("model.simulate", page.params(false))
+        .unwrap();
+    assert_eq!(
+        crate::model::read::<crate::model::Simulation>(&direct).conc,
+        result.conc
+    );
+    assert!(result.secondary.contains_key("half_life"));
+    assert!(app.engine().project().analyses().is_empty());
+    // A change of parameter changes the curve.
+    if let Some(p) = app.state.sim.as_mut() {
+        p.params.insert("k".to_owned(), 0.3);
+    }
+    app.perform(vec![Action::SimChanged]);
+    assert_ne!(
+        app.sim_page().unwrap().result.as_ref().unwrap().conc,
+        result.conc
+    );
+    // Saving stores a simulation analysis, which opens as the same page.
+    app.perform(vec![Action::SimSave]);
+    assert_eq!(app.engine().project().analyses().len(), 1);
+    let Selection::Analysis(id) = app.state.selection.clone() else {
+        panic!("a saved simulation is shown as an analysis");
+    };
+    app.perform(vec![Action::Select(Selection::Welcome)]);
+    app.perform(vec![Action::Select(Selection::Analysis(id))]);
+    let back = app.sim_page().unwrap();
+    assert_eq!(back.params["k"], 0.3);
+    assert_eq!(back.analysis, Some(id));
+}
+
+#[test]
+fn a_simulation_with_odd_values_gives_a_curve_or_a_sentence_never_a_crash() {
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation]);
+    if let Some(p) = app.state.sim.as_mut() {
+        p.params.insert("ka".to_owned(), 0.1);
+        p.end = 1.0e-9;
+    }
+    app.perform(vec![Action::SimChanged]);
+    let page = app.sim_page().unwrap();
+    assert!(page.result.is_some() || page.error.is_some());
+    harness(app).run_steps(3);
+}
+
+#[test]
+fn the_new_analysis_menu_offers_nca_fit_and_simulation() {
+    let mut h = harness(with_oral());
+    h.run_steps(2);
+    h.get_by_label("New analysis").click();
+    h.run_steps(3);
+    h.get_by_label("Model fit").click();
+    h.run_steps(3);
+    assert_eq!(h.state().state.selection, Selection::NewFit);
+    h.get_by_label("New analysis").click();
+    h.run_steps(3);
+    h.get_by_label("Model simulation").click();
+    h.run_steps(3);
+    assert_eq!(h.state().state.selection, Selection::NewSimulation);
+    h.get_by_label("New analysis").click();
+    h.run_steps(3);
+    h.get_by_label("Non-compartmental analysis (NCA)").click();
+    h.run_steps(3);
+    assert!(matches!(h.state().state.selection, Selection::Analysis(_)));
+    assert!(h.state().fit_page().is_none() && h.state().sim_page().is_none());
+}
+
+#[test]
+fn the_fit_page_buttons_do_what_they_say() {
+    let mut h = harness(with_fit());
+    h.run_steps(3);
+    h.get_by_label("Fit the model").click();
+    h.run_steps(3);
+    assert!(h.state().fit_page().unwrap().ok().is_some());
+    assert!(matches!(h.state().state.selection, Selection::Analysis(_)));
+    h.get_by_label("Generate from the data").click();
+    h.run_steps(3);
+    assert!(h.state().fit_page().unwrap().preview.curve.len() > 2);
+    h.get_by_label("Semi-log").click();
+    h.run_steps(3);
+    assert!(h.state().state.log_axis);
+}
+
+#[test]
+fn every_fit_and_simulation_screen_draws_in_both_themes_and_both_axes() {
+    for dark in [false, true] {
+        for log in [false, true] {
+            let mut scenes: Vec<UiApp> = vec![with_fit(), fitted()];
+            let mut sim = UiApp::new();
+            sim.perform(vec![Action::NewSimulation]);
+            scenes.push(sim);
+            let mut poor = with_fit();
+            if let Some(page) = poor.state.fit.as_mut() {
+                page.input = crate::modelinfo::Input::ZeroOrder;
+                page.lag = true;
+            }
+            poor.perform(vec![
+                Action::FitChanged { regenerate: true },
+                Action::RunFit,
+            ]);
+            scenes.push(poor);
+            for mut app in scenes {
+                app.state.mode = if dark {
+                    ThemeMode::Dark
+                } else {
+                    ThemeMode::Light
+                };
+                app.state.log_axis = log;
+                harness(app).run_steps(3);
+            }
+        }
+    }
+}
+
+#[test]
+fn the_pages_state_is_data() {
+    let app = fitted();
+    let text = serde_json::to_string(&app.state).unwrap();
+    let back: UiState = serde_json::from_str(&text).unwrap();
+    assert_eq!(back.fit.as_ref().map(|p| p.model().id), Some("pk1.oral_1"));
+    assert_eq!(back.fit.unwrap().initial, app.fit_page().unwrap().initial);
+}

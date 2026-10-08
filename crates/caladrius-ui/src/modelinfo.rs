@@ -268,7 +268,7 @@ pub fn diagram(ui: &mut Ui, tokens: &Tokens, model: &ModelInfo) {
                 line,
             );
             let text = if model.input == Input::Bolus {
-                "dose D, bolus"
+                "D (bolus)"
             } else {
                 "dose D over T"
             };

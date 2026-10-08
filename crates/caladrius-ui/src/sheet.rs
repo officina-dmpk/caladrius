@@ -252,6 +252,9 @@ pub fn screen(
             {
                 actions.push(Action::NewAnalysis);
             }
+            if ui.button("New model fit").clicked() {
+                actions.push(Action::NewFit);
+            }
         });
     });
     ui.add_space(tokens.spacing.medium);

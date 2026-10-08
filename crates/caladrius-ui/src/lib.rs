@@ -15,15 +15,23 @@
 //! - [`app`]: the application, its project tree and its screens ([`import`], [`sheet`], [`nca`]).
 
 pub mod app;
+pub mod fit;
+pub mod fitform;
+pub mod fitplots;
+pub mod fitresult;
+pub mod flow;
 pub mod fmt;
 pub mod import;
 pub mod model;
 pub mod modelinfo;
+pub mod modelpick;
 pub mod nca;
 pub mod plot;
 pub mod plotdata;
 pub mod sheet;
+pub mod sim;
 pub mod theme;
+pub mod widgets;
 
 pub use app::{Action, Request, Selection, UiApp, UiState};
 

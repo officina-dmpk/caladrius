@@ -7,10 +7,14 @@ use egui::{Context, RichText, Ui};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::fit::FitPage;
+use crate::fitform;
+use crate::fitplots;
 use crate::import::{self, PendingImport};
 use crate::model::{Overview, Status, Table, WorksheetInfo, read};
 use crate::nca::{self, NcaPage};
 use crate::sheet::{self, Rejected};
+use crate::sim::{self, SimPage};
 use crate::theme::{ThemeMode, Tokens};
 
 /// What a screen asks for. Applied after the frame, through engine commands.
@@ -18,7 +22,23 @@ use crate::theme::{ThemeMode, Tokens};
 pub enum Action {
     Select(Selection),
     OpenCsv,
+    /// A new NCA from the worksheet in view.
     NewAnalysis,
+    /// A new model fit from the worksheet in view.
+    NewFit,
+    /// A new model simulation (no worksheet needed).
+    NewSimulation,
+    /// The fit page changed: show the live curve again; `regenerate` also asks for new starting
+    /// values from the data (the subject, model or dose changed).
+    FitChanged {
+        regenerate: bool,
+    },
+    /// Fit the model (`fit.run`).
+    RunFit,
+    /// The simulation page changed: ask `model.simulate` again.
+    SimChanged,
+    /// Store the simulation in the project.
+    SimSave,
     ToggleTheme,
     /// The NCA page changed: ask `nca.run` again.
     RunNca,
@@ -65,6 +85,19 @@ pub enum Selection {
     Import,
     Worksheet(u64),
     Analysis(u64),
+    /// A model fit being set up, not yet run.
+    NewFit,
+    /// A model simulation being set up.
+    NewSimulation,
+}
+
+/// Which analysis page is on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shown {
+    Nca,
+    Fit,
+    Sim,
+    Nothing,
 }
 
 /// What the application asks of the program around it (files are the program's business).
@@ -83,38 +116,42 @@ pub struct UiState {
     pub log_axis: bool,
     /// The NCA page being worked on.
     pub nca: Option<NcaPage>,
+    /// The fit page being worked on.
+    pub fit: Option<FitPage>,
+    /// The simulation page being worked on.
+    pub sim: Option<SimPage>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum NoticeKind {
+pub(crate) enum NoticeKind {
     Info,
     Error,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Notice {
-    kind: NoticeKind,
-    text: String,
+pub(crate) struct Notice {
+    pub(crate) kind: NoticeKind,
+    pub(crate) text: String,
 }
 
 /// The worksheet shown: its description and its cells, as the engine gave them.
 #[derive(Debug, Clone, Default)]
-struct SheetView {
-    info: WorksheetInfo,
-    table: Table,
+pub(crate) struct SheetView {
+    pub(crate) info: WorksheetInfo,
+    pub(crate) table: Table,
 }
 
 /// The application.
 pub struct UiApp {
-    engine: Engine,
+    pub(crate) engine: Engine,
     pub state: UiState,
     tokens: Tokens,
     applied: Option<ThemeMode>,
-    overview: Overview,
-    sheet: Option<SheetView>,
+    pub(crate) overview: Overview,
+    pub(crate) sheet: Option<SheetView>,
     rejected: Option<Rejected>,
     pending: Option<PendingImport>,
-    notice: Option<Notice>,
+    pub(crate) notice: Option<Notice>,
     requests: Vec<Request>,
     theme_error: Option<String>,
 }
@@ -180,6 +217,16 @@ impl UiApp {
         self.state.nca.as_ref()
     }
 
+    /// The current fit page, for tests.
+    pub fn fit_page(&self) -> Option<&FitPage> {
+        self.state.fit.as_ref()
+    }
+
+    /// The current simulation page, for tests.
+    pub fn sim_page(&self) -> Option<&SimPage> {
+        self.state.sim.as_ref()
+    }
+
     /// The import waiting for a decision, for tests.
     pub fn pending_import(&self) -> Option<&PendingImport> {
         self.pending.as_ref()
@@ -188,7 +235,7 @@ impl UiApp {
     // ---- engine access -----------------------------------------------------------------
 
     /// Runs a command; an error becomes the status-bar message (it says what to fix).
-    fn call(&mut self, id: &str, params: Value) -> Result<Value, String> {
+    pub(crate) fn call(&mut self, id: &str, params: Value) -> Result<Value, String> {
         match self.engine.execute(id, params) {
             Ok(v) => Ok(v),
             Err(e) => {
@@ -201,13 +248,13 @@ impl UiApp {
         }
     }
 
-    fn refresh_overview(&mut self) {
+    pub(crate) fn refresh_overview(&mut self) {
         if let Ok(v) = self.engine.execute("project.describe", Value::Null) {
             self.overview = read(&v);
         }
     }
 
-    fn refresh_sheet(&mut self, id: u64) {
+    pub(crate) fn refresh_sheet(&mut self, id: u64) {
         let described = self.engine.execute(
             "data.describe",
             json!({ "worksheet": id, "preview_rows": 0 }),
@@ -270,10 +317,17 @@ impl UiApp {
         let Ok(view) = self.call("analysis.get", json!({ "analysis": id })) else {
             return;
         };
+        match view.get("kind").and_then(Value::as_str) {
+            Some("fit") => return self.open_fit(&view),
+            Some("simulation") => return self.open_simulation(&view),
+            _ => {}
+        }
         match NcaPage::from_view(&view) {
             Some(page) => {
                 self.refresh_sheet(page.worksheet);
                 self.state.nca = Some(page);
+                self.state.fit = None;
+                self.state.sim = None;
             }
             None => {
                 self.state.nca = None;
@@ -282,6 +336,16 @@ impl UiApp {
                     text: "This kind of analysis has no page yet; use `caladrius-cli` or the MCP server for it.".to_owned(),
                 });
             }
+        }
+    }
+
+    /// Takes the answer of a run into the page of its kind.
+    fn adopt_run(&mut self, view: &Value) {
+        if let Some(page) = self.state.nca.as_mut() {
+            page.adopt(view);
+        }
+        if let Some(page) = self.state.fit.as_mut() {
+            page.adopt(view);
         }
     }
 
@@ -324,6 +388,8 @@ impl UiApp {
             .as_ref()
             .and_then(|s| s.info.subjects.first().cloned())
             .unwrap_or_default();
+        self.state.fit = None;
+        self.state.sim = None;
         self.state.nca = Some(NcaPage::new(id, subject));
         self.run_nca();
     }
@@ -336,15 +402,19 @@ impl UiApp {
                 Action::Select(s) => self.select(s),
                 Action::OpenCsv => self.requests.push(Request::PickCsv),
                 Action::NewAnalysis => self.new_analysis(),
+                Action::NewFit => self.new_fit(),
+                Action::NewSimulation => self.new_simulation(),
+                Action::FitChanged { regenerate } => self.fit_changed(regenerate),
+                Action::RunFit => self.run_fit(),
+                Action::SimChanged => self.sim_changed(),
+                Action::SimSave => self.sim_save(),
                 Action::ToggleTheme => {
                     self.state.mode = self.state.mode.toggled();
                 }
                 Action::RunNca => self.run_nca(),
                 Action::RunAgain(id) => {
                     if let Ok(view) = self.call("analysis.run", json!({ "analysis": id })) {
-                        if let Some(page) = self.state.nca.as_mut() {
-                            page.adopt(&view);
-                        }
+                        self.adopt_run(&view);
                         self.refresh_overview();
                     }
                 }
@@ -368,6 +438,14 @@ impl UiApp {
                     }
                     self.refresh_overview();
                     self.refresh_sheet(worksheet);
+                    if self
+                        .state
+                        .fit
+                        .as_ref()
+                        .is_some_and(|p| p.worksheet == worksheet)
+                    {
+                        self.fit_preview();
+                    }
                 }
                 Action::SetColumn {
                     worksheet,
@@ -481,28 +559,14 @@ impl UiApp {
             .width_range(tokens.size.tree_min_width..=tokens.size.tree_max_width)
             .frame(tokens.panel_frame(tokens.colors.panel_alt))
             .show(ctx, |ui| self.tree(ui, &mut actions));
-        let showing_nca =
-            matches!(self.state.selection, Selection::Analysis(_)) && self.state.nca.is_some();
-        if showing_nca {
+        let shown = self.shown();
+        if shown != Shown::Nothing {
             egui::SidePanel::right("plot-panel")
                 .default_width(tokens.size.plot_panel_width)
                 .min_width(tokens.size.plot_panel_min_width)
                 .resizable(true)
                 .frame(tokens.panel_frame(tokens.colors.panel))
-                .show(ctx, |ui| {
-                    if let (Some(page), Some(sheet)) =
-                        (self.state.nca.as_mut(), self.sheet.as_ref())
-                    {
-                        nca::plot_panel(
-                            ui,
-                            &tokens,
-                            page,
-                            &sheet.info,
-                            &mut self.state.log_axis,
-                            &mut actions,
-                        );
-                    }
-                });
+                .show(ctx, |ui| self.plot_panel(ui, &tokens, shown, &mut actions));
         }
         egui::CentralPanel::default()
             .frame(tokens.panel_frame(tokens.colors.background))
@@ -514,6 +578,73 @@ impl UiApp {
                     });
             });
         self.perform(actions);
+    }
+
+    /// Which page the main area shows.
+    fn shown(&self) -> Shown {
+        let page = match self.state.selection {
+            Selection::Analysis(_) => {
+                if self.state.nca.is_some() {
+                    Shown::Nca
+                } else if self.state.fit.is_some() {
+                    Shown::Fit
+                } else if self.state.sim.is_some() {
+                    Shown::Sim
+                } else {
+                    Shown::Nothing
+                }
+            }
+            Selection::NewFit if self.state.fit.is_some() => Shown::Fit,
+            Selection::NewSimulation if self.state.sim.is_some() => Shown::Sim,
+            _ => Shown::Nothing,
+        };
+        // A page that needs a worksheet is shown only when its worksheet is loaded.
+        match (page, &self.sheet) {
+            (Shown::Nca | Shown::Fit, None) => Shown::Nothing,
+            (page, _) => page,
+        }
+    }
+
+    fn plot_panel(
+        &mut self,
+        ui: &mut Ui,
+        tokens: &Tokens,
+        shown: Shown,
+        actions: &mut Vec<Action>,
+    ) {
+        match shown {
+            Shown::Nca => {
+                if let (Some(page), Some(sheet)) = (self.state.nca.as_mut(), self.sheet.as_ref()) {
+                    nca::plot_panel(
+                        ui,
+                        tokens,
+                        page,
+                        &sheet.info,
+                        &mut self.state.log_axis,
+                        actions,
+                    );
+                }
+            }
+            Shown::Fit => {
+                if let (Some(page), Some(sheet)) = (self.state.fit.as_ref(), self.sheet.as_ref()) {
+                    let observed = crate::fit::observed(&sheet.info, &sheet.table, &page.subject);
+                    fitplots::plot_panel(
+                        ui,
+                        tokens,
+                        page,
+                        &sheet.info,
+                        &observed,
+                        &mut self.state.log_axis,
+                    );
+                }
+            }
+            Shown::Sim => {
+                if let Some(page) = self.state.sim.as_ref() {
+                    sim::plot_panel(ui, tokens, page, &mut self.state.log_axis);
+                }
+            }
+            Shown::Nothing => {}
+        }
     }
 
     fn top_bar(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
@@ -531,13 +662,28 @@ impl UiApp {
                 actions.push(Action::OpenCsv);
             }
             let has_sheet = !self.overview.worksheets.is_empty();
-            if ui
-                .add_enabled(has_sheet, self.tokens.primary_button("New analysis"))
-                .on_disabled_hover_text("Open a CSV file first")
-                .clicked()
-            {
-                actions.push(Action::NewAnalysis);
-            }
+            let tokens = self.tokens.clone();
+            egui::containers::menu::MenuButton::from_button(tokens.primary_button("New analysis"))
+                .ui(ui, |ui| {
+                    let nca = egui::Button::new("Non-compartmental analysis (NCA)");
+                    if ui
+                        .add_enabled(has_sheet, nca)
+                        .on_disabled_hover_text("Open a CSV file first")
+                        .clicked()
+                    {
+                        actions.push(Action::NewAnalysis);
+                    }
+                    if ui
+                        .add_enabled(has_sheet, egui::Button::new("Model fit"))
+                        .on_disabled_hover_text("Open a CSV file first")
+                        .clicked()
+                    {
+                        actions.push(Action::NewFit);
+                    }
+                    if ui.button("Model simulation").clicked() {
+                        actions.push(Action::NewSimulation);
+                    }
+                });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let label = match self.state.mode {
                     ThemeMode::Light => "Dark theme",
@@ -642,12 +788,28 @@ impl UiApp {
                 ),
                 None => self.welcome(ui, tokens, actions),
             },
-            Selection::Analysis(_) => match (self.state.nca.as_mut(), self.sheet.as_ref()) {
-                (Some(page), Some(s)) => nca::central(ui, tokens, page, &s.info, &s.table, actions),
-                _ => {
-                    ui.label("This analysis cannot be shown here yet.");
+            Selection::Analysis(_) | Selection::NewFit | Selection::NewSimulation => {
+                match (self.shown(), self.sheet.as_ref()) {
+                    (Shown::Nca, Some(s)) => {
+                        if let Some(page) = self.state.nca.as_mut() {
+                            nca::central(ui, tokens, page, &s.info, &s.table, actions);
+                        }
+                    }
+                    (Shown::Fit, Some(s)) => {
+                        if let Some(page) = self.state.fit.as_mut() {
+                            fitform::central(ui, tokens, page, &s.info, &s.table, actions);
+                        }
+                    }
+                    (Shown::Sim, _) => {
+                        if let Some(page) = self.state.sim.as_mut() {
+                            sim::central(ui, tokens, page, actions);
+                        }
+                    }
+                    _ => {
+                        ui.label("This analysis cannot be shown here yet.");
+                    }
                 }
-            },
+            }
         }
     }
 

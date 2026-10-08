@@ -134,6 +134,78 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     app.perform(vec![Action::ImportConfirm, Action::NewAnalysis]);
     scenes.push(("12-nca-flags-short-terminal-phase", app));
 
+    // ---- model fit and simulation (T-026) ----
+    let fit_app = || {
+        let mut app = with_oral();
+        app.perform(vec![Action::NewFit]);
+        app
+    };
+    // The page before the first fit: starting values from the data, the live curve and the objective.
+    scenes.push(("13-fit-setup-starting-values", fit_app()));
+
+    // A starting value edited by hand: the curve and the objective follow.
+    let mut app = fit_app();
+    if let Some(page) = app.state.fit.as_mut() {
+        if let Some(v) = page.initial.get_mut("ka") {
+            *v *= 3.0;
+        }
+        if let Some(v) = page.initial.get_mut("v") {
+            *v *= 1.4;
+        }
+    }
+    app.perform(vec![Action::FitChanged { regenerate: false }]);
+    scenes.push(("14-fit-setup-edited-starting-values", app));
+
+    // After the fit: summary, fit plot and residuals.
+    let mut app = fit_app();
+    app.perform(vec![Action::RunFit]);
+    scenes.push(("15-fit-results-linear", app));
+
+    let mut app = fit_app();
+    app.perform(vec![Action::RunFit]);
+    app.state.log_axis = true;
+    scenes.push(("16-fit-results-semilog", app));
+
+    let mut app = fit_app();
+    app.perform(vec![Action::RunFit]);
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("17-fit-results-dark", app));
+
+    let mut app = fit_app();
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("18-fit-setup-dark", app));
+
+    // A model with a lag and a fixed-duration input are picked by route; the diagram follows.
+    let mut app = fit_app();
+    if let Some(page) = app.state.fit.as_mut() {
+        page.lag = true;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    scenes.push(("19-fit-setup-oral-with-lag", app));
+
+    // A poor fit: a model that cannot describe the data. Flags say what to check.
+    let mut app = with_oral();
+    app.perform(vec![Action::NewFit]);
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = caladrius_ui::modelinfo::Input::Bolus;
+    }
+    app.perform(vec![
+        Action::FitChanged { regenerate: true },
+        Action::RunFit,
+    ]);
+    scenes.push(("20-fit-poor-fit-flags", app));
+
+    // The simulation page.
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation]);
+    scenes.push(("21-simulation-oral", app));
+
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation]);
+    app.state.mode = ThemeMode::Dark;
+    app.state.log_axis = true;
+    scenes.push(("22-simulation-dark-semilog", app));
+
     scenes
 }
 
