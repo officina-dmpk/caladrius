@@ -2,7 +2,7 @@
 
 Open-source pharmacokinetic analysis in Rust: non-compartmental analysis, individual compartmental models, weighted least-squares fitting and plots, with a native desktop UI (egui) and a WebAssembly demo. Every analysis is a command with a stable id, so the same calculations are available from the UI, the command line and an MCP server for agents. Caladrius is the calculation layer of Apothicaire, a local DMPK assistant.
 
-Status: step 0 (skeleton). See `AGENTS.md` for the contract and `board/INDEX.md` for progress.
+Status (2026-10-08): steps 1 to 4 of the marching order are done: NCA, one-compartment models and weighted least-squares fitting pass 100% of the public oracle (`docs/conformance.md`: 3744 NCA values, 886 model values, 5340 fit values), a CLI and an MCP server expose every command, and the first private comparison with the reference software (one coursework exercise, two AUC methods) agreed on every value. The desktop UI (step 5) is in progress. See `AGENTS.md` for the contract and `board/INDEX.md` for the task board.
 
 Named after the caladrius, the white bird of Roman legend said to take a sick person's illness away as it flies off.
 

@@ -166,3 +166,9 @@ Decision taken meanwhile: `specs/nca.md` keeps the reference profile apart from 
 Answer: _pending_.
 
 Update to Q-011 (2026-10-08, oracle): the exports of exercise 1 arrived (core reports and settings as RTF, worksheets as .xls, for both AUC methods) and the loader reads them as they are; no re-export is needed. Result in the card of T-019: the engine agrees on every compared value. If you export other exercises, the same file naming (table and method in the name) is enough.
+
+## Q-013 (2026-10-08, orchestrator): publication
+
+The human decided on 2026-10-08: publish the repository on GitHub, public, under a new organisation `officina-dmpk` (repository `caladrius`). The organisation is created by the human on github.com; the orchestrator then adds the remote and pushes `main`. Every later push is covered by this decision for this repository; making numeric comparisons with the reference software public remains a separate decision (counts only are versioned today).
+
+Answer (human): confirmed (chat, 2026-10-08).
