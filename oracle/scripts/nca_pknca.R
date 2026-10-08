@@ -14,6 +14,10 @@
 #
 # Cases: theoph, theoph_linear, indometh, indometh_linear. The first of each pair
 # uses the "lin up/log down" AUC rule, the second the pure linear trapezoidal rule.
+# Synthetic cases (task T-005): synthetic_lz and synthetic_lz_f1e3 on the hand-made
+# profiles of oracle/data/synthetic_lz.csv (read, never written, by this script); they
+# settle the lambda_z open items O-01 and O-02 of specs/nca.md. A case may override
+# PKNCA options with the `options` field of its entry in `cases`.
 # Every option that can change a number is set explicitly below; none relies on a
 # PKNCA default. Never edit the generated files by hand.
 
@@ -94,6 +98,7 @@ read_profile <- function(path) {
 }
 th <- read_profile(file.path(data_dir, "theoph.csv"))
 im <- read_profile(file.path(data_dir, "indometh.csv"))
+syn <- read_profile(file.path(data_dir, "synthetic_lz.csv"))
 
 # ---------------------------------------------------------------- PKNCA run
 param_oral <- c(
@@ -116,7 +121,7 @@ param_iv <- c(
   "vss.iv.obs", "vss.iv.pred"
 )
 
-run_pknca <- function(profile, route, auc_method, params) {
+run_pknca <- function(profile, route, auc_method, params, option_overrides = list()) {
   if ("excl_hl" %in% names(profile)) {
     conc <- PKNCAconc(profile[, c("subject", "time", "conc", "excl_hl")], conc ~ time | subject,
                       exclude_half.life = "excl_hl")
@@ -128,7 +133,7 @@ run_pknca <- function(profile, route, auc_method, params) {
   dose <- PKNCAdose(dose_rows, dose ~ time | subject, route = route)
   iv <- data.frame(start = 0, end = Inf)
   for (p in params) iv[[p]] <- TRUE
-  opts <- base_options
+  opts <- modifyList(base_options, option_overrides)
   opts$auc.method <- auc_method
   d <- PKNCAdata(conc, dose, intervals = iv, options = opts)
   res <- suppressWarnings(as.data.frame(pk.nca(d)))
@@ -160,12 +165,12 @@ augment_with_c0 <- function(profile) {
   do.call(rbind, out)
 }
 
-build_case <- function(profile, route, auc_method, params) {
+build_case <- function(profile, route, auc_method, params, option_overrides = list()) {
   if (route == "extravascular") {
-    return(run_pknca(profile, route, auc_method, params))
+    return(run_pknca(profile, route, auc_method, params, option_overrides))
   }
-  observed <- run_pknca(profile, route, auc_method, params)
-  augmented <- run_pknca(augment_with_c0(profile), route, auc_method, params)
+  observed <- run_pknca(profile, route, auc_method, params, option_overrides)
+  augmented <- run_pknca(augment_with_c0(profile), route, auc_method, params, option_overrides)
   # The back-extrapolated point must not change the terminal-phase selection.
   lz_obs <- observed[observed$parameter == "lambda.z", ]
   lz_aug <- augmented[augmented$parameter == "lambda.z", ]
@@ -189,7 +194,13 @@ cases <- list(
        dose_note = "25 mg IV bolus (test constant)"),
   list(name = "indometh_linear", dataset = "indometh", profile = im, route = "intravascular",
        auc_method = "linear", params = param_iv,
-       dose_note = "25 mg IV bolus (test constant)")
+       dose_note = "25 mg IV bolus (test constant)"),
+  list(name = "synthetic_lz", dataset = "synthetic_lz", profile = syn, route = "extravascular",
+       auc_method = "lin up/log down", params = param_oral,
+       dose_note = "100 mg oral (test constant)", options = list()),
+  list(name = "synthetic_lz_f1e3", dataset = "synthetic_lz", profile = syn, route = "extravascular",
+       auc_method = "lin up/log down", params = param_oral,
+       dose_note = "100 mg oral (test constant)", options = list(adj.r.squared.factor = 1e-3))
 )
 
 versions <- list(
@@ -199,7 +210,8 @@ versions <- list(
 )
 
 for (cs in cases) {
-  res <- build_case(cs$profile, cs$route, cs$auc_method, cs$params)
+  overrides <- if (is.null(cs$options)) list() else cs$options
+  res <- build_case(cs$profile, cs$route, cs$auc_method, cs$params, overrides)
   res$parameter <- factor(res$parameter, levels = cs$params)
   res <- res[order(res$subject, res$parameter), ]
   res$parameter <- as.character(res$parameter)
@@ -210,7 +222,7 @@ for (cs in cases) {
                    sprintf("%d,%s,%s", res$subject, res$parameter, num(res$value))),
                  file.path(exp_dir, paste0(cs$name, ".csv")))
 
-  opts <- base_options
+  opts <- modifyList(base_options, overrides)
   opts$auc.method <- cs$auc_method
   meta <- list(
     schema = 1L,

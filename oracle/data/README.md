@@ -28,3 +28,19 @@ Numbers are written with 15 significant digits, so R and Rust read exactly the s
 ## Textbook worked examples
 
 None yet. The task asks for them only when a page reference can be given without copying text, and no book was available to the oracle agent to check a page reference. Left open in `board/tasks/T-003.md`.
+
+## `synthetic_lz.csv`
+
+- **Content:** 4 hand-made oral profiles (subjects 1 to 4), 9 samples each at 0, 0.5, 1, 2, 4, 6, 8, 12, 24 h, concentration 0 at time 0, `dose` 100 mg (a test constant). Tmax is at 1 h for every subject; the 6 samples after it are the eligible terminal-phase points, so the candidate windows have 3 to 6 points.
+- **Origin and license:** made up for this project (task T-005), no external source; same license as the repository. The file is read, never written, by `oracle/scripts/nca_pknca.R`.
+- **Purpose:** the public profiles do not separate the competing readings of the terminal-phase rule (`specs/nca.md`, open items O-01 and O-02). Each subject was built to separate them. Subject 1 is profile D1 and subject 2 profile D2 of worked example W6 of that file; subjects 3 and 4 were found by a numerical search (a throwaway script, not versioned) and rounded to 3 or 4 decimals, then checked with PKNCA itself.
+- **Cases:** `synthetic_lz` (PKNCA's explicit options of the other cases, factor `adj.r.squared.factor` 1e-4) and `synthetic_lz_f1e3` (the same with the factor 1e-3, which checks that the factor reaches the selection). 4 subjects x 29 parameters = 116 values each, 21 of them NA (subject 2 has no terminal phase, so every parameter that needs one is NA).
+
+| subject | profile | points chosen by PKNCA (factor 1e-4) | other readings |
+|---|---|---|---|
+| 1 | D1 of W6 | 3 (lambda_z 0.158728533) | bonus reading: 6 (0.157039187, which PKNCA gives with factor 1e-3) |
+| 2 | D2 of W6 | none (lambda_z NA) | positive filter first: 6 |
+| 3 | found | 4 (0.242277436) | bonus 5, best adjusted R squared alone 3, longest window 6 |
+| 4 | found, erratic tail | 4 (0.024811852) | positive filter first: 5 (0.015070393) |
+
+`min.hl.r.squared` (0.9) does not blank lambda_z in PKNCA 0.12.1: subject 4 has an adjusted R squared of -0.216 and a lambda_z. Independent re-implementations of the four readings and the check that PKNCA's answer is the tolerance one live in `crates/caladrius-testkit/tests/synthetic_discrimination.rs`.

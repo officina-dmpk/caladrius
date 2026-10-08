@@ -90,7 +90,16 @@ fn derive(case: &OracleCase) -> Table {
             naive::auc(rule, &time[..end_all], &conc[..end_all]).expect("auc"),
         );
 
-        // Terminal phase: regression on the window PKNCA reports.
+        // Terminal phase: regression on the window PKNCA reports. A subject for which PKNCA
+        // reports no terminal phase (synthetic cases, task T-005) has nothing more to derive.
+        if case
+            .expected
+            .get(s, "lambda.z.time.first")
+            .flatten()
+            .is_none()
+        {
+            continue;
+        }
         let first = expected_f64(case, s, "lambda.z.time.first");
         let lz_last = expected_f64(case, s, "lambda.z.time.last");
         let (wx, wy): (Vec<f64>, Vec<f64>) = profile
