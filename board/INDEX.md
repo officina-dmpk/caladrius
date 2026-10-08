@@ -32,4 +32,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-020 | caladrius-project (data model) and caladrius-engine (command registry, schemas, history) | interface | in progress | T-011b |
 | T-021 | caladrius-cli and conformance extended to models and fit | interface | todo | T-020 |
 | T-022 | caladrius-mcp (MCP server over stdio) | interface | todo | T-020 |
-| T-023 | specs/nca.md: facts observed on the reference screen (default AUC method, λz weighting, empty acceptance criteria) | reader | in progress | T-016 |
+| T-023 | specs/nca.md: facts observed on the reference screen (default AUC method, λz weighting, empty acceptance criteria) | reader | done | T-016 |

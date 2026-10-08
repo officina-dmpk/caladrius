@@ -148,3 +148,19 @@ For `specs/ux.md` UX-IMP-01 and UX-O-02: the human reported a CSV with decimal c
 Decision taken meanwhile: the heuristic of UX-IMP-01 stays as written, tagged `assumed`; an import that is ambiguous is never executed silently.
 
 Answer: _pending_.
+
+## Q-012 (2026-10-08, reader): a small private oracle for the open NCA conventions
+
+Follow-up to the note on Q-008 (T-023). Observed results are an allowed source and cost no licence risk. To settle the open items O-06, O-20, O-21 and O-22 of `specs/nca.md`, please run one public profile through the NCA of the reference software: subject 1 of the theophylline data in `oracle/data/theoph.csv` (oral, dose in the `dose` column, no zero concentration), and export the result tables to `private/exports/`.
+
+1. Once with each of the four calculation methods (keep the weighting uniform): AUC to Tlast, AUC to infinity, AUMC, and the λz window.
+2. Once with each of the four weightings (user-defined excluded; keep the default method): λz, adjusted R², the first and last time used.
+3. Once with the best-fit rules set to a maximum number of points of 4, then with the earliest start time set to 5 h (default method and weighting): the λz window.
+4. Once with the curve-stripping check box ticked and once unticked: any parameter that changes.
+5. If you also want the BLQ rule settled: a copy of the profile with the last two concentrations set to 0, run with the reference's default BLQ rule, and tell the orchestrator which rule the project object held.
+
+Nothing from `private/` is copied into a versioned file; the orchestrator or the oracle agent compares the exports and records only agreement or difference.
+
+Decision taken meanwhile: `specs/nca.md` keeps the reference profile apart from the PKNCA profile; the observed facts are tagged `observed`; the engine's default AUC method stays the PKNCA one until the orchestrator decides.
+
+Answer: _pending_.

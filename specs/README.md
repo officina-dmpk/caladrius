@@ -7,5 +7,6 @@ Every rule carries a status tag:
 - `confirmed by oracle`: a versioned test reproduces it.
 - `documented, untested`: found in an allowed source, not yet tested.
 - `assumed`: our best guess; becomes a test task before being relied on.
+- `observed`: seen on the human's screen of the reference software (an allowed source), not yet tested against a private export.
 
 Files: `nca.md` (T-002), later `models.md`, `fit.md`, `ux.md`, `differences.md` (documented method differences with the reference software), `sources.md` (sources consulted and their terms of use).

@@ -8,9 +8,9 @@ Synced again on 2026-10-08 (card T-016) with the edge-case oracle and the engine
 
 ## 0. How to read this file
 
-**Status tags.** Every rule carries one: `confirmed by oracle`, `documented, untested`, or `assumed` (see `specs/README.md`). A tag speaks about the behaviour the oracle actually exercises. The public oracle runs the PKNCA profile with explicit options, on oral data (theophylline, synthetic profiles) and IV bolus data (indomethacin), with both AUC methods `linear` and `lin_up_log_down`, one dose time (0) and valid doses; since T-012 also hand-made edge profiles for BLQ, missing and negative values, lag time, the IV areas and the infusion route. When a rule also names options, variants or NC reasons that no oracle case exercises, a line `Not covered by the oracle` says so; those parts are covered, if at all, only by the engine's own unit tests, which are not oracle tests. An `assumed` rule is a test task, never a settled fact.
+**Status tags.** Every rule carries one: `confirmed by oracle`, `documented, untested`, `assumed`, or `observed` (see `specs/README.md` for the first three; `observed` is added by card T-023). `observed` means the fact was seen on the human's screen of the reference software (the NCA setup screenshots and the answers to question Q-008, `specs/sources.md` S-31) and has not yet been tested against a private export. It describes the reference software, so it is attached to the reference profile and to rules about what the reference offers; it never changes the PKNCA profile, and an `observed` rule is not a settled behaviour of Caladrius until a private oracle case or a decision of the orchestrator promotes it. A tag speaks about the behaviour the oracle actually exercises. The public oracle runs the PKNCA profile with explicit options, on oral data (theophylline, synthetic profiles) and IV bolus data (indomethacin), with both AUC methods `linear` and `lin_up_log_down`, one dose time (0) and valid doses; since T-012 also hand-made edge profiles for BLQ, missing and negative values, lag time, the IV areas and the infusion route. When a rule also names options, variants or NC reasons that no oracle case exercises, a line `Not covered by the oracle` says so; those parts are covered, if at all, only by the engine's own unit tests, which are not oracle tests. An `assumed` rule is a test task, never a settled fact.
 
-Status counts (rules with an id): 71 rules in all: 44 `confirmed by oracle`, 15 `documented, untested`, 12 `assumed`. History: the first version had 61 rules and none confirmed; the sync of card T-007 gave 66 rules, 30 confirmed, 25 documented, 11 assumed; the sync of card T-016 added the rules NCA-DAT-07b, NCA-DAT-09b, NCA-EXT-01b, NCA-LZ-02d and NCA-LZ-12c and split NCA-LZ-12b from the replaced-value flags.
+Status counts (rules with an id): 76 rules in all: 44 `confirmed by oracle`, 15 `documented, untested`, 12 `assumed`, 5 `observed`. History: the first version had 61 rules and none confirmed; the sync of card T-007 gave 66 rules, 30 confirmed, 25 documented, 11 assumed; the sync of card T-016 added NCA-DAT-07b, NCA-DAT-09b, NCA-EXT-01b, NCA-LZ-02d and NCA-LZ-12c (71 rules, 44, 15, 12); card T-023 added the `observed` status and the rules NCA-AUC-11, NCA-LZ-15, NCA-LZ-16, NCA-LZ-17 and NCA-OPT-01.
 
 **Rule ids.** `NCA-<AREA>-<nn>`. Tests and commits should cite them. The areas are DAT (data and cleaning), OBS (observed parameters and dose normalisation), AUC, LZ (λz), EXT (extrapolated and derived parameters), IV (intravenous bolus), UNIT (units), OUT (what a result looks like). A rule that mixes a documented part and an assumed part is split in two ids (suffix `b` for the assumed part), so that the counts of tags are honest.
 
@@ -19,9 +19,9 @@ Status counts (rules with an id): 71 rules in all: 44 `confirmed by oracle`, 15 
 **Two profiles of options.** Most conventions are options (golden rule 5). This file gives two sets of values:
 
 - the **PKNCA profile**: the defaults of PKNCA 0.12.1, documented in S-01, S-02, S-03. The public oracle (T-003) is generated with it; the R script must write every option explicitly and record the PKNCA and R versions.
-- the **reference profile**: what independent sources say about the reference software. Mostly `assumed`. The private oracle will settle it by observed results.
+- the **reference profile**: what independent sources and the human's screen say about the reference software. Facts seen on the screen are `observed` (the AUC methods offered and the default, the λz weighting, the empty acceptance criteria; NCA-AUC-11, NCA-LZ-15 to 17, NCA-OPT-01); the rest is `assumed`. The private oracle will settle it by comparing results with exports. The reference profile is kept apart from the PKNCA profile: nothing observed on the reference software is written into the PKNCA column of section 2.2.
 
-Which profile is the application default is the orchestrator's decision, after question Q-008 is answered. One default is already fixed (card T-004a): `start_policy = auto`, which inserts C0 at t_d, back-extrapolated for IV bolus data and 0 otherwise, because the oracle's indomethacin profiles have no sample at t_d. The lambda_z options default to the PKNCA behaviour (tolerance reading, positive filter after the selection, no R² floor).
+Which profile is the application default is the orchestrator's decision, after question Q-008 is answered. The application default of `auc_method` is not decided: the observed default of the reference is `linear`, the engine's default is the PKNCA one (`lin_up_log_down`); the orchestrator decides after reading O-06. One default is already fixed (card T-004a): `start_policy = auto`, which inserts C0 at t_d, back-extrapolated for IV bolus data and 0 otherwise, because the oracle's indomethacin profiles have no sample at t_d. The lambda_z options default to the PKNCA behaviour (tolerance reading, positive filter after the selection, no R² floor).
 
 **"Not calculated" (NC)** means the result is absent and carries a machine-readable reason. It is never NaN, never an infinity, and never a zero used as a stand-in.
 
@@ -67,20 +67,25 @@ The exact Rust signature belongs to the engine agent. The oracle agent writes te
 
 | option | PKNCA profile (public oracle) | reference profile |
 |---|---|---|
-| `auc_method` | `lin_up_log_down` (also `linear`, `lin_log`) | unknown; settled by Q-008 (`assumed`) |
+| `auc_method` | `lin_up_log_down` (also `linear`, `lin_log`) | `linear` is the default shown; four methods are offered (NCA-AUC-11), `observed` |
 | `missing_policy` | drop | drop (`assumed`) |
-| `blq_policy` | first keep, middle drop, last keep | unknown; settled by Q-008 (`assumed`) |
+| `blq_policy` | first keep, middle drop, last keep | unknown: the rule is a separate project object, its content was not seen (Q-008 item 2, O-06) |
 | `negative_policy` | not applicable (PKNCA warns) | `error` by default, `allow`, `set_zero` |
 | `start_policy` | `none` (the oracle script itself adds C0 to IV bolus data that lack a sample at t_d, NCA-IV-02b) | `auto` (`assumed`, NCA-DAT-08b) |
-| `tmax_tie` | first | first |
-| `lambda_z_min_points` | 3 | 3 |
+| `tmax_tie` | first | first (`assumed`) |
+| `lambda_z_min_points` | 3 | 3 (`assumed`) |
+| `lambda_z_max_points`, `lambda_z_start_not_before` | none (not options of the PKNCA profile) | offered by the best-fit rules, empty by default (NCA-LZ-16), `observed` |
+| `lambda_z_weighting` | unweighted (ordinary least squares) | `uniform` by default; `inv_y`, `inv_y2` and user-defined offered (NCA-LZ-15), `observed` |
+| acceptance criteria | not applied (PKNCA's thresholds are for optional helpers, NCA-LZ-12) | five criteria offered, all empty by default, so none is enforced (NCA-LZ-17), `observed` |
 | `lambda_z_allow_tmax` | false | false for extravascular and infusion; true for IV bolus (`assumed`, NCA-LZ-14) |
 | `lambda_z_tolerance` | 1e-4 | 1e-4 |
 | `lambda_z_tie_rule` | `tolerance` (`confirmed by oracle`, NCA-LZ-05) | `tolerance` (`assumed`) |
 | `lambda_z_positive_filter_first` | false (`confirmed by oracle`, NCA-LZ-07) | true (`assumed`, NCA-LZ-07b) |
 | `lambda_z_exclude_replaced` | false: replaced values are ordinary λz points (`confirmed by oracle`, NCA-LZ-02b) | false (`assumed`; true is the option of NCA-LZ-02d) |
 | `c0_methods` | by route (NCA-IV-01) | by route (`assumed`) |
-| quality thresholds (flags only) | adjusted R² 0.9, span ratio 2, extrapolated AUC 20 %, 3 points (the engine's defaults, NCA-LZ-12b) | unknown (`assumed`) |
+| quality thresholds (flags only) | adjusted R² 0.9, span ratio 2, extrapolated AUC 20 %, 3 points (the engine's defaults, NCA-LZ-12b) | none by default: the acceptance criteria are blank (NCA-LZ-17), `observed` |
+| dose normalisation | `.dn` parameters computed whenever a dose is known (NCA-OBS-05) | a setting, `none` by default, `observed` (NCA-OBS-05) |
+| other settings seen | none | curve-stripping toggle, model family (plasma, urine, drug effect), sparse sampling, steady-state imputation (NCA-OPT-01), `observed`, mostly out of scope |
 
 ### 2.3 Output
 
@@ -201,6 +206,11 @@ A dose that is infinite or is ≤ 0 makes the same dose-dependent parameters NC 
 - Status: `assumed`
 - Sources: S-01:pk.nca.interval (duration is typically 0 for bolus and extravascular, non-zero for infusion); the NC-versus-error split is a design choice (golden rule 6), implemented in T-004c and tested there by engine tests, not by the oracle.
 
+### NCA-OPT-01 Other settings seen on the reference's NCA setup
+Seen and not specified further: the dose type (extravascular, IV bolus, IV infusion, matching `route`), a dose unit with a preview, dose normalisation (NCA-OBS-05), a model family list (plasma, urine, drug effect; urine and drug effect are out of scope, section 12), a "sparse" check box (sparse sampling, out of scope), a check box that disables curve stripping (what it acts on is not stated on the screen: possibly the estimation of C0 or of the terminal phase by stripping; open item O-22), titles, page breaks and intermediate output (presentation), user-defined additional parameters by formula, and, for steady-state data, a choice of the concentration to impute at the dose time (the minimum, the concentration at the end of the interval, or the last concentration). Steady-state analysis is not specified in this file (section 12), so the imputation is out of scope for now.
+- Status: `observed`
+- Sources: screens nca-setup 1 to 4 (`specs/sources.md` S-31).
+
 ## 4. Observed parameters
 
 ### NCA-OBS-01 Cmax
@@ -232,6 +242,7 @@ Sources describe it loosely ("time before the first concentration above LOQ or a
 For the parameters Cmax, AUClast, AUCinf (observed and predicted), and optionally AUCall, AUMClast, AUMCinf and Clast: the dose-normalised value is the parameter divided by D. Result unit: the parameter's unit divided by the dose unit.
 - Status: `confirmed by oracle`
 - Oracle: `edge_oral`, `edge_iv`, `edge_infusion*`: `cmax.dn`, `clast.obs.dn`, `auclast.dn`, `aucall.dn`, `aucinf.obs.dn`, `aucinf.pred.dn`, `aumclast.dn`, `aumcall.dn`, `aumcinf.obs.dn`, `aumcinf.pred.dn` (the dose is a test constant per subject, so the formula is tested, E-05).
+- Observed (reference): dose normalisation is a setting of the dose options, `none` by default; the formula is the one above. Caladrius computes the `.dn` values whenever a dose is known and shows them on demand (the setting is a display choice), a difference of presentation, not of numbers (screens nca-setup 1 to 3).
 - Sources: S-01:pk.calc.dn; S-02:v40 (list of `.dn` parameters); S-05 (Table 1: Cmax and AUCinf per dose).
 
 ### NCA-OBS-06 Tfirst
@@ -270,6 +281,7 @@ A segment with C1 = C2 = 0 has area 0 under every method. A segment with exactly
 Every segment uses NCA-AUC-02 (with NCA-AUC-04 for zeros).
 - Status: `confirmed by oracle`
 - Oracle: `theoph_linear`, `indometh_linear` (AUC, AUMC and everything derived from them).
+- Observed: the reference's default method is the linear trapezoid with linear interpolation (NCA-AUC-11).
 - Sources: S-02:v23; S-06 (`down = "Linear"`).
 
 ### NCA-AUC-06 Method `lin_up_log_down`
@@ -304,6 +316,11 @@ AUCall = AUClast plus one extra segment: from (t_end, C) to the first cleaned ob
 (a) For data lying exactly on a mono-exponential, the log segments reproduce the analytic AUC and AUMC to rounding error; the linear rule overestimates each declining interval by the factor ((1 + e^−x)/2)·x/(1 − e^−x) with x = ln 2·Δt/t½ (1.0 %, 15.5 % and 57.1 % at Δt = 0.5, 2 and 4 half-lives; H4). (b) AUClast ≤ AUCall for non-negative data; and AUClast(lin-up/log-down) ≤ AUClast(linear) for non-negative data, because the logarithmic mean (C1 − C2)/ln(C1/C2) never exceeds the arithmetic mean (D).
 - Status: `documented, untested`
 - Sources: S-12 (the percentage figures); D; H4; worked example W2 and W7.
+
+### NCA-AUC-11 AUC methods offered by the reference, and its default
+The reference offers four calculation methods in a list on the NCA setup: a linear trapezoid with linear interpolation, a log trapezoid, linear-up/log-down, and a mixed linear/log trapezoid. The linear trapezoid with linear interpolation is the one selected when an analysis is created. Mapping onto this file: the linear trapezoid is `linear` (NCA-AUC-05) and linear-up/log-down is `lin_up_log_down` (NCA-AUC-06); the other two names do not say on the screen which segments use the log formula. The reader's guess is that the "log trapezoid" is a linear rise with a log fall (which would make it the same as `lin_up_log_down`) and that the mixed one is `lin_log` (NCA-AUC-07: linear up to Tmax, log after); both are unverified (open item O-20). The reference's default is therefore `linear`, whereas PKNCA's is `lin_up_log_down`; the profiles stay separate (section 2.2).
+- Status: `observed`
+- Sources: screens nca-setup 1 and 2 (`specs/sources.md` S-31); question Q-008 item 1.
 
 ## 6. Terminal rate constant λz
 
@@ -444,6 +461,25 @@ A concentration produced by back-extrapolation (NCA-IV-01) is not an observation
 PKNCA leaves the Tmax point out of the regression whatever the route. Another tool leaves the maximum point out for non-bolus data only, which keeps it eligible for IV bolus. Whether the reference software does the same is unknown. Reference profile: `lambda_z_allow_tmax = true` for `iv_bolus` (hypothesis, to be tested on IV bolus private data); PKNCA profile: false.
 - Status: `assumed`
 - Sources: S-02:v40 (`allow.tmax.in.half.life` false); S-09.
+
+### NCA-LZ-15 Weighting of the λz regression (reference)
+The NCA setup of the reference has a weighting setting next to the calculation method, with four choices: uniform (the default), 1/Y, 1/(Y·Y) and user-defined. The screen does not say what it acts on; the reader's reading is that it weights the log-linear regression of the terminal phase, with Y the concentration. Under that reading, for the selected points (t_i, y_i = ln C_i) with weights w_i (w_i = 1, 1/C_i, 1/C_i², or the user's):
+- x̄_w = Σw_i·t_i/Σw_i, ȳ_w = Σw_i·y_i/Σw_i; Sxx = Σw_i·(t_i − x̄_w)², Sxy = Σw_i·(t_i − x̄_w)(y_i − ȳ_w), Syy = Σw_i·(y_i − ȳ_w)²;
+- slope b = Sxy/Sxx, a = ȳ_w − b·x̄_w, λz = −b; R² = Sxy²/(Sxx·Syy); adjusted R² = 1 − (1 − R²)(n − 1)/(n − 2) with n the number of points (as in NCA-LZ-01);
+- the selection of the point set (NCA-LZ-03, 05, 07) uses these weighted adjusted R² unchanged; Clast,pred = exp(a + b·Tlast).
+Uniform weights give NCA-LZ-01 exactly. Whether Y is the observed or the fitted concentration, and whether the weights are renormalised, is unknown (open item O-21). PKNCA has no such option: its regression is unweighted, so the PKNCA profile is `uniform` and the public oracle cannot test this.
+- Status: `observed`
+- Sources: screen nca-setup 2 (`specs/sources.md` S-31); D (weighted least squares); worked example W10. The formulas are the reader's reading of a setting whose meaning is not on the screen.
+
+### NCA-LZ-16 Best-fit rules: maximum number of points and earliest start time (reference)
+The reference's λz rules page offers, for its best-fit option, a maximum number of points and an earliest start time ("start time not before"), both blank by default. Reading: the maximum bounds the size n of the candidate sets of NCA-LZ-03 from above (candidates n = min points … max), and the start time removes from the eligible points of NCA-LZ-02 every point earlier than the given time. Blank means no limit, so the default behaviour is that of NCA-LZ-02 to 05. The same restriction is already available as a per-point exclusion (NCA-LZ-09); the two settings are time-based and size-based shortcuts.
+- Status: `observed`
+- Sources: screen nca-setup 5 (`specs/sources.md` S-31). The reading of the two settings is the reader's (open item O-22).
+
+### NCA-LZ-17 Acceptance criteria are blank by default (reference)
+The λz rules page also has an acceptance block with five criteria, each a threshold typed by the user: adjusted R² (lower bound), the percentage of AUC extrapolated to infinity (upper bound; the criterion is chosen from a small list that includes the observed version), the span ratio (lower bound), the number of samples used (lower bound) and the percentage of AUC extrapolated in a dosing interval (upper bound). All five are blank in the screenshot, so no threshold is enforced unless the user sets one; this agrees with PKNCA's behaviour (NCA-LZ-12) and is the reference-profile counterpart of the flags of NCA-LZ-12b, whose defaults (0.9, 2, 20 %, 3 points) are PKNCA's conventions, not the reference's. What the reference does with a result that fails a criterion (hide the λz-dependent results, mark them, or nothing) was not seen (open item O-21). Caladrius never hides a number because of a threshold: it flags it (NCA-LZ-12b); an "enforce" option that turns a failing fit into NC is a possible later addition.
+- Status: `observed`
+- Sources: screen nca-setup 5 (`specs/sources.md` S-31); question Q-008 item 3; NCA-LZ-12, NCA-LZ-12b.
 
 ## 7. Extrapolation and derived parameters
 
@@ -704,6 +740,8 @@ D2: t = 0, 0.5, 1, 2, 4, 6, 8, 12, 24; C = 0, 5.0, 9.0, 6.0, 4.0, 3.0, 2.0, 2.5,
 Areas: AUClast = AUCall = 27.6189490935 (to 24 h). With the zeros kept (`edge_blq_default`) the same subject has AUClast = 25.3984002996, so the stretch from 8 h to 24 h under the replaced values is 27.6189490935 − 25.3984002996 = 2.2205487939 (log segment 1.4 → 0.05 over 4 h, then 0.05 over 12 h). Extrapolation: AUCinf,obs = 27.6189490935 + 1.4/0.230587115908 = 33.6904071387 and AUCinf,pred = 27.6189490935 + 0.964242036840/0.230587115908 = 31.8006312879; AUC %extrap (obs) = 100·(1 − 27.6189490935/33.6904071387) = 18.0213258338. The stretch of 2.2205 h·mg/L is inside AUClast and again inside the tail, so `area_past_tlast` is raised; the value that counts the stretch once would be 25.3984002996 + 1.4/0.230587115908 = 31.4698583448 (not offered, O-18).
 AUMC: AUMClast = 111.159134085 (to 24 h). AUMCinf,obs = 111.159134085 + 1.4·24/λz + 1.4/λz² = 283.204557738; AUMCinf,pred = 111.159134085 + 0.964242036840·24/λz + 0.964242036840/λz² = 229.654441037. With Tlast = 8 in place of t_end the observed value would be 186.061229015, which is not what PKNCA returns. All values are those of `oracle/expected/edge_blq_set.csv`, reproduced here by the reader's arithmetic (H).
 
+**W10. Weighted λz regression (NCA-LZ-15), same four points as W1.** The n = 4 candidate of W1: t = 3, 4, 5, 8 with C = 2, 1.5, 1.2, 1.1 (y = ln C). Uniform weights: x̄ = 5, ȳ = 0.34406101, Sxx = 14, Sxy = −1.50582893, Syy = 0.21366824, λz = 0.10755921, R² = 0.75802452, adjusted R² = 0.63703679, Clast,pred = 1.02161364 (the W1 values). Weights 1/C: x̄_w = 5.36458333, ȳ_w = 0.29406572, Sxx = 10.46180556, Sxy = −1.01540828, Syy = 0.13422437, λz = 0.09705861, R² = 0.73424905, adjusted R² = 0.60137358, half-life 7.14153228, Clast,pred = 1.03901780. Weights 1/C²: x̄_w = 5.69284974, ȳ_w = 0.25227535, Sxx = 7.81900979, Sxy = −0.67769009, Syy = 0.08278214, λz = 0.08667211, R² = 0.70953507, adjusted R² = 0.56430260, half-life 7.99734964, Clast,pred = 1.05370209. The heavier the weight on the small late concentrations, the lower λz and the longer the half-life (6.44, 7.14, 8.00 h). Hand check H10; status of the numbers is that of NCA-LZ-15 (`observed` reading).
+
 ## 12. Open items, assumptions to test, and what is not specified
 
 Each open item names the card or person who can settle it.
@@ -715,7 +753,7 @@ Each open item names the card or person who can settle it.
 | O-03 | PKNCA side CLOSED 2026-10-08 (T-012, T-013): Tlag is the time of the sample before the first rise, read before the BLQ policy (`edge_oral`, `edge_blq_*`). The reference software's definition stays open. | OBS-04 | private oracle |
 | O-04 | Reference-software IV bolus AUC convention and definition of percent back-extrapolated (the PKNCA side is settled for the oracle by T-003's added C0 point, see IV-02b) | IV-03, IV-04 | private oracle (IV bolus subjects); the `aucivpbext*` parameters are not in the public oracle |
 | O-05 | Is the Tmax point eligible for λz with IV bolus data in the reference software? | LZ-14 | private oracle (IV bolus subjects) |
-| O-06 | Default AUC method and BLQ rule of the reference software | section 2.2 | question Q-008 (the human reads the settings on his own screen) |
+| O-06 | PARTLY ANSWERED 2026-10-08 (T-023): the reference's default AUC method is the linear trapezoid with linear interpolation and four methods are offered (NCA-AUC-11, `observed`); its rule for values below the quantification limit is a separate project object whose content was not seen, so the default BLQ rule is still open. The application's own default is decided by the orchestrator (section 2.2) | section 2.2, NCA-AUC-11 | the human's screen (the BLQ rule editor), question Q-012 |
 | O-07 | CLOSED 2026-10-08 (T-012, T-013): PKNCA does not exclude replaced points from λz; they are ordinary points for areas and λz, and AUClast ends at the last positive replaced point (`edge_blq_set`, `edge_missing_replace`). The exclusion is the option of LZ-02d, default off. The reference software's convention stays open (O-06). | LZ-02b, DAT-07b | settled by the edge cases |
 | O-08 | CLOSED for the engine default 2026-10-08 (orchestrator, T-004a): `auto`. The reference software's own convention stays tied to Q-008 and O-04. | DAT-08 | decided |
 | O-09 | Negative-concentration default | DAT-04 | orchestrator |
@@ -729,5 +767,8 @@ Each open item names the card or person who can settle it.
 | O-17 | Still outside every oracle case: Corr_XY (not reported), manual λz selection, `lambda_z_allow_tmax`, `tmax_tie = last`, `negative = set_zero`, an infusion whose Cmax lies before the end of the infusion, the `zero` start policy, `lin_log`, an all-zero or one-point profile, a stored non-zero BLQ flag, unit checks; the reference-software reading of percent back-extrapolated (IV-04) | LZ-01b, LZ-08, LZ-14, OBS-02, DAT-04, DAT-08, AUC-07, DAT-09, DAT-05b, UNIT-02, IV-04 | new oracle cases (synthetic profiles where possible) before the engine claims them |
 | O-18 | Should Caladrius offer a consistent AUCinf when the area runs past Tlast (add the tail to the area up to Tlast, W9), next to the PKNCA-compatible default? And does the reference software count the stretch twice? | EXT-01b, EXT-03 | orchestrator decision; the reference side by the private oracle (a profile with trailing BLQ values replaced) |
 | O-19 | The quality-flag thresholds (0.9, 2, 20 %, 3 points) are PKNCA's conventions, not the reference software's; the reference software's acceptance settings are asked in Q-008 item 3 | LZ-12b | the human's screen (Q-008) |
+| O-20 | Which segments do the reference's "log trapezoid" and "mixed linear/log" methods integrate logarithmically, and do they match `lin_up_log_down` and `lin_log`? | NCA-AUC-11 | private oracle: one public profile (Theoph subject 1) run with each method, question Q-012 |
+| O-21 | Weighted λz regression: what Y is (observed or fitted concentration), whether weights are renormalised, how the selection compares weighted adjusted R², what a user-defined weight is, and what the reference does with a result that fails an acceptance criterion. For the engine: weighted log-linear regression with the same selection logic (NCA-LZ-15), default `uniform`; PKNCA cannot serve as oracle | NCA-LZ-15, NCA-LZ-17 | private oracle (Theoph subject 1 with each weighting), question Q-012; engine task after the oracle |
+| O-22 | Meaning of the maximum number of points, the earliest start time and the curve-stripping toggle | NCA-LZ-16, NCA-OPT-01 | private oracle, the human's screen |
 
 **Not specified here** (candidates for later cards, none started): partial or interval AUC with interpolation and extrapolation (PKNCA extrapolates beyond Tlast with the log rule whatever the method); steady-state and multiple-dose parameters (AUCτ, Cavg, fluctuation, accumulation, λz after the last dose); urine and excretion parameters; sparse sampling; effective half-life and Kel; AUC above or time above a threshold; bioavailability and ratios; weighted λz regression; superposition.
