@@ -176,6 +176,7 @@ fn fit_input(case: &FitCase, subject: &str) -> Result<FitInput> {
             convergence: o.convergence,
             max_iterations: o.max_iterations,
             confidence_level: o.confidence_level,
+            fixed: case.fixed.clone(),
             ..FitOptions::default()
         },
     })
@@ -347,7 +348,9 @@ mod tests {
     #[test]
     fn every_fit_case_is_fully_validated_in_every_group() {
         let reports = fit_reports().unwrap();
-        assert_eq!(reports.len(), 15);
+        // 6 datasets (Theoph, Indometh, the five-point example, and the infusion, zero-order and
+        // lag profiles of T-029) x 5 weightings.
+        assert_eq!(reports.len(), 30);
         for r in reports {
             assert!(r.errors.is_empty(), "{}: {:?}", r.name, r.errors);
             for (group, c) in &r.parameters {

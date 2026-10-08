@@ -10,6 +10,7 @@
 //! Behaviour: `specs/fit.md` (rule ids `FIT-…` are cited in the code and the tests). One input
 //! value, one [`run`], results by name, like `caladrius-nca` and `caladrius-models`.
 
+mod closed_forms;
 mod engine;
 mod error;
 mod flags;
@@ -86,7 +87,8 @@ pub enum Derivatives {
     /// Forward differences with the relative `increment` (the default).
     #[default]
     ForwardDifference,
-    /// Closed forms (pk1.iv_bolus with v, k; pk1.oral_1 with v, k, ka).
+    /// Closed forms, in the (v, k) parameterisation: pk1.iv_bolus, pk1.iv_infusion, pk1.oral_1,
+    /// pk1.oral_1_lag, pk1.oral_0 and pk1.oral_0_lag, for any subset of fitted parameters.
     Analytic,
 }
 

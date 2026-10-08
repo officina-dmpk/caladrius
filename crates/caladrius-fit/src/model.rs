@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 
 use caladrius_models::{ModelError, ModelId, ModelInput};
 
+use crate::closed_forms;
+
 /// A model the fit can drive.
 pub trait FitModel {
     /// Concentrations at `times` for `params` and `dose`.
@@ -114,52 +116,20 @@ impl FitModel for ModelId {
                     .collect()
             }
             (ModelId::Oral1, ["k", "ka", "v"]) => {
-                let (v, k, ka) = (get("v")?, get("k")?, get("ka")?);
-                names
-                    .iter()
-                    .map(|name| {
-                        let column = times.iter().map(|&t| {
-                            let d = oral1_derivatives(dose, v, k, ka, t);
-                            match name.as_str() {
-                                "v" => Some(d.0),
-                                "k" => Some(d.1),
-                                "ka" => Some(d.2),
-                                _ => None,
-                            }
-                        });
-                        column.collect::<Option<Vec<f64>>>()
-                    })
-                    .collect()
+                closed_forms::first_order_columns(dose, params, times, names, false)
+            }
+            (ModelId::IvInfusion | ModelId::Oral0, ["dur", "k", "v"]) => {
+                closed_forms::zero_order_columns(dose, params, times, names, false)
+            }
+            (ModelId::Oral0Lag, ["dur", "k", "tlag", "v"]) => {
+                closed_forms::zero_order_columns(dose, params, times, names, true)
+            }
+            (ModelId::Oral1Lag, ["k", "ka", "tlag", "v"]) => {
+                closed_forms::first_order_columns(dose, params, times, names, true)
             }
             _ => None,
         }
     }
-}
-
-/// (∂C/∂V, ∂C/∂k, ∂C/∂ka) of C = (D/V)·ka·f, f = (e^−kt − e^−ka·t)/(ka − k) (D: calculus):
-/// ∂C/∂V = −C/V, ∂f/∂k = (f − t·e^−kt)/(ka − k), ∂f/∂ka = (t·e^−ka·t − f)/(ka − k), with their
-/// limits as series in d = ka − k when |d·t| is small (no cancellation near ka = k).
-fn oral1_derivatives(dose: f64, v: f64, k: f64, ka: f64, t: f64) -> (f64, f64, f64) {
-    if t <= 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let d = ka - k;
-    let ek = (-k * t).exp();
-    let (f, df_dk, df_dka) = if (d * t).abs() < 1e-5 {
-        let x = d * t;
-        (
-            t * ek * (1.0 - x / 2.0 + x * x / 6.0),
-            t * ek * (-t / 2.0 + d * t * t / 6.0),
-            t * ek * (-t / 2.0 + d * t * t / 3.0),
-        )
-    } else {
-        let ea = (-ka * t).exp();
-        let f = (ek - ea) / d;
-        (f, (f - t * ek) / d, (t * ea - f) / d)
-    };
-    let scale = dose / v;
-    let c = scale * ka * f;
-    (-c / v, scale * ka * df_dk, scale * (f + ka * df_dka))
 }
 
 #[cfg(test)]

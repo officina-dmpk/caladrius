@@ -191,7 +191,7 @@ impl fmt::Display for FitError {
             ),
             Self::AnalyticDerivativesUnavailable { model } => write!(
                 f,
-                "closed-form derivatives are available for pk1.iv_bolus (v, k) and pk1.oral_1 (v, k, ka) only, not for {model} with these parameters; use forward differences"
+                "closed-form derivatives are available in the (v, k) parameterisation only (v, k and the input parameters of the model), not for {model} with these parameters; use forward differences or give `k` instead of `cl`"
             ),
             Self::InvalidOption { option, reason } => write!(f, "option `{option}`: {reason}"),
         }
