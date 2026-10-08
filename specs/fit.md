@@ -1,0 +1,323 @@
+# Weighted least-squares fitting: behaviour specification
+
+Card T-008. Written by the `reader` agent on 2026-10-08, in its own words and formulas. Sources are cited by the keys of `specs/sources.md` (S-01 …; the keys added for this file are in its section 7); `D` is a derivation shown here, `H` a scripted check by the reader (section 11). The models being fitted are in `specs/models.md`.
+
+## 0. How to read this file
+
+**Status tags** (see `specs/README.md`): `confirmed by oracle`, `documented, untested`, `assumed`. No fitting oracle exists yet, so nothing is `confirmed by oracle`. A statistical formula that is standard and found in an allowed source is `documented, untested`. The defaults that `AGENTS.md` section 6 records as seen on the human's screen (increment 0.001, convergence 0.0001, 50 iterations, 1000 predicted points, uniform weighting, generated bounds, Gauss-Newton with the Levenberg and Hartley modification) are `assumed` until a private oracle confirms them: the reader may not read the reference software's documentation and found no open source that states them. Design choices of Caladrius are `assumed`.
+
+**Rule ids.** `FIT-<AREA>-<nn>`. Areas: OBJ (objective), WGT (weights), ALG (algorithm), JAC (derivatives), CNV (convergence), BND (bounds), INI (initial estimates), OUT (outputs), FLG (quality flags), ERR (errors), VOC (vocabulary).
+
+**Clean room.** Textbooks cannot be read by the reader (S-28 is cited at book level). The method rests on the original papers of Levenberg, Hartley and Marquardt (S-23, S-24, S-25; bibliographic records checked, papers not read), on the conventions of R's `nls` (S-26), and on the standard statistics of non-linear regression, derived here (D). Where the reference software's own details are unknown they are named as open items (section 12), never guessed silently.
+
+**Two optimizers do not reach the same minimum bit for bit** (`AGENTS.md` section 5). A gap beyond the fit tolerances is a method difference to be recorded in `specs/differences.md`, not a reason to widen a tolerance.
+
+## 1. Notation
+
+| symbol | meaning |
+|---|---|
+| (t_i, y_i), i = 1 … N | observations used in the fit (after exclusions, FIT-ERR-01) |
+| θ = (θ_1 … θ_P) | model parameters being estimated; P of them (fixed parameters are not counted) |
+| ŷ_i = f(t_i; θ) | model prediction (`specs/models.md`) |
+| w_i | weight of observation i (FIT-WGT-01) |
+| r_i | residual y_i − ŷ_i; weighted residual √w_i·r_i |
+| WRSS(θ) | weighted residual sum of squares Σ w_i·r_i² (the objective) |
+| J | weighted Jacobian, J_ij = √w_i·∂f(t_i; θ)/∂θ_j (N × P) |
+| DF | degrees of freedom N − P |
+| S² = WRSS/DF, S | residual variance and its square root (the standard error of the fit) |
+| Cov | variance–covariance matrix of the estimates, S²·(JᵀJ)⁻¹ |
+
+## 2. Objective and weights
+
+### FIT-OBJ-01 Objective
+Minimise WRSS(θ) = Σ w_i·(y_i − f(t_i; θ))² over the free parameters, subject to bounds (FIT-BND-01). The estimate is a minimiser; local minima are possible (non-linear model), so the result is "a" minimum reached from the initial estimates.
+- Status: `documented, untested`
+- Sources: S-28 (weighted non-linear least squares, book level); S-23, S-24, S-25; D.
+
+### FIT-WGT-01 Weighting schemes
+Five schemes, selectable by name:
+
+| id | weight w_i | meaning |
+|---|---|---|
+| `uniform` | 1 | ordinary least squares |
+| `inv_y` | 1/y_i | variance proportional to the observed value |
+| `inv_y2` | 1/y_i² | constant coefficient of variation, on the observed values |
+| `inv_yhat` | 1/ŷ_i | as `inv_y`, on the predicted values |
+| `inv_yhat2` | 1/ŷ_i² | as `inv_y2`, on the predicted values |
+
+Uniform weighting on the observed values is the default (`AGENTS.md` section 6). The weights do not depend on the parameters for the first three schemes; for the last two they do (FIT-WGT-03). Weights are used as given and are not rescaled; the estimates and the covariance matrix are unchanged if all weights are multiplied by the same positive constant, but WRSS, S² and the information criteria change (property used as a test, example F2).
+- Status: `assumed`
+- Sources: `AGENTS.md` sections 4 and 6 (the five schemes and the default); S-28 (weighted least squares, book level); D (invariance: Cov = S²·(JᵀJ)⁻¹, with S² and (JᵀJ)⁻¹ scaling by c and 1/c).
+
+### FIT-WGT-02 Observed values that cannot be weighted
+With `inv_y` or `inv_y2` an observation with y ≤ 0 has an undefined or infinite weight. The run stops before fitting with an error that names the observations (time and value) and offers two ways out: exclude them (they stay in the table with the reason `zero_weight` and are not counted in N), or choose another scheme. Nothing is replaced by a tiny number silently.
+- Status: `assumed`
+- Sources: golden rule 6 of `AGENTS.md` (zero or negative concentrations give a readable error); design choice.
+
+### FIT-WGT-03 Predicted-value weights
+For `inv_yhat` and `inv_yhat2` the weights are recomputed from the current predictions at the start of every iteration and are treated as constants when the derivatives are formed (iteratively reweighted least squares); the final statistics use the weights at the solution. A trial point with a prediction ŷ_i ≤ 0 is rejected like a step that does not decrease WRSS (FIT-ALG-03). This is not the same minimiser as "minimise Σ r²/ŷ² with the weight differentiated too"; the choice is declared and the other one is open item OF-04.
+- Status: `assumed`
+- Sources: S-28 (iterative reweighting, book level); design choice.
+
+## 3. Algorithm
+
+### FIT-ALG-01 Default algorithm
+The default minimiser is the Gauss-Newton method with the Levenberg and Hartley modification: a Gauss-Newton direction, a step-length reduction along it (Hartley), and a damping term added to the normal equations when the plain direction fails or the system is ill-conditioned (Levenberg). Another optimizer may be offered as an option, never as a silent replacement (`AGENTS.md` section 6). The exact internals of the reference software are not known; FIT-ALG-02 to FIT-ALG-05 specify what Caladrius does.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6 (the method named as seen on the human's screen); S-24 (Levenberg: damped least squares), S-23 (Hartley: modified Gauss-Newton), S-25 (Marquardt: the scaled form).
+
+### FIT-ALG-02 Gauss-Newton direction
+At θ_k with weighted residual vector r = (√w_i·r_i) and weighted Jacobian J, the direction δ solves the normal equations (JᵀJ + λ·M)·δ = Jᵀr, with λ = 0 for the pure Gauss-Newton direction. M is the identity for Levenberg's original damping and diag(JᵀJ) for Marquardt's scale-invariant form; Caladrius uses diag(JᵀJ) (parameters such as V ≈ 10 and k ≈ 0.2 differ by orders of magnitude). Numerically the system is solved from J by a QR or singular-value factorisation, not by forming JᵀJ explicitly, because JᵀJ squares the condition number. A pure Gauss-Newton step needs P ≤ N and a non-singular JᵀJ.
+- Status: `documented, untested`
+- Sources: S-24, S-25 (the damped normal equations); S-28 (Gauss-Newton, book level); D (setting the gradient of WRSS to zero and dropping the second-derivative term). Worked example F1.
+
+### FIT-ALG-03 Step length (Hartley)
+Given δ, try θ_k + ν·δ with ν = 1; while WRSS(θ_k + ν·δ) ≥ WRSS(θ_k) or the point is outside the bounds or the prediction is not finite, halve ν, down to ν_min = 2⁻¹⁰ (the default floor of R's `nls`, S-26). A step that decreases WRSS is accepted and the iteration counter advances.
+- Status: `assumed`
+- Sources: S-23 (the modification of Gauss-Newton by a step length); S-26 (step halving with a floor); design choice for the numbers.
+
+### FIT-ALG-04 Damping (Levenberg)
+If no ν ≥ ν_min decreases WRSS, or the factorisation reports a numerically singular system, repeat FIT-ALG-02 with λ > 0: start at λ = 1e-3, multiply by 10 after each failure up to 1e10; after a success divide λ by 10 (never below 0, returning to the pure Gauss-Newton direction). If λ = 1e10 still fails the run stops with status `no_decrease` (FIT-CNV-03).
+- Status: `assumed`
+- Sources: S-24, S-25 (increase the damping until the sum of squares falls); design choice for the factors.
+
+### FIT-ALG-05 Determinism
+The same input, options and initial estimates always give the same output and trace, on every platform (no randomisation, no threads that change summation order).
+- Status: `assumed`
+- Sources: golden rule 3 and 4 of `AGENTS.md` (the same command from UI, CLI and MCP); design choice.
+
+## 4. Partial derivatives
+
+### FIT-JAC-01 Finite differences (default)
+The default partial derivative of the prediction with respect to θ_j is the forward difference [f(θ + Δ_j·e_j) − f(θ)]/Δ_j with Δ_j = h·|θ_j|, h = 0.001 (a relative increment), and Δ_j = h when θ_j = 0. The increment `h` is a user option.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6 ("increment for partial derivatives 0.001"); the relative and forward nature of the increment is the reader's reading of it (open item OF-01). Worked example F2 shows the size of the effect.
+
+### FIT-JAC-02 Analytic derivatives (option)
+The models of `specs/models.md` have closed-form derivatives. They may be used instead (`derivatives = analytic`), and the testkit uses them as an independent truth. For the IV bolus, ∂f/∂V = −f/V and ∂f/∂k = −t·f (in the (V, k) parameterisation).
+- Status: `documented, untested`
+- Sources: D (calculus). Worked examples F1, F2.
+
+### FIT-JAC-03 Which Jacobian the statistics use
+The standard errors and the matrices of FIT-OUT-02 use the same Jacobian as the last iteration of the fit (finite differences by default). Their size therefore carries the relative error of the increment (about h/2 times the curvature); with h = 0.001 this is of order 1e-3 relative on the standard errors (example F2).
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6; D; H3.
+
+## 5. Convergence and non-convergence
+
+### FIT-CNV-01 Convergence criterion
+Let WRSS_k be the value after accepted iteration k (WRSS_0 at the initial estimates). The fit has converged at iteration k when the relative decrease is small: (WRSS_{k−1} − WRSS_k) ≤ ε·WRSS_k, with ε = 0.0001 (default). The result is θ_k. Alternative criterion `relative_offset` (the one of R's `nls`: the size of the residual's component along the model's tangent plane relative to the part orthogonal to it) is an option; it is scale-free and is the better test near a perfect fit.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6 ("convergence criterion 0.0001": which quantity it applies to is not stated, open item OF-02); S-26 (relative offset criterion, default 1e-5); D. Worked example F1 shows the stop after 4 iterations.
+
+### FIT-CNV-02 Maximum number of iterations
+At most 50 accepted iterations (default). Reaching 50 without meeting FIT-CNV-01 is not convergence.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6; S-26 (default 50).
+
+### FIT-CNV-03 Status and reasons
+Every fit ends with a status, never with a panic or a silent value:
+
+| status | meaning | what is returned |
+|---|---|---|
+| `converged` | FIT-CNV-01 met | everything in section 7 |
+| `max_iterations` | 50 iterations done, criterion not met | best iterate, trace, statistics flagged "not converged" |
+| `no_decrease` | FIT-ALG-03/04 cannot decrease WRSS | best iterate, trace, statistics flagged |
+| `singular` | JᵀJ has a zero eigenvalue at the best iterate: at least one parameter combination is not identifiable | best iterate; standard errors NC (`singular`); the combination (eigenvector of the zero eigenvalue, named by parameter) is reported |
+| `non_finite` | the model gave a non-finite value at the start or at every trial | error before or at the first iteration, naming the parameters |
+| `at_bound` | converged with at least one parameter on a bound | converged result, with the parameters on a bound listed (FIT-BND-02) |
+
+The text of every status says what to change (initial estimates, bounds, weights, model). The statistics of a result that did not converge are shown only with a visible "not converged" mark.
+- Status: `assumed`
+- Sources: golden rule 6 of `AGENTS.md` (non-convergence and singular matrix each give a readable error and a regression test); `AGENTS.md` section 7 (every error says what to fix).
+
+### FIT-CNV-04 Conformance runs
+Tests compare minima with a tight criterion (ε = 1e-10 on the relative decrease, 200 iterations) so that parameters are compared at the tolerances of `AGENTS.md` section 5 (1e-4 relative; WRSS 1e-6 relative); the user-facing default stays ε = 1e-4. With ε = 1e-4 the first example stops at parameters that are already within 1e-7 relative of the minimum (F1), but this is not guaranteed in general.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 5; D; H3.
+
+## 6. Bounds and initial estimates
+
+### FIT-BND-01 Bounds
+Each parameter has an optional lower and upper bound (user supplied, default FIT-BND-03). The initial estimate must lie inside; otherwise an error names the parameter. A trial point outside the bounds is shortened (FIT-ALG-03); if the Gauss-Newton direction for a parameter that sits on a bound points outward, that parameter is held at the bound for the iteration and the direction is recomputed for the remaining free parameters (active-set projection).
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6 ("parameter bounds generated by the software unless the user supplies them"); design choice for the projection.
+
+### FIT-BND-02 Reporting a bound
+A parameter held on a bound at the end gets the flag `at_bound`; its standard error and intervals are computed from the free-parameter block only (the covariance of the free parameters) and marked "conditional on the bound". A result with a parameter on a bound is never presented as an ordinary converged fit.
+- Status: `assumed`
+- Sources: design choice; `AGENTS.md` section 7 (poor fits must be flagged).
+
+### FIT-BND-03 Default bounds
+When the user supplies none, bounds are generated from the parameter's nature: V, CL, k, ka, T strictly positive (lower bound 0, excluded; implemented as a small positive floor); tlag ≥ 0; no upper bound. What the reference software generates is not known (open item OF-03).
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6; `specs/models.md` MOD-GEN-04 (parameter domains).
+
+### FIT-INI-01 Initial estimates
+User-supplied initial estimates are used as given. When absent, they are generated by the method of residuals (FIT-INI-02 to 04). Generated values are shown to the user and can be edited; the predicted curve updates live (`AGENTS.md` section 7).
+- Status: `assumed`
+- Sources: `AGENTS.md` sections 6 and 7; S-28 (curve stripping, book level).
+
+### FIT-INI-02 IV bolus
+Fit the straight line ln y = a − k·t by ordinary least squares on all points with y > 0 (all points belong to the single phase of a one-compartment model; the last three or more if the user restricts it). Then k = −slope and V = D/e^a. Points with y ≤ 0 are skipped for this step only.
+- Status: `documented, untested`
+- Sources: S-28 (log-linear regression for the one-compartment bolus, book level); `specs/nca.md` NCA-LZ-01 (the same regression); D. Worked example F4 uses the same machinery.
+
+### FIT-INI-03 First-order absorption (curve stripping)
+1. Terminal phase: choose the terminal points by the rule of `specs/nca.md` NCA-LZ-02 to NCA-LZ-05 (after the observed Tmax, y > 0, best adjusted R² within the tolerance, at least 3 points). Its line is ln y = a1 − k·t.
+2. Residuals: for each point before the terminal window with a positive residual R(t) = e^(a1 − k·t) − y(t), the residuals follow A·e^(−ka·t) in a one-compartment model. Fit ln R = a2 − ka·t by ordinary least squares (at least 2 points; the points with R ≤ 0 are skipped).
+3. Constants: A = e^(a1) for the model without lag. V/F = D·ka/((ka − k)·A).
+4. Lag: for the model with lag, the two lines meet at tlag (D: A·e^(−k(t − tlag)) and A·e^(−ka(t − tlag)) are both equal to A at t = tlag), so tlag = (a1 − a2)/(k − ka), set to 0 if negative; and A = e^(a1 − k·tlag).
+5. Flip-flop: if the residual slope ka comes out smaller than k, the roles are ambiguous (`specs/models.md` MOD-AB1-06); the default assigns the faster constant to ka and warns that the other solution exists.
+
+If fewer than 3 terminal points or fewer than 2 positive residuals are available, no automatic estimate is produced: an error asks the user to enter estimates (FIT-ERR-03). Example F4 gives the numbers.
+- Status: `documented, untested`
+- Sources: S-28 (method of residuals, book level); `specs/nca.md` NCA-LZ-02..05 (point selection); D. The lag-from-intersection step and the flip-flop warning are the reader's, tagged with the rule.
+
+### FIT-INI-04 Infusion and zero-order input
+Terminal phase after the end of the input (time T + tlag) as in FIT-INI-03 step 1, line ln y = a1 − k·t. The concentration at the end of the input is C_T = e^(a1 − k·(T + tlag)). With R0 = D/T: CL = R0·(1 − e^(−k·T))/C_T and V = CL/k (D: from MOD-IVI-01). If no point lies after the end of the input, only the rising phase is available and no automatic estimate is produced (FIT-ERR-03).
+- Status: `documented, untested`
+- Sources: `specs/models.md` MOD-IVI-01; S-28; D.
+
+## 7. Outputs
+
+The result of a fit contains the items below; each is NC with a reason when it cannot be computed (never NaN or infinity). Items 1 to 5 are the "final parameters" table.
+
+### FIT-OUT-01 Final parameters
+For each free parameter: the estimate, its standard error, CV%, univariate confidence interval (lower, upper), planar confidence interval (lower, upper). Fixed parameters are listed with their value and no statistics.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 4 (list of outputs of `caladrius-fit`); the definitions follow.
+
+### FIT-OUT-02 Covariance, standard errors, CV%
+Cov = S²·(JᵀJ)⁻¹ with J the weighted Jacobian at the solution and S² = WRSS/DF. SE_j = √Cov_jj. CV%_j = 100·SE_j/|θ̂_j| (NC if θ̂_j = 0). When DF = 0 or JᵀJ is singular, these are NC (`no_degrees_of_freedom`, `singular`).
+- Status: `documented, untested`
+- Sources: S-28 (asymptotic covariance of non-linear least squares, book level); D (linearisation of the model at the solution); S-26 (the usual `summary` of a non-linear fit is of this form). Worked example F2.
+
+### FIT-OUT-03 Univariate confidence interval
+θ̂_j ± t(1 − α/2; DF)·SE_j, with the Student quantile for DF degrees of freedom and α = 0.05 by default (level 95 %). Each interval is for one parameter taken alone.
+- Status: `assumed`
+- Sources: S-28 (book level); D. That the reference software uses this definition and the level 95 % is not known (OF-05). Worked example F2.
+
+### FIT-OUT-04 Planar confidence interval
+The joint (tangent-plane) confidence region of all parameters is the ellipsoid (θ − θ̂)ᵀ·(JᵀJ)·(θ − θ̂) ≤ P·S²·F(1 − α; P, DF). The planar interval of parameter j is the extent of this ellipsoid along axis j: θ̂_j ± √(P·F(1 − α; P, DF))·SE_j. It is wider than the univariate interval because it covers all parameters at once. If the reference software's "planar" interval is another construction this is a method difference (OF-05).
+- Status: `assumed`
+- Sources: S-28 (linear-approximation joint regions, book level); D (the extent of {x : xᵀAx ≤ c} along axis j is √(c·(A⁻¹)_jj)). Worked example F2.
+
+### FIT-OUT-05 Correlation matrix, eigenvalues, condition number
+Corr_jk = Cov_jk/(SE_j·SE_k) (symmetric, unit diagonal). Eigenvalues of the correlation matrix, in decreasing order. Condition number κ = largest/smallest eigenvalue of the correlation matrix (infinite when singular: NC). The condition number of the scaled Jacobian (columns of J normalised to unit length), √(λmax/λmin) of the scaled JᵀJ, is reported as `kappa_jacobian`. For two parameters the two sets of eigenvalues coincide (example F2).
+- Status: `assumed`
+- Sources: `AGENTS.md` section 4 (eigenvalues and condition numbers listed without a definition); D. Which matrix the reference software uses is OF-06.
+
+### FIT-OUT-06 Secondary parameters
+For a derived quantity g(θ) (CL = V·k, t½ = ln 2/k, AUC to infinity, Cmax, Tmax, …) the value g(θ̂) and the standard error √(∇gᵀ·Cov·∇g) (the delta method, gradient by differentiation of the model formulas or by the finite-difference increment), with CV% and the univariate interval as in FIT-OUT-02/03 using the same DF.
+- Status: `documented, untested`
+- Sources: S-28 (delta method, book level); `specs/models.md` MOD-SEC-02; D. Worked example F2 (CL and t½).
+
+### FIT-OUT-07 Diagnostics
+- weighted sum of squares of the observations: Σ w_i·y_i²;
+- corrected weighted sum of squares: Σ w_i·(y_i − ȳ_w)² with ȳ_w = Σ w_i·y_i/Σ w_i (the weighted total variation around the weighted mean);
+- weighted residual sum of squares WRSS (the objective), also called the residual SS;
+- S = √(WRSS/DF), DF = N − P (NC for DF ≤ 0);
+- correlation between observed and predicted: the weighted Pearson correlation of y and ŷ with weights w_i;
+- AIC = N·ln(WRSS) + 2·P; SBC = N·ln(WRSS) + P·ln N.
+
+The information criteria use this form (common in PK software and giving the same ranking as the likelihood form for the same data and weights); a constant N·(1 + ln(2π/N))-type term separates it from the likelihood form and from other programs' values (OF-07). NC if WRSS = 0.
+- Status: `assumed`
+- Sources: S-27 (Akaike's criterion), S-29 (Schwarz's criterion), both as principles; the exact forms and the use of the weights are the reader's reading (OF-07); D. Worked example F2.
+
+### FIT-OUT-08 Partial derivatives
+A table with one row per observation and one column per parameter: the (unweighted) derivative ∂f(t_i)/∂θ_j at the solution, by the method of FIT-JAC-01 (or analytic). The weighted version √w_i·∂f/∂θ_j is available.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 4; D. Worked example F2 prints the table.
+
+### FIT-OUT-09 Predicted data and residuals
+For each observation: time, observed, predicted, residual y − ŷ, weighted residual √w·(y − ŷ), weight. Residuals of excluded observations are shown with their exclusion reason and are not used in any sum.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 4; design choice.
+
+### FIT-OUT-10 Smooth predicted curve
+`n_curve` = 1000 equally spaced times from the first to the last observation time (both included) with the predicted concentration, for plotting. The count is an option.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 6 ("1000 predicted values for the curve").
+
+### FIT-OUT-11 Minimization trace
+One row per iteration, including iteration 0: iteration number, WRSS, the parameter vector, the step factor ν actually used, λ, the relative decrease of FIT-CNV-01, and the number of step halvings. The last row carries the status of FIT-CNV-03 and the reason for stopping. Never discarded, also for failed fits.
+- Status: `assumed`
+- Sources: `AGENTS.md` section 4 (minimization trace); design choice. Worked example F1 prints a trace.
+
+## 8. Quality flags and errors
+
+### FIT-FLG-01 Flags
+A poor fit is flagged, not hidden (`AGENTS.md` section 7, friction 4): CV% above a threshold (default 50), a univariate interval that contains 0 (for a parameter that must be positive), an absolute correlation between two estimates above 0.95, a parameter on a bound, κ above 1e6, fewer than 2 degrees of freedom, a non-converged status. Thresholds are options. A flag says what to check (fewer parameters, other initial estimates, a different weighting).
+- Status: `assumed`
+- Sources: `AGENTS.md` section 7; design choice (thresholds).
+
+### FIT-ERR-01 Input errors (before fitting)
+Readable errors for: observation arrays of different length; fewer observations than free parameters (N < P); NaN or infinite time or concentration (a missing concentration is excluded with the reason `missing`); negative times for IV models; negative concentrations when the weights need positive values (FIT-WGT-02); an initial estimate outside its bounds; a dose ≤ 0; an unknown model or weighting id. Observations before the dose are excluded with the reason `before_dose`.
+- Status: `assumed`
+- Sources: golden rule 6 of `AGENTS.md`; `specs/nca.md` NCA-DAT-02, NCA-DAT-03; design choice.
+
+### FIT-ERR-02 N = P and N − P small
+With N = P (DF = 0) the fit can still run and reaches WRSS ≈ 0 when it converges; S, standard errors, intervals and AIC are NC (`no_degrees_of_freedom`) and the result is flagged "exact fit, no precision information". With DF ≥ 1 everything is computed, and DF < 2 is flagged.
+- Status: `assumed`
+- Sources: D (S² = WRSS/DF is undefined for DF = 0); design choice.
+
+### FIT-ERR-03 Initial estimates cannot be generated
+Error text: the terminal phase has fewer than 3 usable points, or there are no earlier points to form residuals, or the residual line rises; the user is asked for estimates, with the data reduced to what was usable shown beside it.
+- Status: `assumed`
+- Sources: golden rule 6 and `AGENTS.md` section 7; design choice.
+
+## 9. Vocabulary
+
+### FIT-VOC-01 User-facing ids
+User-facing ids for the CLI, the MCP server, the UI and exports.
+
+| proposed id | meaning | rule |
+|---|---|---|
+| `weighting` = `uniform`, `inv_y`, `inv_y2`, `inv_yhat`, `inv_yhat2` | weighting scheme | FIT-WGT-01 |
+| `derivatives` = `forward_difference` (default), `analytic` | partial derivatives | FIT-JAC-01/02 |
+| `increment` (0.001) | relative increment | FIT-JAC-01 |
+| `convergence` (0.0001), `criterion` = `relative_decrease` (default), `relative_offset` | convergence | FIT-CNV-01 |
+| `max_iterations` (50) | iteration limit | FIT-CNV-02 |
+| `n_curve` (1000) | points of the smooth curve | FIT-OUT-10 |
+| `lower`, `upper` | bounds per parameter | FIT-BND-01 |
+| `status` = `converged`, `max_iterations`, `no_decrease`, `singular`, `non_finite`, `at_bound` | termination | FIT-CNV-03 |
+| `estimate`, `se`, `cv_percent`, `ci_univariate`, `ci_planar` | final parameters | FIT-OUT-01..04 |
+| `covariance`, `correlation`, `eigenvalues`, `condition_number`, `kappa_jacobian` | matrices | FIT-OUT-02, 05 |
+| `wrss`, `s`, `df`, `ss_weighted`, `ss_corrected`, `corr_obs_pred`, `aic`, `sbc` | diagnostics | FIT-OUT-07 |
+| `partials`, `predicted`, `curve`, `trace` | tables | FIT-OUT-08..11 |
+
+- Status: `assumed`
+- Sources: `AGENTS.md` sections 4 and 6; `specs/nca.md` section 10 (naming style).
+
+## 10. Why the defaults are credible: a note on convergence
+
+(No rule.) Near a minimum with small residuals the Gauss-Newton iteration converges quadratically, so when the relative decrease of WRSS has fallen to 1e-4 the parameters are usually already much closer to the minimum than 1e-4 (example F1: 1e-7). With large residuals the convergence is linear and the same stopping rule can stop far from the minimum; that is why conformance runs use a tight criterion (FIT-CNV-04) and why the trace is always returned.
+
+## 11. Worked examples and checks
+
+Numbers were computed by the reader in a throwaway script kept outside the repository (H), with the closed-form models of `specs/models.md` and a straightforward implementation of the rules above; they are targets for unit tests and for an independent implementation in `caladrius-testkit`. The data are made up for this file (no source, same license as the repository): IV bolus, D = 100, model C = (D/V)·e^(−k·t) with parameters (V, k), times t = 0.5, 1, 2, 4, 8 and concentrations y = 9.31, 7.92, 6.85, 4.31, 2.11. N = 5, P = 2, DF = 3. Quantiles for DF = 3: t(0.975; 3) = 3.1824463053; F(0.95; 2, 3) = 9.5520944959 (closed form for 2 numerator df: F = (3/2)·(0.05^(−2/3) − 1)), so the planar factor √(P·F) = 4.3706.
+
+**F1. Gauss-Newton iterations, uniform weights.** Start θ_0 = (V, k) = (12, 0.15). Predictions ŷ = (7.7311957, 7.1725665, 6.1734852, 4.5734303, 2.5099518), residuals r = (1.5788043, 0.7474335, 0.6765148, −0.2634303, −0.3999518), WRSS_0 = 3.7383091. Derivatives ∂f/∂V = −ŷ/V = (−0.6442663, −0.5977139, −0.5144571, −0.3811192, −0.2091627) and ∂f/∂k = −t·ŷ = (−3.8655979, −7.1725665, −12.3469703, −18.2937212, −20.0796141). JᵀJ = [[1.2260079, 24.3015970], [24.3015970, 956.6873722]], Jᵀr = (−1.6279063, −6.9669500). Solving gives δ = (−2.3836463, 0.0532666): θ_1 = (9.6163537, 0.2032666), WRSS_1 = 0.4285909 < WRSS_0, so ν = 1 is accepted (no halving). With ν = 0.5 the point would be (10.8081768, 0.1766333) with WRSS 0.9412056, worse than ν = 1, which shows that halving is only a safeguard. Continuing: WRSS_2 = 0.1957952 (θ = 9.9096786, 0.2040143), WRSS_3 = 0.1955901388 (θ = 9.9186464, 0.2040567), WRSS_4 = 0.1955901382 (θ = 9.9186411, 0.2040577). Relative decreases (WRSS_{k−1} − WRSS_k)/WRSS_k: 7.72, 1.19, 1.05e-3, 2.96e-9. The criterion ε = 1e-4 is first met at k = 4; the result θ_4 = (9.9186411, 0.2040577) is within 3.2e-8 (V) and 1e-7 (k) relative of the converged values of F2, (9.9186407, 0.2040577).
+
+**F2. Converged fit, uniform weights, all statistics.** θ̂ = (V, k) = (9.9186407, 0.20405768); predictions (9.1041054, 8.2210391, 6.7035614, 4.4572125, 1.9705109); residuals (0.2058946, −0.3010391, 0.1464387, −0.1472125, 0.1394891). WRSS = 0.19559014, S² = 0.06519671, S = 0.25533647, DF = 3. Σ y² = 219.3532 (weighted sum of squares with w = 1), corrected sum of squares 33.3032 (mean of y = 6.1). Correlation between observed and predicted 0.9970964. AIC = 5·ln(0.19559014) + 4 = −4.1586697, SBC = 5·ln(0.19559014) + 2·ln 5 = −4.9397939.
+Analytic derivatives at θ̂: ∂f/∂V = (−0.9178783, −0.8288474, −0.6758548, −0.4493774, −0.1986674), ∂f/∂k = (−4.5520527, −8.2210391, −13.4071227, −17.8288499, −15.7640869). Cov = [[0.06143111, −0.00229674], [−0.00229674, 0.00016400]]; SE(V) = 0.24785299 (CV% 2.49886), SE(k) = 0.01280633 (CV% 6.27584); correlation −0.7235920, eigenvalues of the correlation matrix 0.2764080 and 1.7235920, condition number 6.2356795 (the scaled Jacobian gives √6.2356795 = 2.4971343 for κ_Jacobian). Univariate 95 % intervals: V 9.1298619 to 10.7074196, k 0.16330221 to 0.24481315. Planar 95 % intervals (factor 4.3706): V 8.8353165 to 11.0019650, k 0.14808332 to 0.26003204. Secondary parameters by the delta method: CL = V·k = 2.0239749 with SE 0.0969293; t½ = ln 2/k = 3.3968198 with SE 0.2131790. With the forward-difference Jacobian at h = 0.001 (FIT-JAC-01) the standard errors become SE(V) = 0.24814908 (CV% 2.50185) and SE(k) = 0.01281461 (CV% 6.27990): 1.2e-3 and 6.5e-4 relative to the analytic values, the size announced in FIT-JAC-03 (the largest relative difference between the two Jacobians is 1.0e-3).
+Weight invariance check: with w_i = 4 for every i, V and k are unchanged, WRSS = 0.78236, S² is four times larger and the covariance matrix is unchanged (the two factors cancel); AIC changes by 5·ln 4.
+
+**F3. Weighted fit, `inv_y2`.** Same data, w_i = 1/y_i² = (0.011537, 0.015942, 0.021312, 0.053833, 0.224613). Converged estimate (V, k) = (10.10481932, 0.19590905); WRSS = 0.005450726; S = 0.04262521; SE(V) = 0.29449444 (CV% 2.91440), SE(k) = 0.00710790 (CV% 3.62816); correlation −0.7561139; univariate 95 % interval V 9.1676066 to 11.0420321, k 0.17328853 to 0.21852956; CL = 1.9796255 (SE 0.0471264), t½ = 3.5381071 (SE 0.1283683). Σ w·y² = 5.0 (each term equals 1), corrected weighted sum of squares 1.3984729, AIC = −22.0600324, SBC = −22.8411565. The weighting moves the estimates by 1.9 % (V) and 4.0 % (k) relative to F2; the late, low concentrations get the largest weights.
+
+**F4. Initial estimates by curve stripping (oral, first-order, no lag).** Exact concentrations from D = 100, V = 10, k = 0.2, ka = 1 (`specs/models.md` M2) at t = 0.5, 1, 2, 4, 6, 8, 12, 24: 3.7288345, 5.6356414, 6.6873095, 5.3876666, 3.7339432, 2.5195132, 1.1338976, 0.1028718. The observed Tmax is 2, so the eligible terminal points are those at 4, 6, 8, 12, 24. Adjusted R² of the candidate windows ending at 24: 3 points (8, 12, 24) 0.9999996911; 4 points (6 … 24) 0.9999948183; 5 points (4 … 24) 0.9998869124. With the tolerance 1e-4 the admissible windows are those above 0.9999996911 − 0.0001 = 0.9998996911, i.e. 3 and 4 points; the larger wins, so the terminal window is (6, 8, 12, 24). Regression of ln y on t: intercept a1 = 2.5193049, slope −0.19968599, so k_0 = 0.19968599 (true 0.2) and A = e^(a1) = 12.4199607. Residuals e^(a1 − k_0·t) − y at the points before the window (0.5, 1, 2, 4), all positive: 7.5109753, 4.5361559, 1.6432692, 0.1999954. Regression of ln R on t: intercept a2 = 2.5483330, slope −1.0370213, so ka_0 = 1.0370213 (true 1) and V_0/F = D·ka/((ka − k)·A) = 100·1.0370213/(0.8373353·12.4199607) = 9.9716735 (true 10). The estimates carry a small bias because the terminal line still holds a trace of the absorption term; they are good starting values. For the model with lag the intersection formula gives tlag_0 = (a1 − a2)/(k − ka) = 0.0347 h (true 0), used only if the model has a lag. Had the 3-point window been taken: k_0 = 0.19991875, ka_0 = 1.0282294, V_0/F = 9.9484366.
+
+## 12. Open items
+
+| id | item | rule | who and how |
+|---|---|---|---|
+| OF-01 | Is the derivative increment 0.001 relative or absolute, forward or central? | FIT-JAC-01 | private oracle (compare partial-derivative tables with the human's exports) and the human's screen |
+| OF-02 | Which quantity does the convergence criterion 0.0001 apply to (relative decrease of WRSS, relative change of the parameters, or the relative offset)? | FIT-CNV-01 | private oracle (iteration counts and trace) |
+| OF-03 | Which default bounds does the reference software generate? | FIT-BND-03 | the human's screen (question Q-009) |
+| OF-04 | Predicted-value weights: iteratively reweighted (declared) or true minimiser of Σ r²/ŷ² | FIT-WGT-03 | private oracle on a 1/ŷ² fit |
+| OF-05 | Definition of the "univariate" and "planar" intervals and their confidence level; whether Student or normal quantiles are used | FIT-OUT-03, 04 | private oracle (compare interval limits) |
+| OF-06 | Eigenvalues and condition numbers: of the correlation matrix, of JᵀJ, or of the scaled JᵀJ | FIT-OUT-05 | private oracle |
+| OF-07 | Exact forms of AIC, SBC and "corrected sum of squares" with weights, and of the observed/predicted correlation | FIT-OUT-07 | private oracle |
+| OF-08 | Two-compartment initial estimates (peeling with more phases), several subjects, constraints between parameters | later steps | later cards |
+| OF-09 | A public oracle for fits: independent implementation in the testkit (a second optimiser on the same data) and published fitted examples whose licence allows their use | all | oracle agent, step 3 |

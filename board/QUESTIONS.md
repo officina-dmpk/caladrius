@@ -83,3 +83,18 @@ Observed results are an allowed source and cost no licence risk. Please look at 
 Decision taken meanwhile: the public oracle uses PKNCA's defaults; the "reference profile" of `specs/nca.md` stays `assumed`.
 
 Answer: _pending_.
+
+## Q-009 (2026-10-08, reader): fitting defaults and output definitions to read off your own screen
+
+For `specs/fit.md` and `specs/models.md` (card T-008). Same rules as Q-008: look at the setup and the result tables of the reference software on your machine (not its install folder) and tell the orchestrator in your words; numbers from `private/` stay out of versioned files.
+
+1. Weighting: the list of weighting choices it offers and the default.
+2. Parameter bounds: when it generates them, what rule it seems to follow (for example a fraction or multiple of the initial estimate, or zero and infinity).
+3. Confidence intervals: the two kinds offered next to the final parameters (called univariate and planar in our notes), and the confidence level.
+4. In the diagnostics table: whether AIC and SBC are printed with a negative value for a good fit, and which statistic (if any) is printed as "correlation between observed and predicted".
+5. For the eigenvalues and condition numbers: whether they are listed for the correlation matrix of the estimates or for another matrix.
+6. The model list for one compartment: the names of the parameters printed in the results (names only), and whether a lag time and a zero-order input exist as separate models.
+
+Decision taken meanwhile: `specs/fit.md` and `specs/models.md` follow open-tool conventions and the defaults of `AGENTS.md` section 6; every point above is tagged `assumed` there (open items OF-01 to OF-07, OM-02, OM-03).
+
+Answer: _pending_.

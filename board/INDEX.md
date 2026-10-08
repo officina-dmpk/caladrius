@@ -15,7 +15,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-005 | Synthetic oracle profiles to settle λz open items O-01 and O-02 (PKNCA runs) | oracle | done | T-003 |
 | T-006 | xtask conformance hardening: per-parameter floors, parse errors, computed-presence check, atomic write | interface | done | T-004c |
 | T-007 | specs/nca.md sync: oracle-confirmed tags (O-01, O-02, LZ-05 strict >, LZ-07), dose NC instead of error (DAT-11, 2.4, section 9) | reader | done | T-004c, T-005 |
-| T-008 | specs/models.md and specs/fit.md | reader | in progress | T-007 |
+| T-008 | specs/models.md and specs/fit.md | reader | done | T-007 |
 | T-009 | Oracle for models (closed-form grids) and fitting (R nls / nlsLM references) | oracle | todo | T-008 |
 | T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | todo | T-008, T-009 |
 | T-011 | caladrius-fit: weighted least squares, Gauss-Newton Levenberg-Hartley, full output set (to split) | engine | todo | T-010 |
