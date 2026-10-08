@@ -29,3 +29,4 @@
 - 2026-10-08 T-022 (interface): caladrius-mcp stdio server (18 tools, schemas, bounded reads, batches, notifications); commits e9abd59, 6ec4320; review approved. STEP 4 REACHED (673 workspace tests).
 - 2026-10-08 T-025 (engine): explicit time/conc/dose units in NCA options, unit string per result, CL in L/time; commit 389e8cf; review approved.
 - 2026-10-08 published: https://github.com/officina-dmpk/caladrius (public, 75 commits), per Q-013.
+- 2026-10-08 T-024 (interface): caladrius-ui first slice (theme tokens, import preview with locale detection, worksheet, NCA page with plot, semi-log safe on zeros, click-to-select λz, flags, stale marking) and the eframe app; 12 snapshots; review approved after fixes; commits 7b6bd48, 805655a.
