@@ -430,10 +430,7 @@ struct SetCellParams {
 fn set_cell(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
     let p: SetCellParams = parse("data.set_cell", params)?;
     engine.project.edit_worksheet(p.worksheet, |w| {
-        let is_number = matches!(
-            w.column(&p.column).map(|c| &c.data),
-            Some(ColumnData::Number(_))
-        );
+        let is_number = matches!(w.require_column(&p.column)?.data, ColumnData::Number(_));
         if is_number {
             let value = match &p.value {
                 Value::Null => None,

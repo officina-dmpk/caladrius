@@ -1103,3 +1103,226 @@ fn a_subject_can_be_given_as_a_number() {
     );
     assert_eq!(bad.code, "invalid_parameters");
 }
+
+#[test]
+fn an_unknown_column_is_reported_as_such_whatever_the_value() {
+    let mut e = engine_with_two_subjects();
+    for value in [json!(1), json!("x"), json!(null)] {
+        let failure = err(
+            &mut e,
+            "data.set_cell",
+            json!({ "worksheet": 1, "column": "nope", "row": 0, "value": value }),
+        );
+        assert_eq!(failure.code, "unknown_column");
+        assert!(
+            failure.message.contains("Subject, Time, Conc, Dose"),
+            "{failure}"
+        );
+    }
+}
+
+#[test]
+fn a_project_with_a_counter_at_the_limit_gives_errors_through_the_commands() {
+    let mut e = engine_with_two_subjects();
+    ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular" }),
+    );
+    let saved = ok(&mut e, "project.save", Value::Null)["project"].clone();
+    let with = |pointer: &str, value: u64| {
+        let mut doc = saved.clone();
+        *doc.pointer_mut(pointer).unwrap() = json!(value);
+        doc
+    };
+    // At the limit the file is refused; nothing is loaded.
+    for pointer in [
+        "/next_id",
+        "/worksheets/0/revision",
+        "/analyses/0/spec_version",
+    ] {
+        let mut fresh = Engine::new();
+        let failure = err(
+            &mut fresh,
+            "project.load",
+            json!({ "project": with(pointer, u64::MAX) }),
+        );
+        assert_eq!(failure.code, "load_bad_counter", "{pointer}");
+        assert!(fresh.project().worksheets().is_empty());
+    }
+    // One below it, the commands that would pass the limit fail with a message, and change nothing.
+    let mut near = Engine::new();
+    ok(
+        &mut near,
+        "project.load",
+        json!({ "project": with("/next_id", u64::MAX - 1) }),
+    );
+    let before = near.project().clone();
+    let failure = err(
+        &mut near,
+        "data.import",
+        json!({ "name": "x", "csv": "time,conc\n0,1\n" }),
+    );
+    assert_eq!(failure.code, "counter_overflow");
+    assert_eq!(near.project(), &before);
+
+    let mut near = Engine::new();
+    ok(
+        &mut near,
+        "project.load",
+        json!({ "project": with("/worksheets/0/revision", u64::MAX - 1) }),
+    );
+    let before = near.project().clone();
+    let failure = err(
+        &mut near,
+        "data.set_cell",
+        json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": 9.0 }),
+    );
+    assert_eq!(failure.code, "counter_overflow");
+    assert_eq!(near.project(), &before);
+}
+
+// ---- the schemas against the serde types, the other way round -------------------------------
+
+/// Values a schema allows at one place, one per alternative: each enum value, each `oneOf` branch,
+/// each property of an object (set on a base value), booleans both ways, a number, a short text.
+fn variants(root: &Value, schema: &Value, base: &Value) -> Vec<Value> {
+    if let Some(Value::String(r)) = schema.get("$ref") {
+        let name = r.strip_prefix("#/$defs/").unwrap();
+        let target = root.pointer(&format!("/$defs/{name}")).unwrap();
+        return variants(root, target, base);
+    }
+    if let Some(Value::Array(values)) = schema.get("enum") {
+        return values.clone();
+    }
+    if let Some(c) = schema.get("const") {
+        return vec![c.clone()];
+    }
+    for key in ["oneOf", "anyOf"] {
+        if let Some(Value::Array(branches)) = schema.get(key) {
+            return branches
+                .iter()
+                .flat_map(|b| variants(root, b, &Value::Null))
+                .collect();
+        }
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("null") => vec![Value::Null],
+        Some("boolean") => vec![json!(true), json!(false)],
+        Some("number" | "integer") => vec![json!(1)],
+        Some("string") => vec![json!("x")],
+        Some("array") => vec![json!([])],
+        Some("object") => {
+            let Some(Value::Object(props)) = schema.get("properties") else {
+                return vec![base.clone()];
+            };
+            // The base, completed with the required properties it lacks.
+            let mut start = match base {
+                Value::Object(m) => m.clone(),
+                _ => serde_json::Map::new(),
+            };
+            if let Some(Value::Array(required)) = schema.get("required") {
+                for name in required.iter().filter_map(Value::as_str) {
+                    if !start.contains_key(name) {
+                        if let Some(first) = props
+                            .get(name)
+                            .and_then(|sub| variants(root, sub, &Value::Null).into_iter().next())
+                        {
+                            start.insert(name.to_owned(), first);
+                        }
+                    }
+                }
+            }
+            let base = &Value::Object(start);
+            let mut out = Vec::new();
+            for (name, sub) in props {
+                let current = base.get(name).cloned().unwrap_or(Value::Null);
+                // A base that is not an object (a unit variant written as text) starts empty.
+                for v in variants(root, sub, &current) {
+                    let mut object = match base {
+                        Value::Object(m) => m.clone(),
+                        _ => serde_json::Map::new(),
+                    };
+                    object.insert(name.clone(), v);
+                    out.push(Value::Object(object));
+                }
+            }
+            out
+        }
+        _ => vec![base.clone()],
+    }
+}
+
+#[test]
+fn everything_the_option_schemas_allow_is_accepted_by_the_serde_types() {
+    let nca = info("nca.run").params_schema;
+    let nca_options = &nca["$defs"]["NcaOptions"];
+    let base = serde_json::to_value(caladrius_nca::NcaOptions::default()).unwrap();
+    let all = variants(&nca, nca_options, &base);
+    assert!(all.len() > 25, "{}", all.len());
+    for v in all {
+        if let Err(e) = serde_json::from_value::<caladrius_nca::NcaOptions>(v.clone()) {
+            panic!("the schema allows {v} but serde refuses it: {e}");
+        }
+    }
+    let fit = info("fit.run").params_schema;
+    let base = serde_json::to_value(caladrius_fit::FitOptions::default()).unwrap();
+    let all = variants(&fit, &fit["$defs"]["FitOptions"], &base);
+    assert!(all.len() > 15, "{}", all.len());
+    for v in all {
+        if let Err(e) = serde_json::from_value::<caladrius_fit::FitOptions>(v.clone()) {
+            panic!("the schema allows {v} but serde refuses it: {e}");
+        }
+    }
+    // The route and the model and weighting ids.
+    let route = variants(&nca, &nca["$defs"]["Route"], &Value::Null);
+    assert_eq!(route.len(), 3);
+    for v in route {
+        serde_json::from_value::<caladrius_nca::Route>(v.clone())
+            .unwrap_or_else(|e| panic!("{v}: {e}"));
+    }
+    for (def, schema) in [("ModelId", &fit), ("Weighting", &fit)] {
+        for v in variants(schema, &schema["$defs"][def], &Value::Null) {
+            match def {
+                "ModelId" => drop(serde_json::from_value::<caladrius_models::ModelId>(v).unwrap()),
+                _ => drop(serde_json::from_value::<caladrius_fit::Weighting>(v).unwrap()),
+            }
+        }
+    }
+}
+
+#[test]
+fn every_property_and_value_of_every_parameter_schema_is_known_to_the_command() {
+    // Run the examples in order; before each command, try the example with each schema property
+    // set to each of its alternatives. The command may refuse the value for its own reasons, but
+    // never because it does not know the property or the variant.
+    let mut engine = Engine::new();
+    let mut tried = 0;
+    for c in describe() {
+        let Some(Value::Object(props)) = c.params_schema.get("properties") else {
+            continue;
+        };
+        for (name, sub) in props {
+            let current = c.example.get(name).cloned().unwrap_or(Value::Null);
+            for v in variants(&c.params_schema, sub, &current) {
+                let mut params = c.example.clone();
+                params[name] = v.clone();
+                let mut trial = engine.clone();
+                if let Err(e) = trial.execute(&c.id, params.clone()) {
+                    assert!(
+                        !(e.code == "invalid_parameters"
+                            && (e.message.contains("unknown field")
+                                || e.message.contains("unknown variant"))),
+                        "{}: the schema allows {name} = {v} but the command does not know it: {e}",
+                        c.id
+                    );
+                }
+                tried += 1;
+            }
+        }
+        engine
+            .execute(&c.id, c.example.clone())
+            .unwrap_or_else(|e| panic!("example of {} failed: {e}", c.id));
+    }
+    assert!(tried > 150, "{tried}");
+}

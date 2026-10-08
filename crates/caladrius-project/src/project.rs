@@ -53,10 +53,24 @@ impl Project {
         self.name = name.to_owned();
     }
 
-    fn take_id(&mut self) -> u64 {
+    /// The id after `next_id`. The counter never reaches `u64::MAX` (a loaded file that holds it
+    /// is refused), so running out of ids is an error, not a wrap.
+    fn following_id(&self) -> Result<u64> {
+        self.next_id
+            .checked_add(1)
+            .filter(|n| *n != u64::MAX)
+            .ok_or_else(|| {
+                ProjectError::new(
+                    "counter_overflow",
+                    "this project has run out of identifiers; save its content in a new project",
+                )
+            })
+    }
+
+    fn take_id(&mut self) -> Result<u64> {
         let id = self.next_id;
-        self.next_id += 1;
-        id
+        self.next_id = self.following_id()?;
+        Ok(id)
     }
 
     // ---- worksheets ----------------------------------------------------------------------
@@ -65,7 +79,7 @@ impl Project {
     pub fn add_worksheet(&mut self, name: &str, columns: Vec<Column>) -> Result<WorksheetId> {
         let id = WorksheetId(self.next_id);
         let ws = Worksheet::new(id, name, columns)?;
-        self.next_id += 1;
+        self.next_id = self.following_id()?;
         self.worksheets.push(ws);
         Ok(id)
     }
@@ -142,7 +156,7 @@ impl Project {
         if let Some(ws) = spec.worksheet() {
             self.worksheet(ws)?;
         }
-        let id = AnalysisId(self.take_id());
+        let id = AnalysisId(self.take_id()?);
         self.analyses.push(Analysis {
             id,
             name: name.map(str::to_owned),
@@ -203,8 +217,20 @@ impl Project {
             ));
         }
         if a.spec != spec {
+            let next = a
+                .spec_version
+                .checked_add(1)
+                .filter(|v| *v != u64::MAX)
+                .ok_or_else(|| {
+                    ProjectError::new(
+                        "counter_overflow",
+                        format!(
+                            "analysis {id} has been changed too many times to track further changes"
+                        ),
+                    )
+                })?;
             a.spec = spec;
-            a.spec_version += 1;
+            a.spec_version = next;
         }
         Ok(())
     }
@@ -357,7 +383,7 @@ impl Project {
                 "two objects of the project share an id",
             ));
         }
-        if ids.last().is_some_and(|&m| m >= self.next_id) {
+        if self.next_id == u64::MAX || ids.last().is_some_and(|&m| m >= self.next_id) {
             return Err(ProjectError::new(
                 "load_bad_counter",
                 "the id counter of the project is behind its objects",
@@ -365,6 +391,21 @@ impl Project {
         }
         for w in &self.worksheets {
             w.validate()?;
+            if w.revision() == u64::MAX {
+                return Err(ProjectError::new(
+                    "load_bad_counter",
+                    format!(
+                        "worksheet `{}` has an impossible revision counter",
+                        w.name()
+                    ),
+                ));
+            }
+        }
+        if self.analyses.iter().any(|a| a.spec_version == u64::MAX) {
+            return Err(ProjectError::new(
+                "load_bad_counter",
+                "an analysis has an impossible version counter",
+            ));
         }
         for a in &self.analyses {
             if let Some(ws) = a.spec.worksheet() {

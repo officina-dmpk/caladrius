@@ -288,6 +288,34 @@ impl Worksheet {
         self.name = name.to_owned();
     }
 
+    /// The revision after one more change. The counter never reaches `u64::MAX` (a loaded file
+    /// that holds it is refused), so a change that would take it there is an error, not a wrap.
+    fn next_revision(&self) -> Result<u64> {
+        self.revision
+            .checked_add(1)
+            .filter(|r| *r != u64::MAX)
+            .ok_or_else(|| {
+                ProjectError::new(
+                    "counter_overflow",
+                    format!(
+                        "worksheet `{}` has been changed too many times to track further changes; save it as a new project",
+                        self.name
+                    ),
+                )
+            })
+    }
+
+    /// The column called `name`, or the error that lists the columns there are.
+    pub fn require_column(&self, name: &str) -> Result<&Column> {
+        let index = self.column_index(name)?;
+        self.columns.get(index).ok_or_else(|| {
+            ProjectError::new(
+                "unknown_column",
+                format!("worksheet `{}` has no column `{name}`", self.name),
+            )
+        })
+    }
+
     fn column_index(&self, name: &str) -> Result<usize> {
         self.columns
             .iter()
@@ -322,7 +350,7 @@ impl Worksheet {
         }
         candidate.validate()?;
         if candidate.columns != self.columns {
-            candidate.revision = self.revision + 1;
+            candidate.revision = self.next_revision()?;
             *self = candidate;
         }
         Ok(())
@@ -335,10 +363,11 @@ impl Worksheet {
             .map(str::trim)
             .filter(|u| !u.is_empty())
             .map(str::to_owned);
+        let next = self.next_revision()?;
         if let Some(c) = self.columns.get_mut(index) {
             if c.unit != unit {
                 c.unit = unit;
-                self.revision += 1;
+                self.revision = next;
             }
         }
         Ok(())
@@ -355,6 +384,7 @@ impl Worksheet {
         }
         let rows = self.n_rows();
         let name = self.name.clone();
+        let next = self.next_revision()?;
         let Some(c) = self.columns.get_mut(index) else {
             return Ok(());
         };
@@ -374,7 +404,7 @@ impl Worksheet {
         };
         if *cell != value {
             *cell = value;
-            self.revision += 1;
+            self.revision = next;
         }
         Ok(())
     }
@@ -384,6 +414,7 @@ impl Worksheet {
         let index = self.column_index(column)?;
         let rows = self.n_rows();
         let name = self.name.clone();
+        let next = self.next_revision()?;
         let Some(c) = self.columns.get_mut(index) else {
             return Ok(());
         };
@@ -406,7 +437,7 @@ impl Worksheet {
         };
         if cell != value {
             *cell = value.to_owned();
-            self.revision += 1;
+            self.revision = next;
         }
         Ok(())
     }

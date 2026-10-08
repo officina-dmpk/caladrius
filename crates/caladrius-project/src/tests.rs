@@ -505,3 +505,94 @@ fn loading_a_bad_file_says_why() {
         "unknown_worksheet"
     );
 }
+
+// ---- counters --------------------------------------------------------------------------
+
+/// The saved project with the JSON value at `pointer` replaced by `value`.
+fn with_counter(project: &Project, pointer: &str, value: u64) -> Vec<u8> {
+    let mut doc: Value = serde_json::from_slice(&project.to_bytes().unwrap()).unwrap();
+    *doc.pointer_mut(pointer).unwrap() = serde_json::json!(value);
+    serde_json::to_vec(&doc).unwrap()
+}
+
+use serde_json::Value;
+
+#[test]
+fn a_loaded_counter_at_the_limit_is_refused_and_one_below_it_errors_instead_of_wrapping() {
+    let (mut project, ws) = sample_project();
+    let a = project.add_analysis(nca_spec(ws), None).unwrap();
+    project.set_result(a, some_nca_result()).unwrap();
+    for pointer in [
+        "/next_id",
+        "/worksheets/0/revision",
+        "/analyses/0/spec_version",
+    ] {
+        let bytes = with_counter(&project, pointer, u64::MAX);
+        let err = Project::from_bytes(&bytes).unwrap_err();
+        assert_eq!(err.code, "load_bad_counter", "{pointer}");
+    }
+
+    // next_id one below the limit: the next identifier would be the last, so it is refused.
+    let mut loaded =
+        Project::from_bytes(&with_counter(&project, "/next_id", u64::MAX - 1)).unwrap();
+    let before = loaded.clone();
+    let table = ImportedTable::from_csv(b"time,conc\n0,1\n", &CsvOptions::default()).unwrap();
+    assert_eq!(
+        loaded
+            .add_worksheet("more", table.columns)
+            .unwrap_err()
+            .code,
+        "counter_overflow"
+    );
+    assert_eq!(
+        loaded.add_analysis(nca_spec(ws), None).unwrap_err().code,
+        "counter_overflow"
+    );
+    assert_eq!(
+        loaded, before,
+        "a refused change leaves the project as it was"
+    );
+
+    // revision one below the limit: every kind of edit is refused, none wraps.
+    let mut loaded = Project::from_bytes(&with_counter(
+        &project,
+        "/worksheets/0/revision",
+        u64::MAX - 1,
+    ))
+    .unwrap();
+    let before = loaded.clone();
+    for edit in [
+        &(|w: &mut Worksheet| w.set_number("Conc", 1, Some(1.5)))
+            as &dyn Fn(&mut Worksheet) -> Result<(), ProjectError>,
+        &|w: &mut Worksheet| w.set_unit("Conc", Some("ug/L")),
+        &|w: &mut Worksheet| w.set_role("Dose", ColumnRole::Other),
+        &|w: &mut Worksheet| w.set_text("Subject", 0, "Z"),
+    ] {
+        let result = loaded.edit_worksheet(ws, |w| edit(w));
+        assert_eq!(result.unwrap_err().code, "counter_overflow");
+        assert_eq!(loaded, before);
+    }
+
+    // spec_version one below the limit: a changed spec is refused, the same spec is not a change.
+    let mut loaded = Project::from_bytes(&with_counter(
+        &project,
+        "/analyses/0/spec_version",
+        u64::MAX - 1,
+    ))
+    .unwrap();
+    let mut spec = loaded.analysis(a).unwrap().spec().clone();
+    loaded.update_spec(a, spec.clone()).unwrap();
+    if let AnalysisSpec::Nca(s) = &mut spec {
+        s.options.lambda_z.min_points = 5;
+    }
+    assert_eq!(
+        loaded.update_spec(a, spec).unwrap_err().code,
+        "counter_overflow"
+    );
+
+    // A counter just below the one-below-limit still works normally.
+    let mut loaded =
+        Project::from_bytes(&with_counter(&project, "/next_id", u64::MAX - 2)).unwrap();
+    let table = ImportedTable::from_csv(b"time,conc\n0,1\n", &CsvOptions::default()).unwrap();
+    loaded.add_worksheet("last", table.columns).unwrap();
+}
