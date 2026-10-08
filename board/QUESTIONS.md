@@ -88,6 +88,8 @@ Observed by the human on his screen (2026-10-08, NCA setup, reported by the orch
 4. C0 for IV bolus: not yet observed. Model types: plasma (200-202), urine (210-212), drug effect (220). Dose type default: extravascular. A dose normalisation setting exists (none by default). For steady state (non-bolus) an imputed concentration at dose time can be Cmin, Ctau or Clast.
 5. Tlag: not yet observed.
 
+Further observation (2026-10-08): the preferences hold no global analysis defaults (the object-settings page only stores user-saved profiles; plotting defaults are sizes and margins), so defaults are those of each analysis object. The worksheet grid follows the Windows regional decimal symbol; with a French locale a decimal point is refused and a CSV with decimal commas is split on the comma (UX friction 10).
+
 Decision taken meanwhile: the public oracle uses PKNCA's defaults; the "reference profile" of `specs/nca.md` stays `assumed`.
 
 Answer: _pending_.
