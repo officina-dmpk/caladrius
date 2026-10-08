@@ -41,8 +41,10 @@ fn uses_log(method: AucMethod, tmax: Option<f64>, t2: f64, c1: f64, c2: f64) -> 
 fn segment(log: bool, a: &ProfilePoint, b: &ProfilePoint) -> (f64, f64) {
     let (t1, c1, t2, c2) = (a.time, a.conc, b.time, b.conc);
     let dt = t2 - t1;
-    if log {
-        let ln_ratio = (c1 / c2).ln();
+    // ln C1 - ln C2 rather than ln(C1/C2): the ratio itself may overflow. A difference that
+    // rounds to 0 (C1, C2 adjacent floats) falls back to the linear limit.
+    let ln_ratio = if log { c1.ln() - c2.ln() } else { 0.0 };
+    if ln_ratio != 0.0 && ln_ratio.is_finite() {
         let k = ln_ratio / dt;
         (
             dt * (c1 - c2) / ln_ratio,
@@ -70,7 +72,8 @@ pub(crate) fn areas(
     if start_missing {
         return Areas::all(ParamValue::nc(NcReason::NoStartConcentration));
     }
-    if points.len() < 2 {
+    // Count samples only: a point inserted at the dose time does not make a second observation.
+    if points.iter().filter(|p| p.is_sample()).count() < 2 {
         return Areas::all(ParamValue::nc(NcReason::SinglePoint));
     }
     // No quantifiable concentration: zero area when every value is zero (NCA-DAT-09).

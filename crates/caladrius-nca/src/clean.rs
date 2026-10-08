@@ -165,11 +165,19 @@ fn apply_blq(policy: BlqPolicy, cleaned: Cleaned) -> Cleaned {
         }
         match action_for(point.time) {
             BlqAction::Keep => kept.push(point),
-            BlqAction::Drop => removed.push(RemovedPoint {
-                index: point.index.unwrap_or_default(),
-                time: point.time,
-                reason: RemovalReason::Blq,
-            }),
+            BlqAction::Drop => {
+                // Every point here is a sample; one without a position is kept rather than
+                // reported under a wrong index.
+                let Some(index) = point.index else {
+                    kept.push(point);
+                    continue;
+                };
+                removed.push(RemovedPoint {
+                    index,
+                    time: point.time,
+                    reason: RemovalReason::Blq,
+                });
+            }
             BlqAction::Set(value) => kept.push(ProfilePoint {
                 conc: value,
                 origin: PointOrigin::BlqSet,

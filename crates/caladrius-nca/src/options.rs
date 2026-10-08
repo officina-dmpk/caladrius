@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Route of administration of the single dose given at time 0.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Route {
     /// Oral or any other extravascular route.
     Extravascular,
@@ -14,6 +14,10 @@ pub enum Route {
     /// Intravenous infusion of the given duration (same time unit as the profile, > 0).
     IvInfusion {
         /// Duration of the infusion.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         duration: f64,
     },
 }
@@ -34,7 +38,7 @@ pub enum AucMethod {
 
 /// Options of the terminal-phase (λz) selection. Read by the λz step (task T-004b); validated here.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LambdaZOptions {
     /// Fewest points in a candidate terminal phase (NCA-LZ-03). At least 2.
     pub min_points: usize,
@@ -92,7 +96,7 @@ pub enum BlqAction {
 
 /// How BLQ (zero) points are classified, and the action for each class (NCA-DAT-06).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum BlqPolicy {
     /// Classes by position relative to the quantifiable points (C > 0).
     Position {
@@ -164,7 +168,7 @@ pub enum TmaxTie {
 /// section 2.2, except `start` (see [`StartPolicy::C0`]), which the public oracle needs for IV bolus
 /// data without a sample at time 0.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NcaOptions {
     /// Segment rule for AUC and AUMC.
     pub auc_method: AucMethod,

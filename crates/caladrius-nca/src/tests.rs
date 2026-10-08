@@ -461,6 +461,8 @@ fn default_options_are_the_pknca_profile() {
     assert_eq!(o.missing, MissingPolicy::Drop);
     assert_eq!(o.negative, NegativePolicy::Error);
     assert_eq!(o.tmax_tie, TmaxTie::First);
+    // The one deliberate deviation from the PKNCA profile (spec O-08): see `StartPolicy::C0`.
+    assert_eq!(o.start, StartPolicy::C0);
     assert_eq!(
         o.blq,
         BlqPolicy::Position {
@@ -490,4 +492,107 @@ fn input_and_result_round_trip_through_json() {
     // Partial options fill in the defaults.
     let o: NcaOptions = serde_json::from_str(r#"{"auc_method":"linear"}"#).unwrap();
     assert_eq!(o, with_method(AucMethod::Linear));
+}
+
+// ---- Review fixes (T-004a review, findings 1 to 4) ----
+
+#[test]
+fn one_sample_after_the_dose_gives_no_area() {
+    // NCA-DAT-09: the point inserted at the dose time is not a second observation.
+    for route in [Route::Extravascular, Route::IvBolus] {
+        let r = run(&input(&[2.0], &[5.0], route, NcaOptions::default())).unwrap();
+        for name in ["auclast", "aucall", "aumclast", "aumcall"] {
+            assert_nc(&r, name, NcReason::SinglePoint);
+        }
+        assert_close(&r, "cmax", 5.0);
+    }
+}
+
+#[test]
+fn log_segment_with_an_extreme_ratio_stays_exact() {
+    // NCA-AUC-03 with C1/C2 = 1e600 (the ratio overflows a double; ln C1 - ln C2 = 600 ln 10 does
+    // not). AUC = (C1 - C2)/(600 ln 10); AUMC = (0 - C2)/k + (C1 - C2)/k^2 with k = 600 ln 10.
+    let k = 600.0 * std::f64::consts::LN_10;
+    let r = ev(&[0.0, 1.0], &[1e300, 1e-300], NcaOptions::default());
+    assert_close(&r, "auclast", 1e300 / k);
+    assert_close(&r, "aumclast", 1e300 / (k * k));
+}
+
+#[test]
+fn missing_concentrations_travel_as_json_null() {
+    // NCA-DAT-03 through JSON (golden rule 4): NaN is written as null and read back as NaN.
+    let i = input(
+        &[0.0, 1.0, 2.0],
+        &[0.0, f64::NAN, 3.0],
+        Route::Extravascular,
+        NcaOptions::default(),
+    );
+    let text = serde_json::to_string(&i).unwrap();
+    assert!(text.contains(r#""conc":[0.0,null,3.0]"#), "{text}");
+    let back: NcaInput = serde_json::from_str(&text).unwrap();
+    assert_eq!(back.time, i.time);
+    assert!(back.conc.get(1).unwrap().is_nan());
+    assert_eq!(back.conc.first(), Some(&0.0));
+    assert_eq!(back.conc.get(2), Some(&3.0));
+
+    let literal =
+        r#"{"time":[0,1,2],"conc":[0,null,3],"dose":10,"route":"extravascular","options":{}}"#;
+    let r = run(&serde_json::from_str::<NcaInput>(literal).unwrap()).unwrap();
+    assert_eq!(
+        r.removed().first().map(|p| p.reason),
+        Some(RemovalReason::Missing)
+    );
+    // Texts for the other non-finite values; anything else is refused with a readable error.
+    let texts =
+        r#"{"time":[0,"inf"],"conc":["NaN","-inf"],"dose":"nan","route":"iv_bolus","options":{}}"#;
+    let parsed: NcaInput = serde_json::from_str(texts).unwrap();
+    assert_eq!(parsed.time.get(1), Some(&f64::INFINITY));
+    assert!(parsed.conc.first().unwrap().is_nan());
+    assert_eq!(parsed.conc.get(1), Some(&f64::NEG_INFINITY));
+    assert!(parsed.dose.is_nan());
+    let bad = r#"{"time":[0],"conc":["abc"],"dose":1,"route":"iv_bolus","options":{}}"#;
+    let message = serde_json::from_str::<NcaInput>(bad)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("is not a number"), "{message}");
+}
+
+#[test]
+fn non_finite_numbers_in_errors_serialize_as_text() {
+    let e = NcaError::InvalidDose { value: f64::NAN };
+    let text = serde_json::to_string(&e).unwrap();
+    assert_eq!(text, r#"{"code":"invalid_dose","value":"NaN"}"#);
+    match serde_json::from_str::<NcaError>(&text).unwrap() {
+        NcaError::InvalidDose { value } => assert!(value.is_nan()),
+        other => panic!("{other:?}"),
+    }
+    let e = NcaError::InvalidInfusionDuration {
+        value: f64::NEG_INFINITY,
+    };
+    let text = serde_json::to_string(&e).unwrap();
+    assert!(text.contains(r#""value":"-inf""#), "{text}");
+    assert_eq!(serde_json::from_str::<NcaError>(&text).unwrap(), e);
+}
+
+#[test]
+fn misspelled_fields_are_rejected() {
+    // A typo must not silently fall back to a default.
+    let options = [
+        r#"{"auc_methd":"linear"}"#,
+        r#"{"lambda_z":{"min_point":4}}"#,
+        r#"{"blq":{"position":{"first":"keep","middle":"drop","lst":"keep"}}}"#,
+    ];
+    for text in options {
+        let message = serde_json::from_str::<NcaOptions>(text)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("unknown field"), "{text}: {message}");
+    }
+    let route = serde_json::from_str::<Route>(r#"{"iv_infusion":{"duraton":1}}"#);
+    assert!(route.is_err());
+    let input = r#"{"time":[0],"conc":[1],"dose":1,"route":"iv_bolus","options":{},"dose_tme":0}"#;
+    let message = serde_json::from_str::<NcaInput>(input)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("unknown field"), "{message}");
 }

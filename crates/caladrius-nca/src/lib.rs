@@ -17,6 +17,7 @@
 mod auc;
 mod clean;
 mod error;
+mod float;
 mod observed;
 mod options;
 mod result;
@@ -39,12 +40,25 @@ use clean::DOSE_TIME;
 
 /// One concentration-time profile (one subject, one analyte, one single dose given at time 0).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NcaInput {
     /// Sampling times, strictly increasing, relative to the dose. A missing time (NaN) is refused.
+    #[serde(
+        serialize_with = "crate::float::ser_vec",
+        deserialize_with = "crate::float::de_vec"
+    )]
     pub time: Vec<f64>,
     /// Concentrations, one per time, same unit for the whole profile. NaN means missing.
+    #[serde(
+        serialize_with = "crate::float::ser_vec",
+        deserialize_with = "crate::float::de_vec"
+    )]
     pub conc: Vec<f64>,
     /// Dose given at time 0, > 0.
+    #[serde(
+        serialize_with = "crate::float::ser",
+        deserialize_with = "crate::float::de"
+    )]
     pub dose: f64,
     /// Route of administration.
     pub route: Route,

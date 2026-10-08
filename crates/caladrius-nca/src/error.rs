@@ -29,6 +29,10 @@ pub enum NcaError {
         /// Position of the second of the two points.
         index: usize,
         /// The repeated time.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         time: f64,
     },
     /// A time is smaller than the one before it.
@@ -36,8 +40,16 @@ pub enum NcaError {
         /// Position of the point that comes too early.
         index: usize,
         /// Its time.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         time: f64,
         /// The time of the point before it.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         previous: f64,
     },
     /// A concentration is infinite (a missing value is NaN, not infinite).
@@ -45,6 +57,10 @@ pub enum NcaError {
         /// Position of the point.
         index: usize,
         /// Its time.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         time: f64,
     },
     /// A concentration is negative under [`crate::NegativePolicy::Error`].
@@ -52,18 +68,34 @@ pub enum NcaError {
         /// Position of the point.
         index: usize,
         /// Its time.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         time: f64,
         /// The negative value.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         value: f64,
     },
     /// The dose is not a finite number > 0.
     InvalidDose {
         /// The dose given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         value: f64,
     },
     /// An IV infusion without a finite duration > 0.
     InvalidInfusionDuration {
         /// The duration given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         value: f64,
     },
     /// An option has a value outside its domain.
