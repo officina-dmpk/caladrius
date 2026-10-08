@@ -17,6 +17,20 @@ const MIN_STEP: f64 = 1.0 / 1024.0;
 const LAMBDA_START: f64 = 1e-3;
 const LAMBDA_FACTOR: f64 = 10.0;
 const LAMBDA_MAX: f64 = 1e10;
+/// Bounds of the options (a value beyond them is refused, never allocated or run).
+const MAX_INCREMENT: f64 = 0.1;
+const MAX_CONVERGENCE: f64 = 0.1;
+const MAX_ITERATIONS: usize = 100_000;
+const MAX_CURVE_POINTS: usize = 1_000_000;
+/// A weighted sum of squares at or below this fraction of Σ w·y² is an exact fit (rounding level).
+pub(crate) const EXACT_FIT: f64 = 1e-26;
+
+/// 1/x^power when x > 0 and the weight is finite (x below about 1e-154 under 1/x² is not), else
+/// `None` (FIT-WGT-02).
+pub(crate) fn weight_of(x: f64, power: i32) -> Option<f64> {
+    let w = 1.0 / x.powi(power);
+    (x > 0.0 && w.is_finite()).then_some(w)
+}
 
 /// A checked fitting problem.
 pub(crate) struct Problem<'a> {
@@ -43,16 +57,28 @@ impl<'a> Problem<'a> {
     /// Checks the input (FIT-ERR-01, WGT-02) and the initial estimates.
     pub fn new(model: &'a dyn FitModel, input: &FitInput) -> Result<Self, FitError> {
         let o = &input.options;
-        if !(o.increment.is_finite() && o.increment > 0.0) {
+        if !(o.increment > 0.0 && o.increment <= MAX_INCREMENT) {
             return Err(invalid_option(
                 "increment",
-                "must be a finite number > 0 (0.001 is usual)",
+                "must be a number > 0 and <= 0.1 (0.001 is usual)",
             ));
         }
-        if !(o.convergence.is_finite() && o.convergence >= 0.0) {
+        if !(o.convergence >= 0.0 && o.convergence <= MAX_CONVERGENCE) {
             return Err(invalid_option(
                 "convergence",
-                "must be a finite number >= 0 (0.0001 is usual)",
+                "must be a number >= 0 and <= 0.1 (0.0001 is usual)",
+            ));
+        }
+        if o.max_iterations > MAX_ITERATIONS {
+            return Err(invalid_option(
+                "max_iterations",
+                "must be at most 100000 (50 is usual)",
+            ));
+        }
+        if o.n_curve == 1 || o.n_curve > MAX_CURVE_POINTS {
+            return Err(invalid_option(
+                "n_curve",
+                "must be 0 (no curve) or between 2 and 1000000 (1000 is usual)",
             ));
         }
         if !(o.confidence_level > 0.0 && o.confidence_level < 1.0) {
@@ -102,7 +128,12 @@ impl<'a> Problem<'a> {
             if t < 0.0 {
                 return Err(FitError::TimeBeforeDose { index, time: t });
             }
-            if matches!(input.weighting, Weighting::InvY | Weighting::InvY2) && c <= 0.0 {
+            let observed_weight = match input.weighting {
+                Weighting::InvY => weight_of(c, 1),
+                Weighting::InvY2 => weight_of(c, 2),
+                _ => Some(1.0),
+            };
+            if observed_weight.is_none() {
                 return Err(FitError::UnweightableObservation {
                     index,
                     time: t,
@@ -137,9 +168,14 @@ impl<'a> Problem<'a> {
                 &problem.time,
             )
             .map_err(|source| FitError::InitialEstimates { source })?;
-        let unusable = pred
-            .iter()
-            .position(|&f| !f.is_finite() || (problem.weighting.uses_predictions() && f <= 0.0));
+        let unusable = pred.iter().position(|&f| {
+            !f.is_finite()
+                || match problem.weighting {
+                    Weighting::InvYhat => weight_of(f, 1).is_none(),
+                    Weighting::InvYhat2 => weight_of(f, 2).is_none(),
+                    _ => false,
+                }
+        });
         if let Some(index) = unusable {
             return Err(FitError::UnusableInitialPrediction {
                 index,
@@ -191,7 +227,7 @@ impl<'a> Problem<'a> {
     /// Weights for the predictions `pred` (FIT-WGT-01); `None` when a predicted-value weight is
     /// undefined (ŷ <= 0).
     pub fn weights(&self, pred: &[f64]) -> Option<Vec<f64>> {
-        let from = |x: f64, power: i32| (x > 0.0).then(|| 1.0 / x.powi(power));
+        let from = weight_of;
         match self.weighting {
             Weighting::Uniform => Some(vec![1.0; self.y.len()]),
             Weighting::InvY => self.y.iter().map(|&y| from(y, 1)).collect(),
@@ -298,6 +334,7 @@ impl<'a> Problem<'a> {
             relative_decrease: None,
         }];
         let mut lambda = 0.0;
+        let mut previous_decrease: Option<f64> = None;
         let mut status = FitStatus::MaxIterations;
         for iteration in 1..=self.options.max_iterations {
             // FIT-WGT-03: weights of this iteration, constants in the derivatives.
@@ -307,7 +344,7 @@ impl<'a> Problem<'a> {
             };
             let s_cur = self.wrss(&pred, &w);
             // An exact fit (residuals at rounding level) cannot decrease any further.
-            if s_cur <= 1e-26 * ss_weighted_start {
+            if s_cur <= EXACT_FIT * ss_weighted_start {
                 status = FitStatus::Converged;
                 break;
             }
@@ -419,9 +456,24 @@ impl<'a> Problem<'a> {
                 step: Some(nu),
                 lambda: lam,
                 halvings,
-                relative_decrease: Some(decrease / s_new),
+                relative_decrease: Some(decrease / s_new).filter(|x| x.is_finite()),
             });
-            if self.options.criterion == Criterion::RelativeDecrease && decrease <= eps * s_new {
+            let relative = decrease / s_new;
+            let met = if self.weighting.uses_predictions() {
+                // Reweighted iterations converge linearly: each step is a fraction ρ of the one
+                // before (decreases scale as the square of the step), so the WRSS still to gain is
+                // about the last decrease / (1 − ρ)². Require that to be below ε; a cycle (ρ ≈ 1)
+                // never converges (FIT-WGT-03, no fixed point).
+                relative == 0.0
+                    || previous_decrease.is_some_and(|prev| {
+                        let rho = (relative / prev).sqrt();
+                        prev > 0.0 && rho < 1.0 && relative <= eps * (1.0 - rho).powi(2)
+                    })
+            } else {
+                decrease <= eps * s_new
+            };
+            previous_decrease = Some(relative);
+            if self.options.criterion == Criterion::RelativeDecrease && met {
                 status = FitStatus::Converged;
                 break;
             }

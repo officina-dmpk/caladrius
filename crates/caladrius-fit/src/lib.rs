@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 pub use caladrius_models::ModelId;
 pub use error::FitError;
-pub use model::FitModel;
+pub use model::{FitModel, Secondary};
 pub use result::{CurvePoint, FitResult, ObservationRow, TraceRow};
 
 /// Weighting scheme (FIT-WGT-01).
@@ -104,17 +104,17 @@ pub enum Criterion {
 pub struct FitOptions {
     /// Partial derivatives.
     pub derivatives: Derivatives,
-    /// Relative increment of the forward differences (0.001), finite and > 0.
+    /// Relative increment of the forward differences (0.001), > 0 and <= 0.1.
     pub increment: f64,
     /// Convergence criterion.
     pub criterion: Criterion,
-    /// Threshold of the criterion (0.0001), finite and >= 0.
+    /// Threshold of the criterion (0.0001), >= 0 and <= 0.1.
     pub convergence: f64,
-    /// Maximum number of accepted iterations (50).
+    /// Maximum number of accepted iterations (50), at most 100 000.
     pub max_iterations: usize,
     /// Level of the confidence intervals (0.95), strictly between 0 and 1.
     pub confidence_level: f64,
-    /// Points of the smooth predicted curve (1000).
+    /// Points of the smooth predicted curve (1000): 0 (no curve) or 2 to 1 000 000.
     pub n_curve: usize,
 }
 

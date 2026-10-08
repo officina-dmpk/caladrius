@@ -24,9 +24,51 @@ pub trait FitModel {
         times: &[f64],
         names: &[String],
     ) -> Option<Vec<Vec<f64>>>;
+
+    /// Secondary parameters of the model at `params` (FIT-OUT-06), each with its gradient by
+    /// parameter name for the delta method. None by default.
+    fn secondary(&self, dose: f64, params: &BTreeMap<String, f64>) -> Vec<Secondary> {
+        let _ = (dose, params);
+        Vec::new()
+    }
+}
+
+/// A derived quantity g(θ) and ∂g/∂θ by parameter name (parameters not named have 0).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Secondary {
+    /// Name, e.g. `cl`.
+    pub name: String,
+    /// Value at the estimates.
+    pub value: f64,
+    /// Partial derivatives by parameter name.
+    pub gradient: BTreeMap<String, f64>,
 }
 
 impl FitModel for ModelId {
+    /// One-compartment relations (MOD-SEC-01, SEC-02) in the (v, k) parameterisation: CL = V·k,
+    /// t½ = ln 2/k, AUC∞ = D/(V·k). None when `v` or `k` is not a parameter.
+    fn secondary(&self, dose: f64, params: &BTreeMap<String, f64>) -> Vec<Secondary> {
+        let (Some(&v), Some(&k)) = (params.get("v"), params.get("k")) else {
+            return Vec::new();
+        };
+        let ln2 = std::f64::consts::LN_2;
+        let make = |name: &str, value: f64, d_v: f64, d_k: f64| Secondary {
+            name: name.to_string(),
+            value,
+            gradient: BTreeMap::from([("v".to_string(), d_v), ("k".to_string(), d_k)]),
+        };
+        vec![
+            make("cl", v * k, k, v),
+            make("half_life", ln2 / k, 0.0, -ln2 / (k * k)),
+            make(
+                "auc_inf",
+                dose / (v * k),
+                -dose / (v * v * k),
+                -dose / (v * k * k),
+            ),
+        ]
+    }
+
     fn predict(
         &self,
         dose: f64,

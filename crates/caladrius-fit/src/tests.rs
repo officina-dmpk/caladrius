@@ -241,3 +241,121 @@ fn input_and_result_round_trip_through_json() {
     assert_eq!(o.max_iterations, 3);
     assert_eq!(o.increment, 0.001);
 }
+
+// ---- T-011a review fixes ----
+
+#[test]
+fn options_are_bounded() {
+    for (name, options) in [
+        (
+            "n_curve",
+            FitOptions {
+                n_curve: 1 << 40,
+                ..FitOptions::default()
+            },
+        ),
+        (
+            "n_curve",
+            FitOptions {
+                n_curve: 1,
+                ..FitOptions::default()
+            },
+        ),
+        (
+            "convergence",
+            FitOptions {
+                convergence: 1.0,
+                ..FitOptions::default()
+            },
+        ),
+        (
+            "max_iterations",
+            FitOptions {
+                max_iterations: 1_000_000,
+                ..FitOptions::default()
+            },
+        ),
+        (
+            "increment",
+            FitOptions {
+                increment: 0.5,
+                ..FitOptions::default()
+            },
+        ),
+    ] {
+        let mut i = spec(Weighting::Uniform, false);
+        i.options = options;
+        match run(&i) {
+            Err(FitError::InvalidOption { option, .. }) => assert_eq!(option, name),
+            other => panic!("{name}: {other:?}"),
+        }
+    }
+    // From JSON too, before anything is allocated.
+    let mut i = spec(Weighting::Uniform, false);
+    i.options = serde_json::from_str(r#"{"n_curve":1099511627776}"#).unwrap();
+    assert!(run(&i).is_err());
+    let mut i = spec(Weighting::Uniform, false);
+    i.options.n_curve = 0;
+    assert!(run(&i).unwrap().curve().is_empty());
+}
+
+#[test]
+fn weights_must_be_finite() {
+    // 1/y² overflows for y = 1e-200: refused by name, not a misleading `singular`.
+    let mut i = spec(Weighting::InvY2, false);
+    i.conc[4] = 1e-200;
+    match run(&i) {
+        Err(FitError::UnweightableObservation { index, .. }) => assert_eq!(index, 4),
+        other => panic!("{other:?}"),
+    }
+    let mut i = spec(Weighting::InvY, false);
+    i.conc[4] = 1e-200;
+    assert!(run(&i).is_ok());
+}
+
+/// A model that predicts like the IV bolus but defines no secondary parameter.
+struct Plain;
+
+impl FitModel for Plain {
+    fn predict(
+        &self,
+        dose: f64,
+        params: &BTreeMap<String, f64>,
+        times: &[f64],
+    ) -> Result<Vec<f64>, caladrius_models::ModelError> {
+        ModelId::IvBolus.predict(dose, params, times)
+    }
+
+    fn analytic_derivatives(
+        &self,
+        dose: f64,
+        params: &BTreeMap<String, f64>,
+        times: &[f64],
+        names: &[String],
+    ) -> Option<Vec<Vec<f64>>> {
+        ModelId::IvBolus.analytic_derivatives(dose, params, times, names)
+    }
+}
+
+#[test]
+fn secondary_parameters_come_from_the_model() {
+    let i = spec(Weighting::Uniform, true);
+    let custom = run_model(&Plain, &i).unwrap();
+    close(&custom, "estimate.v", 9.9186407);
+    assert_eq!(custom.get("estimate.cl"), None);
+    assert_eq!(custom.get("se.half_life"), None);
+    close(&run(&i).unwrap(), "estimate.cl", 2.0239749);
+}
+
+#[test]
+fn an_exact_fit_has_no_information_criteria_and_a_readable_trace() {
+    let mut i = spec(Weighting::Uniform, true);
+    // Exact data on V = 10, k = 0.2, more points than parameters.
+    i.conc = T.iter().map(|t| 10.0 * (-0.2 * t).exp()).collect();
+    let r = run(&i).unwrap();
+    close(&r, "estimate.k", 0.2);
+    assert_eq!(r.get("aic"), None);
+    assert_eq!(r.get("sbc"), None);
+    let back: FitResult = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+    assert_eq!(back.trace(), r.trace());
+}

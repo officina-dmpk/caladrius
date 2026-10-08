@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::FitStatus;
-use crate::engine::Problem;
+use crate::engine::{EXACT_FIT, Problem};
 use crate::linalg::{Mat, inverse_gram_from_r, least_squares, symmetric_eigenvalues};
 use crate::stats::{f_quantile, student_t_quantile};
 
@@ -17,16 +17,25 @@ pub struct TraceRow {
     /// Iteration number, 0 for the initial estimates.
     pub iteration: usize,
     /// Weighted residual sum of squares at the estimates, with the weights of these estimates.
+    #[serde(
+        serialize_with = "crate::float::ser",
+        deserialize_with = "crate::float::de"
+    )]
     pub wrss: f64,
     /// Estimates, in the parameter order of the result.
     pub estimates: Vec<f64>,
     /// Step factor ν used (None for iteration 0).
     pub step: Option<f64>,
     /// Damping λ used (0: pure Gauss-Newton).
+    #[serde(
+        serialize_with = "crate::float::ser",
+        deserialize_with = "crate::float::de"
+    )]
     pub lambda: f64,
     /// Number of step halvings.
     pub halvings: usize,
-    /// Relative decrease of the weighted sum of squares in this iteration.
+    /// Relative decrease of the weighted sum of squares in this iteration (None when not finite,
+    /// e.g. an exact fit).
     pub relative_decrease: Option<f64>,
 }
 
@@ -152,10 +161,8 @@ pub(crate) fn build(
         .sum::<f64>()
         / sum_w;
     let mean_f = pred.iter().zip(&weights).map(|(f, w)| w * f).sum::<f64>() / sum_w;
-    v.put(
-        "ss_weighted",
-        problem.y.iter().zip(&weights).map(|(y, w)| w * y * y).sum(),
-    );
+    let ss_weighted: f64 = problem.y.iter().zip(&weights).map(|(y, w)| w * y * y).sum();
+    v.put("ss_weighted", ss_weighted);
     v.put(
         "ss_corrected",
         problem
@@ -177,7 +184,8 @@ pub(crate) fn build(
     let s2 = (df > 0).then(|| wrss / df as f64);
     if let Some(s2) = s2 {
         v.put("s", s2.sqrt());
-        if wrss > 0.0 {
+        // Not for an exact fit: ln(WRSS) of rounding noise means nothing.
+        if wrss > EXACT_FIT * ss_weighted {
             let nf = n as f64;
             v.put("aic", nf * wrss.ln() + 2.0 * p as f64);
             v.put("sbc", nf * wrss.ln() + p as f64 * nf.ln());
@@ -313,39 +321,19 @@ fn statistics(
     secondary(problem, theta, &cov, t, v);
 }
 
-/// FIT-OUT-06: CL = V·k, t½ = ln 2/k, AUC∞ = D/(V·k), standard errors by the delta method.
-/// Needs `v` and `k` among the fitted parameters.
+/// FIT-OUT-06: the secondary parameters the model defines ([`crate::FitModel::secondary`]), with
+/// standard errors by the delta method.
 fn secondary(problem: &Problem<'_>, theta: &[f64], cov: &Mat, t: f64, v: &mut Values) {
     let names = &problem.names;
-    let position = |name: &str| names.iter().position(|n| n == name);
-    let (Some(iv), Some(ik)) = (position("v"), position("k")) else {
-        return;
-    };
-    let (vol, k) = (
-        theta.get(iv).copied().unwrap_or(f64::NAN),
-        theta.get(ik).copied().unwrap_or(f64::NAN),
-    );
-    let dose = problem.dose;
-    let ln2 = std::f64::consts::LN_2;
-    let quantities = [
-        ("cl", vol * k, k, vol),
-        ("half_life", ln2 / k, 0.0, -ln2 / (k * k)),
-        (
-            "auc_inf",
-            dose / (vol * k),
-            -dose / (vol * vol * k),
-            -dose / (vol * k * k),
-        ),
-    ];
-    let p = names.len();
-    for (name, value, d_v, d_k) in quantities {
-        let mut grad = vec![0.0; p];
-        if let Some(slot) = grad.get_mut(iv) {
-            *slot = d_v;
-        }
-        if let Some(slot) = grad.get_mut(ik) {
-            *slot = d_k;
-        }
+    for quantity in problem
+        .model
+        .secondary(problem.dose, &problem.params(theta))
+    {
+        let (name, value) = (quantity.name, quantity.value);
+        let grad: Vec<f64> = names
+            .iter()
+            .map(|n| quantity.gradient.get(n).copied().unwrap_or(0.0))
+            .collect();
         let mut var = 0.0;
         for (a, ga) in grad.iter().enumerate() {
             for (b, gb) in grad.iter().enumerate() {
