@@ -16,6 +16,14 @@
 //!   summary statistic, possibly with a units row under the header);
 //! - for summary tables of a single profile, the row labelled mean (else median, minimum).
 //!
+//! Besides text tables the reader handles what the reference software actually writes (first
+//! export, task T-019): `.xls` worksheets (OLE/BIFF, read with the `calamine` crate; their numbers
+//! are stored at full double precision, so they are compared with a relative tolerance and not at
+//! a displayed precision), and `.rtf` text reports whose "Final Parameters" block is read as
+//! displayed (four decimals). A worksheet of the profile with its cumulative areas, predictions and
+//! residuals (the summary) is compared row by row; a settings file is read for the conventions it
+//! records.
+//!
 //! The mapping from the export's parameter names to the project's names ([`canonical_name`]) is an
 //! `assumed` table, to be corrected against the first real export; names it does not know are
 //! counted as unmapped, never as failures.
@@ -28,6 +36,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::oracle::oracle_dir;
+use crate::tolerance::Tolerance;
 
 /// Error while reading private material. Messages never contain content from the files.
 #[derive(Debug, Clone, PartialEq)]
@@ -101,7 +110,9 @@ pub struct PrivateCase {
 /// The private cases known to the project.
 pub const PRIVATE_CASES: &[PrivateCase] = &[PrivateCase {
     id: "td1",
-    dose: 10.0,
+    // 10 mg expressed in micrograms: the exports state concentrations in micrograms per millilitre
+    // and the dose in micrograms, so clearance and volumes come out in the units of the export.
+    dose: 10_000.0,
     route: "extravascular",
 }];
 
@@ -170,6 +181,8 @@ pub fn load_coursework_profile(
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawTable {
     pub rows: Vec<Vec<String>>,
+    /// The numbers come from a worksheet: stored at full double precision, not as displayed.
+    pub exact: bool,
 }
 
 fn split_cells(line: &str, delimiter: char) -> Vec<String> {
@@ -242,6 +255,7 @@ pub fn split_table(text: &str, what: &str) -> Result<RawTable, PrivateError> {
     }
     Ok(RawTable {
         rows: lines.iter().map(|l| split_cells(l, best.0)).collect(),
+        exact: false,
     })
 }
 
@@ -358,6 +372,17 @@ pub fn canonical_name(raw: &str) -> Option<&'static str> {
         "lambdaz" => "lambda.z",
         "lambdazlower" => "lambda.z.time.first",
         "lambdazupper" => "lambda.z.time.last",
+        "lambdazintercept" => "lambda.z.intercept",
+        "corrxy" => "corr.xy",
+        "nsamples" => "n.samples",
+        "dose" => "dose",
+        "cmaxd" => "cmax.dn",
+        "auclastd" => "auclast.dn",
+        "aucalld" => "aucall.dn",
+        "aucinfdobs" => "aucinf.obs.dn",
+        "aucinfdpred" => "aucinf.pred.dn",
+        "aumcextrapobs" | "aumcpercentextrapobs" => "aumcpext.obs",
+        "aumcextrappred" | "aumcpercentextrappred" => "aumcpext.pred",
         "nopointslambdaz" | "nopointslambdaz1" | "npointslambdaz" => "lambda.z.n.points",
         "rsq" => "r.squared",
         "rsqadjusted" | "rsqadj" | "adjrsq" => "adj.r.squared",
@@ -391,6 +416,8 @@ pub struct ExportEntry {
     pub raw_name: String,
     pub canonical: Option<&'static str>,
     pub text: String,
+    /// Full double precision (from a worksheet): compared with a relative tolerance.
+    pub exact: bool,
 }
 
 fn is_number(cell: &str) -> bool {
@@ -430,10 +457,12 @@ pub fn extract_entries(table: &RawTable, what: &str) -> Result<Vec<ExportEntry>,
     if body.is_empty() {
         return Err(format_error(what, "a header and no data row"));
     }
+    let exact = table.exact;
     let entry = |name: &str, text: &str| ExportEntry {
         raw_name: name.to_string(),
         canonical: canonical_name(name),
         text: text.to_string(),
+        exact,
     };
 
     // Long layout: a column of parameter names and a column of values.
@@ -501,18 +530,49 @@ pub fn extract_entries(table: &RawTable, what: &str) -> Result<Vec<ExportEntry>,
 // ---------------------------------------------------------------- comparing
 
 /// Counts of an evaluation. Only counts: nothing here carries a value from an export.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrivateCounts {
     /// Equal to the engine value at the displayed precision.
     pub validated: usize,
-    /// Different at the displayed precision, by canonical parameter name and displayed decimals.
-    pub mismatched: Vec<(&'static str, u32)>,
+    /// Different at the displayed precision (or beyond the relative tolerance of a full-precision
+    /// cell): the canonical parameter name and the size of the difference.
+    pub mismatched: Vec<Difference>,
     /// A known parameter that the engine does not compute, or reports as not calculated.
     pub engine_missing: Vec<&'static str>,
     /// Entries whose name the project does not know.
     pub unmapped: usize,
     /// Entries whose value text is not a number (blank, not calculated...).
     pub unreadable: usize,
+}
+
+/// A value that differs from the export: how, never by what value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Difference {
+    pub name: &'static str,
+    /// Decimals shown in the export (0 for a full-precision cell).
+    pub decimals: u32,
+    /// The difference in units of the last displayed place (for a displayed value), or as a
+    /// relative error (for a full-precision cell).
+    pub size: f64,
+    /// `size` is a relative error of a full-precision cell.
+    pub relative: bool,
+}
+
+impl Difference {
+    /// Text for a report: the size only, no value.
+    pub fn describe(&self) -> String {
+        if self.relative {
+            format!(
+                "relative difference {:.1e} (full-precision cell)",
+                self.size
+            )
+        } else {
+            format!(
+                "{:.1} units of the last displayed place ({} decimals)",
+                self.size, self.decimals
+            )
+        }
+    }
 }
 
 impl PrivateCounts {
@@ -537,24 +597,63 @@ impl PrivateCounts {
 pub fn evaluate(entries: &[ExportEntry], engine: &BTreeMap<String, Option<f64>>) -> PrivateCounts {
     let mut counts = PrivateCounts::default();
     for e in entries {
-        let Some(name) = e.canonical else {
-            counts.unmapped += 1;
-            continue;
-        };
-        let Some(shown) = parse_displayed(&e.text) else {
-            counts.unreadable += 1;
-            continue;
-        };
-        match engine.get(name).copied().flatten() {
-            None => counts.engine_missing.push(name),
-            Some(actual) => match compare_displayed(&e.text, actual) {
-                Outcome::Match => counts.validated += 1,
-                Outcome::Mismatch => counts.mismatched.push((name, shown.decimals)),
-                Outcome::Unreadable => counts.unreadable += 1,
-            },
-        }
+        counts_one(&mut counts, e.canonical, &e.text, e.exact, |name| {
+            engine.get(name).copied().flatten()
+        });
     }
     counts
+}
+
+/// Relative tolerance for a cell stored at full double precision.
+const FULL_PRECISION: Tolerance = Tolerance::Relative {
+    rel: 1e-9,
+    abs: 1e-12,
+};
+
+/// Compares one value with the text of an export and records the outcome in `counts`.
+fn counts_one(
+    counts: &mut PrivateCounts,
+    canonical: Option<&'static str>,
+    text: &str,
+    exact: bool,
+    engine: impl Fn(&str) -> Option<f64>,
+) {
+    let Some(name) = canonical else {
+        counts.unmapped += 1;
+        return;
+    };
+    let Some(shown) = parse_displayed(text) else {
+        counts.unreadable += 1;
+        return;
+    };
+    let Some(actual) = engine(name) else {
+        counts.engine_missing.push(name);
+        return;
+    };
+    let (ok, size) = if exact {
+        let difference = (actual - shown.value).abs();
+        let size = if shown.value != 0.0 {
+            difference / shown.value.abs()
+        } else {
+            difference
+        };
+        (FULL_PRECISION.accepts(actual, shown.value), size)
+    } else {
+        (
+            compare_displayed(text, actual) == Outcome::Match,
+            (actual - shown.value).abs() / (2.0 * shown.half_unit),
+        )
+    };
+    if ok {
+        counts.validated += 1;
+    } else {
+        counts.mismatched.push(Difference {
+            name,
+            decimals: shown.decimals,
+            size,
+            relative: exact,
+        });
+    }
 }
 
 // ---------------------------------------------------------------- finding the exports
@@ -562,8 +661,15 @@ pub fn evaluate(entries: &[ExportEntry], engine: &BTreeMap<String, Option<f64>>)
 /// What a table is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExportKind {
+    /// The "Final Parameters" worksheet.
     FinalParameters,
+    /// The worksheet of the profile: cumulative areas, predictions, residuals, which points were
+    /// used for the terminal phase.
     Summary,
+    /// The text report of the analysis engine (RTF); its "Final Parameters" block is read.
+    CoreOutput,
+    /// The settings the analysis was run with (RTF); read for the conventions it records.
+    Settings,
 }
 
 /// Which AUC method a table was run with.
@@ -591,6 +697,8 @@ impl ExportKind {
         match self {
             ExportKind::FinalParameters => "final_parameters",
             ExportKind::Summary => "summary",
+            ExportKind::CoreOutput => "core_output",
+            ExportKind::Settings => "settings",
         }
     }
 }
@@ -640,7 +748,7 @@ fn collect_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
                 .and_then(|e| e.to_str())
                 .unwrap_or_default()
                 .to_lowercase();
-            if matches!(ext.as_str(), "csv" | "txt" | "tsv") {
+            if matches!(ext.as_str(), "csv" | "txt" | "tsv" | "xls" | "xlsx" | "rtf") {
                 out.push(p);
             }
         }
@@ -653,11 +761,17 @@ fn classify(path_text: &str) -> (Option<ExportKind>, Option<MethodHint>) {
         Some(ExportKind::FinalParameters)
     } else if t.contains("summary") {
         Some(ExportKind::Summary)
+    } else if t.contains("core") {
+        Some(ExportKind::CoreOutput)
+    } else if t.contains("setting") {
+        Some(ExportKind::Settings)
     } else {
         None
     };
     let compact: String = t.chars().filter(char::is_ascii_alphanumeric).collect();
-    let method = if (compact.contains("up") && compact.contains("down")) || compact.contains("ludl")
+    let method = if (compact.contains("up") && compact.contains("down"))
+        || compact.contains("ludl")
+        || compact.contains("luld")
     {
         Some(MethodHint::LinUpLogDown)
     } else if compact.contains("linlog") || compact.contains("loglin") {
@@ -712,6 +826,8 @@ pub fn discover_in(dir: &Path) -> Result<Option<Discovery>, PrivateError> {
                 match m.table.as_str() {
                     "final" => Some(ExportKind::FinalParameters),
                     "summary" => Some(ExportKind::Summary),
+                    "core" => Some(ExportKind::CoreOutput),
+                    "settings" => Some(ExportKind::Settings),
                     _ => None,
                 },
                 match m.method.as_str() {
@@ -738,17 +854,369 @@ pub fn discover_in(dir: &Path) -> Result<Option<Discovery>, PrivateError> {
     }))
 }
 
-/// Reads and parses one export file into entries.
+// ---------------------------------------------------------------- worksheets, reports, settings
+
+/// Reads the first sheet of a spreadsheet file (`.xls` or `.xlsx`) as a table of text cells whose
+/// numbers are marked as full precision.
+pub fn read_worksheet(path: &Path, what: &str) -> Result<RawTable, PrivateError> {
+    use calamine::{Data, Reader, open_workbook_auto};
+    let mut workbook =
+        open_workbook_auto(path).map_err(|_| format_error(what, "not a readable spreadsheet"))?;
+    let name = workbook
+        .sheet_names()
+        .first()
+        .cloned()
+        .ok_or_else(|| format_error(what, "a spreadsheet without sheets"))?;
+    let range = workbook
+        .worksheet_range(&name)
+        .map_err(|_| format_error(what, "the first sheet cannot be read"))?;
+    let rows = range
+        .rows()
+        .map(|row| {
+            row.iter()
+                .map(|cell| match cell {
+                    Data::Empty => String::new(),
+                    Data::String(t) => t.trim().to_string(),
+                    Data::Float(x) => format!("{x}"),
+                    Data::Int(i) => i.to_string(),
+                    Data::Bool(b) => b.to_string(),
+                    other => format!("{other}"),
+                })
+                .collect::<Vec<String>>()
+        })
+        .collect();
+    Ok(RawTable { rows, exact: true })
+}
+
+/// Turns the text of an RTF report into plain text: paragraphs and tabs kept, control words,
+/// groups marked `\*` and the font table dropped, `\'hh` escapes decoded as Latin-1.
+pub fn rtf_to_text(rtf: &str) -> String {
+    let chars: Vec<char> = rtf.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    // Depth at which a destination to be skipped started (`{\*...}` or the font and colour tables).
+    let mut depth = 0usize;
+    let mut skip_from: Option<usize> = None;
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '{' => {
+                depth += 1;
+                i += 1;
+                if chars.get(i) == Some(&'\\') {
+                    let rest: String = chars[i + 1..chars.len().min(i + 12)].iter().collect();
+                    if (rest.starts_with('*')
+                        || rest.starts_with("fonttbl")
+                        || rest.starts_with("colortbl"))
+                        && skip_from.is_none()
+                    {
+                        skip_from = Some(depth);
+                    }
+                }
+            }
+            '}' => {
+                if skip_from == Some(depth) {
+                    skip_from = None;
+                }
+                depth = depth.saturating_sub(1);
+                i += 1;
+            }
+            '\\' => {
+                i += 1;
+                let Some(&next) = chars.get(i) else { break };
+                if next == '\'' {
+                    let hex: String = chars[i + 1..chars.len().min(i + 3)].iter().collect();
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        if skip_from.is_none() {
+                            out.push(byte as char);
+                        }
+                    }
+                    i += 3;
+                } else if next.is_ascii_alphabetic() {
+                    let start = i;
+                    while i < chars.len() && chars[i].is_ascii_alphabetic() {
+                        i += 1;
+                    }
+                    let word: String = chars[start..i].iter().collect();
+                    if chars.get(i) == Some(&'-') {
+                        i += 1;
+                    }
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    if chars.get(i) == Some(&' ') {
+                        i += 1;
+                    }
+                    if skip_from.is_none() {
+                        match word.as_str() {
+                            "par" | "line" => out.push('\n'),
+                            "tab" => out.push('\t'),
+                            _ => {}
+                        }
+                    }
+                } else {
+                    // An escaped symbol: \\ \{ \} are literal; others are ignored.
+                    if matches!(next, '\\' | '{' | '}') && skip_from.is_none() {
+                        out.push(next);
+                    }
+                    i += 1;
+                }
+            }
+            '\r' | '\n' => i += 1, // line breaks in the RTF source are not paragraphs
+            _ => {
+                if skip_from.is_none() {
+                    out.push(c);
+                }
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// The entries of the "Final Parameters" block of a text report: after a line reading "Final
+/// Parameters" and its underline, lines of a name and a number, until a line that is not one.
+pub fn report_final_parameters(text: &str) -> Vec<ExportEntry> {
+    let mut entries = Vec::new();
+    let mut lines = text
+        .lines()
+        .map(str::trim)
+        .skip_while(|l| !l.eq_ignore_ascii_case("Final Parameters"));
+    if lines.next().is_none() {
+        return entries;
+    }
+    for line in lines {
+        if line.is_empty() || line.chars().all(|c| c == '-') {
+            continue; // the report puts blank lines between the rows
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        match tokens.as_slice() {
+            [name, value] if parse_displayed(value).is_some() => entries.push(ExportEntry {
+                raw_name: (*name).to_string(),
+                canonical: canonical_name(name),
+                text: (*value).to_string(),
+                exact: false,
+            }),
+            _ if entries.is_empty() => {}
+            _ => break,
+        }
+    }
+    entries
+}
+
+/// One row of the profile worksheet (the "summary"): the sample and what was computed on it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfileRow {
+    pub time: String,
+    /// The sample was used for the terminal phase.
+    pub included: bool,
+    pub conc: String,
+    pub predicted: Option<String>,
+    pub residual: Option<String>,
+    pub auc: Option<String>,
+    pub aumc: Option<String>,
+    /// The weight of the sample in the terminal regression.
+    pub weight: Option<String>,
+    pub exact: bool,
+}
+
+/// Reads the profile worksheet: a header with time, concentration, predicted, residual, AUC, AUMC,
+/// weighting and a column marking the samples used for the terminal phase, then an optional units
+/// row, then one row per sample. `None` when the table does not look like one.
+pub fn extract_profile_table(table: &RawTable) -> Option<Vec<ProfileRow>> {
+    let header = table.rows.first()?;
+    let col = |words: &[&str]| header_has(header, words);
+    let time = col(&["time", "temps", "t"])?;
+    let conc = col(&["conc", "concentration"])?;
+    let auc = col(&["auc"])?;
+    let included = col(&["lambdazincl", "incl", "included"]);
+    let predicted = col(&["pred"]);
+    let residual = col(&["resid"]);
+    let aumc = col(&["aumc"]);
+    let weight = col(&["weight"]);
+    let get = |row: &Vec<String>, c: Option<usize>| {
+        c.and_then(|c| row.get(c))
+            .filter(|t| !t.is_empty())
+            .cloned()
+    };
+    let rows: Vec<ProfileRow> = table
+        .rows
+        .iter()
+        .skip(1)
+        .filter(|row| row.get(time).is_some_and(|t| is_number(t)))
+        .map(|row| ProfileRow {
+            time: row[time].clone(),
+            included: get(row, included).is_some_and(|t| !t.is_empty() && t != "0"),
+            conc: get(row, Some(conc)).unwrap_or_default(),
+            predicted: get(row, predicted),
+            residual: get(row, residual),
+            auc: get(row, Some(auc)),
+            aumc: get(row, aumc),
+            weight: get(row, weight),
+            exact: table.exact,
+        })
+        .collect();
+    (!rows.is_empty()).then_some(rows)
+}
+
+/// What the engine says about one sample of the profile (the cumulative areas up to that sample,
+/// the prediction of the terminal regression, and whether the sample took part in it).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProfileEngine {
+    pub auc: Option<f64>,
+    pub aumc: Option<f64>,
+    pub predicted: Option<f64>,
+    pub included: bool,
+}
+
+/// Compares the profile worksheet with the engine, row by row: cumulative AUC and AUMC, prediction,
+/// residual (observed minus predicted, the observed concentration being the one of the row), the
+/// inclusion mark, and the weight (1 for an included sample, 0 otherwise). Only counts.
+pub fn evaluate_profile(rows: &[ProfileRow], engine: &[ProfileEngine]) -> PrivateCounts {
+    let mut counts = PrivateCounts::default();
+    if rows.len() != engine.len() {
+        counts.unreadable += rows.len().max(engine.len());
+        return counts;
+    }
+    for (row, e) in rows.iter().zip(engine) {
+        let observed = parse_displayed(&row.conc).map(|d| d.value);
+        let mut value = |name: &'static str, text: &Option<String>, actual: Option<f64>| {
+            if let Some(text) = text {
+                counts_one(&mut counts, Some(name), text, row.exact, |_| actual);
+            }
+        };
+        value("auc.cumulative", &row.auc, e.auc);
+        value("aumc.cumulative", &row.aumc, e.aumc);
+        value("predicted", &row.predicted, e.predicted);
+        let residual = match (observed, e.predicted) {
+            (Some(o), Some(p)) => Some(o - p),
+            _ => None,
+        };
+        value("residual", &row.residual, residual);
+        value(
+            "weight",
+            &row.weight,
+            Some(if e.included { 1.0 } else { 0.0 }),
+        );
+        // The inclusion mark is a flag: agree or not.
+        counts_flag(&mut counts, row.included == e.included);
+    }
+    counts
+}
+
+fn counts_flag(counts: &mut PrivateCounts, agree: bool) {
+    if agree {
+        counts.validated += 1;
+    } else {
+        counts.mismatched.push(Difference {
+            name: "lambda.z.included",
+            decimals: 0,
+            size: 1.0,
+            relative: false,
+        });
+    }
+}
+
+/// Conventions recorded in a settings file, as lowercase text with all but letters and digits
+/// removed (the wording of the reference software is not reproduced; the tests look for words).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SettingsFacts {
+    /// The AUC calculation method.
+    pub calculation_method: String,
+    /// The weighting of the terminal regression.
+    pub weighting: String,
+    /// How the terminal phase was chosen (fit method and selection).
+    pub slope_selection: String,
+}
+
+/// Reads the settings recorded in an exported settings report.
+pub fn settings_facts(text: &str) -> SettingsFacts {
+    let compact = |t: &str| -> String {
+        t.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_lowercase()
+    };
+    let mut facts = SettingsFacts::default();
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("Calculation Method") {
+            facts.calculation_method = compact(v);
+        } else if let Some(v) = line.strip_prefix("Weighting") {
+            facts.weighting = compact(v);
+        } else if line.contains("Fit Method") {
+            facts.slope_selection = compact(line);
+        }
+    }
+    facts
+}
+
+/// Reads and parses one export file into scalar entries: a "Final Parameters" worksheet, or the
+/// final-parameters block of a core-output report.
 pub fn read_export(file: &ExportFile) -> Result<Vec<ExportEntry>, PrivateError> {
     let what = format!("export file {} ({})", file.index + 1, file.kind.label());
-    let bytes = fs::read(&file.path).map_err(|e| io_error(&what, &e))?;
-    // UTF-8, or Latin-1 / Windows-1252 as spreadsheets write it.
+    match file.kind {
+        ExportKind::CoreOutput => {
+            let entries = report_final_parameters(&read_text(file, &what)?);
+            if entries.is_empty() {
+                Err(format_error(
+                    &what,
+                    "no final-parameters block found in the report",
+                ))
+            } else {
+                Ok(entries)
+            }
+        }
+        ExportKind::FinalParameters => {
+            let table = read_table(file, &what)?;
+            extract_entries(&table, &what)
+        }
+        ExportKind::Summary | ExportKind::Settings => Err(format_error(
+            &what,
+            "this kind of file has no scalar parameters",
+        )),
+    }
+}
+
+/// Reads a profile worksheet (kind [`ExportKind::Summary`]).
+pub fn read_profile_rows(file: &ExportFile) -> Result<Vec<ProfileRow>, PrivateError> {
+    let what = format!("export file {} ({})", file.index + 1, file.kind.label());
+    let table = read_table(file, &what)?;
+    extract_profile_table(&table).ok_or_else(|| format_error(&what, "not a profile worksheet"))
+}
+
+/// Reads a settings file (kind [`ExportKind::Settings`]).
+pub fn read_settings(file: &ExportFile) -> Result<SettingsFacts, PrivateError> {
+    let what = format!("export file {} ({})", file.index + 1, file.kind.label());
+    Ok(settings_facts(&read_text(file, &what)?))
+}
+
+fn is_spreadsheet(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_lowercase().as_str(), "xls" | "xlsx"))
+}
+
+/// The text of an export file: RTF is converted, bytes are read as UTF-8 or Latin-1.
+fn read_text(file: &ExportFile, what: &str) -> Result<String, PrivateError> {
+    let bytes = fs::read(&file.path).map_err(|e| io_error(what, &e))?;
     let text = match String::from_utf8(bytes) {
         Ok(t) => t,
         Err(e) => e.into_bytes().iter().map(|&b| b as char).collect(),
     };
-    let table = split_table(&text, &what)?;
-    extract_entries(&table, &what)
+    Ok(if text.trim_start().starts_with("{\\rtf") {
+        rtf_to_text(&text)
+    } else {
+        text
+    })
+}
+
+fn read_table(file: &ExportFile, what: &str) -> Result<RawTable, PrivateError> {
+    if is_spreadsheet(&file.path) {
+        read_worksheet(&file.path, what)
+    } else {
+        split_table(&read_text(file, what)?, what)
+    }
 }
 
 #[cfg(test)]
@@ -869,6 +1337,7 @@ mod tests {
                     raw_name: n.to_string(),
                     canonical: canonical_name(n),
                     text: t.to_string(),
+                    exact: false,
                 })
                 .collect()
         };
@@ -890,7 +1359,13 @@ mod tests {
             &engine,
         );
         assert_eq!(c.validated, 1);
-        assert_eq!(c.mismatched, vec![("lambda.z", 2)]);
+        assert_eq!(
+            c.mismatched
+                .iter()
+                .map(|d| (d.name, d.decimals))
+                .collect::<Vec<_>>(),
+            vec![("lambda.z", 2)]
+        );
         assert_eq!(c.engine_missing, vec!["tlag", "tmax"]);
         assert_eq!((c.unmapped, c.unreadable), (1, 1));
         assert_eq!(c.expected(), 4);
@@ -997,9 +1472,17 @@ Cmax,1
             .iter()
             .find(|f| f.kind == ExportKind::Summary)
             .unwrap();
-        let counts = evaluate(&read_export(summary).unwrap(), &engine);
+        let table = split_table(&fs::read_to_string(&summary.path).unwrap(), "t").unwrap();
+        let counts = evaluate(&extract_entries(&table, "t").unwrap(), &engine);
         assert_eq!(counts.validated, 1);
-        assert_eq!(counts.mismatched, vec![("lambda.z", 1)]);
+        assert_eq!(
+            counts
+                .mismatched
+                .iter()
+                .map(|d| (d.name, d.decimals))
+                .collect::<Vec<_>>(),
+            vec![("lambda.z", 1)]
+        );
         let final_linear = d
             .files
             .iter()

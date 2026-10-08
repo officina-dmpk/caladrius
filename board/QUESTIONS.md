@@ -164,3 +164,5 @@ Nothing from `private/` is copied into a versioned file; the orchestrator or the
 Decision taken meanwhile: `specs/nca.md` keeps the reference profile apart from the PKNCA profile; the observed facts are tagged `observed`; the engine's default AUC method stays the PKNCA one until the orchestrator decides.
 
 Answer: _pending_.
+
+Update to Q-011 (2026-10-08, oracle): the exports of exercise 1 arrived (core reports and settings as RTF, worksheets as .xls, for both AUC methods) and the loader reads them as they are; no re-export is needed. Result in the card of T-019: the engine agrees on every compared value. If you export other exercises, the same file naming (table and method in the name) is enough.
