@@ -6,10 +6,15 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+# The models being fitted (same layer, L0).
+caladrius-models = { path = "../caladrius-models" }
+# Inputs, options and results are data (golden rule 4).
+serde = { version = "1.0.229", features = ["derive"] }
+
 [dev-dependencies]
 caladrius-testkit = { path = "../caladrius-testkit" }
-# The models being fitted (ModelId) are named by the tests.
-caladrius-models = { path = "../caladrius-models" }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
 
 [lints]
 workspace = true
