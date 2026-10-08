@@ -278,3 +278,5 @@ pub fn run_model(model: &dyn FitModel, input: &FitInput) -> Result<FitResult, Fi
 mod tests;
 #[cfg(test)]
 mod tests_outputs;
+#[cfg(test)]
+mod tests_stopping;

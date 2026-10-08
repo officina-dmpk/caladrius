@@ -478,6 +478,15 @@ impl<'a> Problem<'a> {
             halvings: 0,
             relative_decrease: None,
         }];
+        // FIT-CNV-01 (a): below this predicted relative gain a point from which no step decreases
+        // the WRSS is the minimum. With forward differences of increment h the Jacobian is only
+        // good to O(h), so the gain it predicts at the true minimum is O(h²)·WRSS: a smaller
+        // predicted gain that no step can realise is the error of the derivatives, not a failure
+        // (T-030b). The floor is h² only when it exceeds ε (never with the defaults, 1e-6 < 1e-4).
+        let gain_floor = match self.options.derivatives {
+            Derivatives::ForwardDifference => eps.max(self.options.increment.powi(2)),
+            Derivatives::Analytic => eps,
+        };
         let p = theta.len();
         let mut lambda = 0.0;
         let mut previous_decrease: Option<f64> = None;
@@ -583,7 +592,9 @@ impl<'a> Problem<'a> {
                     if accepted.is_some() {
                         break;
                     }
-                    if lam == 0.0 && trace.len() > 1 && predicted.is_some_and(|q| q <= eps * s_cur)
+                    if lam == 0.0
+                        && trace.len() > 1
+                        && predicted.is_some_and(|q| q <= gain_floor * s_cur)
                     {
                         // Nothing measurable is left to gain: the current point is the minimum. Only
                         // after an accepted step: at the initial estimates a tiny predicted gain can
