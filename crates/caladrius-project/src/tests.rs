@@ -596,3 +596,132 @@ fn a_loaded_counter_at_the_limit_is_refused_and_one_below_it_errors_instead_of_w
     let table = ImportedTable::from_csv(b"time,conc\n0,1\n", &CsvOptions::default()).unwrap();
     loaded.add_worksheet("last", table.columns).unwrap();
 }
+
+// ---- readings of a CSV -----------------------------------------------------------------
+
+fn first_reading(text: &str) -> Reading {
+    readings(text.as_bytes(), &CsvOptions::default())
+        .unwrap()
+        .remove(0)
+}
+
+#[test]
+fn the_same_profile_in_two_conventions_gives_the_same_table() {
+    let point = first_reading("time,conc\n0,0\n0.25,3.4\n1.5,7.25\n");
+    let comma = first_reading("time;conc\n0;0\n0,25;3,4\n1,5;7,25\n");
+    assert_eq!(point.table.columns, comma.table.columns);
+    assert!(point.checks.is_empty() && comma.table.decimal_comma);
+    assert_eq!(point.table.delimiter, ',');
+    assert_eq!(comma.table.delimiter, ';');
+    let tab = first_reading("time\tconc\n0\t0\n0.25\t3.4\n1.5\t7.25\n");
+    assert_eq!(tab.table.columns, point.table.columns);
+}
+
+#[test]
+fn a_comma_that_is_a_decimal_mark_is_not_a_separator() {
+    // The reported failure: the quarter must not become two cells.
+    let r = readings(b"time;conc\n0,25;3,4\n", &CsvOptions::default()).unwrap();
+    assert_eq!(r.len(), 1);
+    assert!(r[0].table.decimal_comma);
+    assert_eq!(
+        r[0].table.columns[0].data,
+        ColumnData::Number(vec![Some(0.25)])
+    );
+    assert_eq!(
+        r[0].table.columns[1].data,
+        ColumnData::Number(vec![Some(3.4)])
+    );
+}
+
+#[test]
+fn a_reading_that_gives_repeated_times_is_flagged() {
+    // `0,25` read with a comma separator: a quarter becomes time 0 and concentration 25.
+    let r = readings(b"time,conc\n0,25\n0,5\n1,2\n", &CsvOptions::default()).unwrap();
+    assert_eq!(r.len(), 1);
+    let codes: Vec<&str> = r[0].checks.iter().map(|c| c.code.as_str()).collect();
+    assert_eq!(codes, ["duplicate_times"]);
+    assert!(
+        r[0].checks[0].message.contains("row 2"),
+        "{:?}",
+        r[0].checks
+    );
+    // Going back in time, per subject.
+    let r = readings(
+        b"id,time,conc\nA,0,1\nA,2,3\nA,1,2\nB,0,1\nB,1,1\n",
+        &CsvOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(r[0].checks.len(), 1);
+    assert_eq!(r[0].checks[0].code, "time_not_increasing");
+    assert!(r[0].checks[0].message.contains("subject A"));
+}
+
+#[test]
+fn fixed_options_restrict_the_readings_and_nothing_usable_is_an_error() {
+    let only = CsvOptions {
+        delimiter: Some(';'),
+        decimal_comma: Some(false),
+    };
+    // With a point as decimal mark the comma numbers are text: no usable reading.
+    assert!(readings(b"time;conc\n0,25;3,4\n", &only).is_err());
+    let err = readings(b"a,b\n1,2\n", &CsvOptions::default()).unwrap_err();
+    assert!(
+        err.message.contains("no reading") || err.code.starts_with("csv"),
+        "{err}"
+    );
+}
+
+#[test]
+fn oracle_data_survives_three_conventions_exactly() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../oracle/data/theoph.csv");
+    let original = std::fs::read(path).unwrap();
+    let table = ImportedTable::from_csv(&original, &CsvOptions::default()).unwrap();
+    let write = |sep: &str, comma: bool| {
+        let mut out = table
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>()
+            .join(sep);
+        out.push('\n');
+        for row in 0..table.columns[0].data.len() {
+            let cells: Vec<String> = table
+                .columns
+                .iter()
+                .map(|c| {
+                    let t = c.data.text_at(row);
+                    if comma { t.replace('.', ",") } else { t }
+                })
+                .collect();
+            out.push_str(&cells.join(sep));
+            out.push('\n');
+        }
+        out
+    };
+    for (sep, comma) in [(",", false), (";", true), ("\t", false)] {
+        let text = write(sep, comma);
+        let r = readings(text.as_bytes(), &CsvOptions::default()).unwrap();
+        assert!(r[0].checks.is_empty(), "{sep:?}: {:?}", r[0].checks);
+        assert_eq!(r[0].table.columns, table.columns, "{sep:?}");
+    }
+}
+
+#[test]
+fn french_headers_are_recognised() {
+    let t = ImportedTable::from_csv(
+        "Sujet;Temps (h);Concentration (mg/L);Dose (mg)\n1;0;0;100\n1;1;5;100\n".as_bytes(),
+        &CsvOptions::default(),
+    )
+    .unwrap();
+    let roles: Vec<ColumnRole> = t.columns.iter().map(|c| c.role).collect();
+    assert_eq!(
+        roles,
+        [
+            ColumnRole::Subject,
+            ColumnRole::Time,
+            ColumnRole::Concentration,
+            ColumnRole::Dose
+        ]
+    );
+}

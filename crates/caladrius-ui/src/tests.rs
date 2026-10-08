@@ -1,0 +1,523 @@
+//! Tests of the application as a whole: the flows through the engine, the plot's safety on zeros,
+//! the rules of the UI contract (no colour outside the theme tokens, state as data), and the
+//! screens drawn by a headless harness without a panic.
+
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use serde_json::json;
+
+use crate::app::{Action, Request, Selection, UiApp, UiState};
+use crate::model::Status;
+use crate::theme::ThemeMode;
+
+const ORAL: &str = "Time (h),Conc (mg/L),Dose (mg)\n0,0,100\n0.25,1.279,100\n0.5,2.195,100\n1,3.293,100\n2,3.971,100\n4,3.611,100\n6,2.989,100\n8,2.451,100\n12,1.643,100\n24,0.495,100\n";
+
+fn with_oral() -> UiApp {
+    let mut app = UiApp::new();
+    app.load_csv("oral.csv", ORAL.as_bytes());
+    app.perform(vec![Action::ImportConfirm]);
+    app
+}
+
+fn with_analysis() -> UiApp {
+    let mut app = with_oral();
+    app.perform(vec![Action::NewAnalysis]);
+    app
+}
+
+fn number(app: &UiApp, name: &str) -> Option<f64> {
+    let page = app.nca_page()?;
+    let subject = page.view.as_ref()?.subject.as_ref()?;
+    match &subject.outcome {
+        crate::model::Outcome::Ok(ok) => ok.number(name),
+        _ => None,
+    }
+}
+
+// ---- the flow of an import ---------------------------------------------------------------
+
+#[test]
+fn an_import_stores_nothing_until_it_is_confirmed() {
+    let mut app = UiApp::new();
+    app.load_csv("study.csv", ORAL.as_bytes());
+    assert_eq!(app.state.selection, Selection::Import);
+    let pending = app.pending_import().unwrap();
+    assert_eq!(pending.readings.len(), 1);
+    assert!(pending.can_import());
+    // The engine has seen the preview and nothing else.
+    assert!(app.engine().project().worksheets().is_empty());
+    app.perform(vec![Action::ImportConfirm]);
+    assert_eq!(app.engine().project().worksheets().len(), 1);
+    assert_eq!(app.state.selection, Selection::Worksheet(1));
+    assert!(app.pending_import().is_none());
+    // Cancelling an import leaves the project as it was.
+    app.load_csv("again.csv", ORAL.as_bytes());
+    app.perform(vec![Action::ImportCancel]);
+    assert_eq!(app.engine().project().worksheets().len(), 1);
+}
+
+#[test]
+fn a_decimal_comma_file_is_read_with_the_right_marks_and_shown_before_import() {
+    let mut app = UiApp::new();
+    app.load_csv(
+        "fr.csv",
+        "Temps (h);Concentration (mg/L)\n0;0\n0,25;1,279\n0,5;2,195\n".as_bytes(),
+    );
+    let reading = app
+        .pending_import()
+        .unwrap()
+        .chosen_reading()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (reading.delimiter.as_str(), reading.decimal_comma),
+        (";", true)
+    );
+    assert_eq!(
+        reading.preview.get(1),
+        Some(&vec![json!(0.25), json!(1.279)])
+    );
+    app.perform(vec![Action::ImportConfirm]);
+    let table = app
+        .engine_mut()
+        .execute(
+            "export.table",
+            json!({ "table": "worksheet", "worksheet": 1 }),
+        )
+        .unwrap();
+    assert_eq!(table["rows"][1], json!([0.25, 1.279]));
+}
+
+#[test]
+fn a_reading_with_a_check_is_not_imported_without_a_yes() {
+    let mut app = UiApp::new();
+    app.load_csv("quarter.csv", b"time,conc\n0,25\n0,5\n1,2\n2,1\n");
+    assert!(app.pending_import().unwrap().needs_choice);
+    app.perform(vec![Action::ImportConfirm]);
+    assert!(
+        app.engine().project().worksheets().is_empty(),
+        "no yes, no import"
+    );
+    assert!(app.notice_text().unwrap().contains("checks"));
+    // The person ticks the box: now it goes through.
+    let mut pending = app.pending_import().unwrap().clone();
+    assert!(!pending.can_import());
+    pending.acknowledged = true;
+    assert!(pending.can_import());
+}
+
+#[test]
+fn changing_the_separator_reads_the_file_again() {
+    use crate::import::ReadOptions;
+    let mut app = UiApp::new();
+    app.load_csv("x.csv", b"time;conc\n0,25;3,4\n0,5;5,1\n");
+    // Forcing a point as the decimal mark leaves no usable reading: the error says what to change.
+    let mut pending = app.pending_import().unwrap().clone();
+    pending.options = ReadOptions {
+        delimiter: Some(';'),
+        decimal_comma: Some(false),
+    };
+    let answer = app
+        .engine_mut()
+        .execute("data.preview", pending.preview_params())
+        .map_err(|e| e.message);
+    pending.adopt(answer);
+    assert!(pending.readings.is_empty());
+    assert!(pending.error.as_deref().is_some_and(|e| !e.is_empty()));
+}
+
+#[test]
+fn a_file_that_is_not_text_is_refused_with_what_to_do() {
+    let mut app = UiApp::new();
+    app.load_csv("bad.csv", &[0xff, 0xfe, 0x00]);
+    assert!(app.pending_import().is_none());
+    assert!(app.notice_text().unwrap().contains("UTF-8"));
+    assert_eq!(app.state.selection, Selection::Welcome);
+}
+
+// ---- the NCA page ------------------------------------------------------------------------
+
+#[test]
+fn a_new_analysis_runs_at_once_and_shows_its_result() {
+    let app = with_analysis();
+    let page = app.nca_page().unwrap();
+    assert_eq!(page.worksheet, 1);
+    let view = page.view.as_ref().unwrap();
+    assert_eq!(view.status, Status::Fresh);
+    assert!(view.label.starts_with("NCA of oral"), "{}", view.label);
+    assert!((number(&app, "cmax").unwrap() - 3.971).abs() < 1e-9);
+    assert_eq!(app.state.selection, Selection::Analysis(view.id));
+    // The options on the page are the engine's own, defaults included.
+    assert_eq!(page.options["lambda_z"]["min_points"], 3);
+}
+
+#[test]
+fn an_option_change_asks_the_engine_again_and_the_numbers_follow() {
+    let mut app = with_analysis();
+    let log_down = number(&app, "auclast").unwrap();
+    let mut page = app.state.nca.clone().unwrap();
+    page.options["auc_method"] = json!("linear");
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    let linear = number(&app, "auclast").unwrap();
+    assert!(
+        linear > log_down,
+        "linear trapezoids overestimate a falling curve: {linear} {log_down}"
+    );
+    // The analysis stored by the engine has the new options and is fresh.
+    let spec = &app.engine().project().analyses()[0];
+    assert_eq!(
+        app.engine().project().status(spec.id()).unwrap(),
+        caladrius_engine::project::AnalysisStatus::Fresh
+    );
+}
+
+#[test]
+fn clicking_points_chooses_the_terminal_phase_by_hand() {
+    let mut app = with_analysis();
+    let automatic = app.nca_page().unwrap().used_times();
+    assert_eq!(automatic, vec![4.0, 6.0, 8.0, 12.0, 24.0]);
+    // A click on the point at 4 h takes it out; the engine refits with the four that remain.
+    let mut page = app.state.nca.clone().unwrap();
+    page.toggle_point(4.0).unwrap();
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    let page = app.nca_page().unwrap();
+    assert!(page.manual());
+    assert_eq!(page.used_times(), vec![6.0, 8.0, 12.0, 24.0]);
+    let selected = page
+        .view
+        .as_ref()
+        .unwrap()
+        .subject
+        .as_ref()
+        .and_then(|s| match &s.outcome {
+            crate::model::Outcome::Ok(ok) => ok.selected().cloned(),
+            _ => None,
+        });
+    assert_eq!(selected.unwrap().n_points, 4);
+    // A click on a point outside adds it back.
+    let mut page = page.clone();
+    page.toggle_point(4.0).unwrap();
+    assert_eq!(page.used_times(), vec![4.0, 6.0, 8.0, 12.0, 24.0]);
+    // Down to two points is the floor: the third removal is refused and nothing changes.
+    let mut page = app.nca_page().unwrap().clone();
+    page.toggle_point(6.0).unwrap();
+    page.toggle_point(8.0).unwrap();
+    let before = page.clone();
+    let refused = page.toggle_point(12.0).unwrap_err();
+    assert!(refused.contains("at least 2"), "{refused}");
+    assert_eq!(page, before);
+    // Back to automatic.
+    let mut page = app.nca_page().unwrap().clone();
+    page.options["lambda_z_selection"]["manual"] = serde_json::Value::Null;
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    assert!(!app.nca_page().unwrap().manual());
+    assert_eq!(app.nca_page().unwrap().used_times(), automatic);
+}
+
+#[test]
+fn a_click_on_a_hand_picked_point_that_the_engine_refuses_shows_its_message() {
+    let mut app = with_analysis();
+    let mut page = app.state.nca.clone().unwrap();
+    // The point at time 0 has concentration 0: it cannot be in a log-linear fit.
+    page.options["lambda_z_selection"]["manual"] = json!({ "times": [0.0, 24.0] });
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    let page = app.nca_page().unwrap();
+    // The engine answers for the subject: the message is in the result, and the way back is offered.
+    let outcome = &page
+        .view
+        .as_ref()
+        .unwrap()
+        .subject
+        .as_ref()
+        .unwrap()
+        .outcome;
+    assert!(
+        matches!(outcome, crate::model::Outcome::Error(m) if !m.is_empty()),
+        "{outcome:?}"
+    );
+    assert!(page.manual());
+    let mut page = page.clone();
+    page.options["lambda_z_selection"]["manual"] = serde_json::Value::Null;
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    assert!(matches!(
+        app.nca_page()
+            .unwrap()
+            .view
+            .as_ref()
+            .unwrap()
+            .subject
+            .as_ref()
+            .unwrap()
+            .outcome,
+        crate::model::Outcome::Ok(_)
+    ));
+}
+
+#[test]
+fn editing_the_data_marks_the_analysis_stale_and_run_again_refreshes_it() {
+    let mut app = with_analysis();
+    let id = app.nca_page().unwrap().analysis.unwrap();
+    app.perform(vec![Action::SetCell {
+        worksheet: 1,
+        row: 4,
+        column: "Conc".to_owned(),
+        text: "4,2".to_owned(),
+    }]);
+    app.perform(vec![Action::Select(Selection::Analysis(id))]);
+    let page = app.nca_page().unwrap();
+    assert!(page.view.as_ref().unwrap().status.is_stale());
+    let sentence = page.view.as_ref().unwrap().status.sentence().unwrap();
+    assert!(sentence.contains("the data changed"), "{sentence}");
+    // The old result is still shown (Cmax of the old data) until the person runs it again.
+    assert!((number(&app, "cmax").unwrap() - 3.971).abs() < 1e-9);
+    app.perform(vec![Action::RunAgain(id)]);
+    assert_eq!(
+        app.nca_page().unwrap().view.as_ref().unwrap().status,
+        Status::Fresh
+    );
+    assert!(
+        (number(&app, "cmax").unwrap() - 4.2).abs() < 1e-9,
+        "the comma was read as a decimal mark"
+    );
+}
+
+#[test]
+fn a_refused_cell_entry_is_kept_and_explained() {
+    let mut app = with_oral();
+    app.perform(vec![Action::SetCell {
+        worksheet: 1,
+        row: 2,
+        column: "Conc".to_owned(),
+        text: "1.2.3".to_owned(),
+    }]);
+    let message = app.notice_text().unwrap().to_owned();
+    assert!(
+        message.contains("Conc") && message.contains("decimal mark"),
+        "{message}"
+    );
+    // The worksheet is unchanged.
+    let table = app
+        .engine_mut()
+        .execute(
+            "export.table",
+            json!({ "table": "worksheet", "worksheet": 1 }),
+        )
+        .unwrap();
+    assert_eq!(table["rows"][2][1], json!(2.195));
+}
+
+#[test]
+fn a_subject_change_forgets_the_hand_picked_phase_of_the_previous_subject() {
+    let mut app = UiApp::new();
+    app.load_csv(
+        "two.csv",
+        b"id,time,conc,dose\n1,0,0,10\n1,1,8,10\n1,2,6,10\n1,4,3,10\n1,6,1.5,10\n1,8,0.7,10\n2,0,0,10\n2,1,7,10\n2,2,5,10\n2,4,2.5,10\n2,6,1.2,10\n2,8,0.6,10\n",
+    );
+    app.perform(vec![Action::ImportConfirm, Action::NewAnalysis]);
+    let mut page = app.state.nca.clone().unwrap();
+    page.toggle_point(2.0).unwrap();
+    assert!(page.manual());
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    assert!(app.nca_page().unwrap().manual());
+    // What the subject combo does on a change:
+    let mut page = app.state.nca.clone().unwrap();
+    page.subject = "2".to_owned();
+    page.options["lambda_z_selection"]["manual"] = serde_json::Value::Null;
+    app.state.nca = Some(page);
+    app.perform(vec![Action::RunNca]);
+    assert!(!app.nca_page().unwrap().manual());
+    assert_eq!(
+        app.nca_page()
+            .unwrap()
+            .view
+            .as_ref()
+            .unwrap()
+            .subject
+            .as_ref()
+            .unwrap()
+            .subject,
+        "2"
+    );
+}
+
+// ---- contract ----------------------------------------------------------------------------
+
+#[test]
+fn the_state_of_the_ui_round_trips_as_data() {
+    let mut app = with_analysis();
+    app.state.mode = ThemeMode::Dark;
+    app.state.log_axis = true;
+    let text = serde_json::to_string(&app.state).unwrap();
+    let back: UiState = serde_json::from_str(&text).unwrap();
+    // The cache of the engine's last answer is not state; everything else comes back.
+    assert_eq!(back.mode, app.state.mode);
+    assert_eq!(back.selection, app.state.selection);
+    assert_eq!(back.log_axis, app.state.log_axis);
+    let (a, b) = (back.nca.unwrap(), app.state.nca.clone().unwrap());
+    assert_eq!(
+        (a.analysis, a.worksheet, &a.subject, a.route),
+        (b.analysis, b.worksheet, &b.subject, b.route)
+    );
+    assert_eq!(a.options, b.options);
+}
+
+#[test]
+fn no_colour_radius_or_margin_is_written_outside_the_theme() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let forbidden = [
+        "Color32::",
+        "from_rgb",
+        "from_gray",
+        "from_black_alpha",
+        "from_white_alpha",
+        "Rgba(",
+        "CornerRadius::same(",
+        "Margin::same(",
+        "Margin::symmetric(",
+        "rounding(",
+        "corner_radius(",
+    ];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if name == "theme.rs" || name == "tests.rs" || !name.ends_with(".rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        // Ignore the test modules at the end of each file.
+        let code = text.split("#[cfg(test)]").next().unwrap_or("");
+        for pattern in forbidden {
+            assert!(
+                !code.contains(pattern),
+                "{name} writes `{pattern}`: use a theme token"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_code_of_the_ui_has_no_file_or_clock_access() {
+    // L3 must compile for wasm (golden rule 9): no files, threads, processes or clock here.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if name == "tests.rs" || !name.ends_with(".rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let code = text.split("#[cfg(test)]").next().unwrap_or("");
+        for pattern in [
+            "std::fs",
+            "std::process",
+            "std::thread",
+            "std::time",
+            "std::env",
+            "File::open",
+        ] {
+            assert!(!code.contains(pattern), "{name} uses `{pattern}`");
+        }
+    }
+}
+
+#[test]
+fn the_app_asks_for_a_file_picker_instead_of_opening_files() {
+    let mut app = UiApp::new();
+    app.perform(vec![Action::OpenCsv]);
+    assert_eq!(app.take_requests(), vec![Request::PickCsv]);
+    assert!(app.take_requests().is_empty());
+}
+
+// ---- drawn by a harness ------------------------------------------------------------------
+
+fn harness(app: UiApp) -> Harness<'static, UiApp> {
+    Harness::builder()
+        .with_size(egui::vec2(1400.0, 1000.0))
+        .build_state(|ctx, app: &mut UiApp| app.ui(ctx), app)
+}
+
+#[test]
+fn every_screen_draws_without_a_panic_in_both_themes_and_both_axes() {
+    for dark in [false, true] {
+        for log in [false, true] {
+            let mut scenes: Vec<UiApp> = Vec::new();
+            scenes.push(UiApp::new());
+            let mut importing = UiApp::new();
+            importing.load_csv("quarter.csv", b"time,conc\n0,25\n0,5\n1,2\n");
+            scenes.push(importing);
+            scenes.push(with_oral());
+            scenes.push(with_analysis());
+            let mut zeros = UiApp::new();
+            zeros.load_csv("z.csv", b"time,conc,dose\n0,0,10\n1,0,10\n2,0,10\n3,0,10\n");
+            zeros.perform(vec![Action::ImportConfirm, Action::NewAnalysis]);
+            scenes.push(zeros);
+            for mut app in scenes {
+                app.state.mode = if dark {
+                    ThemeMode::Dark
+                } else {
+                    ThemeMode::Light
+                };
+                app.state.log_axis = log;
+                let mut h = harness(app);
+                h.run_steps(3);
+            }
+        }
+    }
+}
+
+#[test]
+fn the_semi_log_toggle_never_fails_on_zeros_and_says_what_is_hidden() {
+    // Every concentration is zero: the log view has nothing to draw and says why.
+    let mut app = UiApp::new();
+    app.load_csv("z.csv", b"time,conc,dose\n0,0,10\n1,0,10\n2,0,10\n3,0,10\n");
+    app.perform(vec![Action::ImportConfirm, Action::NewAnalysis]);
+    app.state.log_axis = true;
+    let mut h = harness(app);
+    h.run_steps(3);
+    // A profile with one zero: the note counts it.
+    let mut app = with_analysis();
+    app.state.log_axis = true;
+    let mut h = harness(app);
+    h.run_steps(3);
+    assert!(
+        h.query_by_label_contains("1 of 10 points not shown on a log axis")
+            .is_some()
+    );
+    // The data was not changed by looking at it on a log axis.
+    let table = h
+        .state_mut()
+        .engine_mut()
+        .execute(
+            "export.table",
+            json!({ "table": "worksheet", "worksheet": 1 }),
+        )
+        .unwrap();
+    assert_eq!(table["rows"][0], json!([0.0, 0.0, 100.0]));
+}
+
+#[test]
+fn the_buttons_do_what_they_say() {
+    let mut h = harness(UiApp::new());
+    h.run_steps(2);
+    h.get_by_label("Open CSV…").click();
+    h.run_steps(2);
+    assert_eq!(h.state_mut().take_requests(), vec![Request::PickCsv]);
+    h.get_by_label("Dark theme").click();
+    h.run_steps(3);
+    assert_eq!(h.state().state.mode, ThemeMode::Dark);
+
+    let mut h = harness(with_analysis());
+    h.run_steps(2);
+    h.get_by_label("Semi-log").click();
+    h.run_steps(2);
+    assert!(h.state().state.log_axis);
+    h.get_by_label("Linear").click();
+    h.run_steps(2);
+    assert!(!h.state().state.log_axis);
+}

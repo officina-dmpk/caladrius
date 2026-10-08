@@ -429,22 +429,30 @@ struct SetCellParams {
 
 fn set_cell(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
     let p: SetCellParams = parse("data.set_cell", params)?;
+    let mut understood: Option<Option<f64>> = None;
     engine.project.edit_worksheet(p.worksheet, |w| {
         let is_number = matches!(w.require_column(&p.column)?.data, ColumnData::Number(_));
         if is_number {
             let value = match &p.value {
                 Value::Null => None,
                 Value::Number(n) => n.as_f64(),
+                Value::String(text) => parse_typed_number(text).map_err(|why| {
+                    caladrius_project::ProjectError {
+                        code: "invalid_number".to_owned(),
+                        message: format!("column `{}`: {why}", p.column),
+                    }
+                })?,
                 other => {
                     return Err(caladrius_project::ProjectError {
                         code: "invalid_parameters".to_owned(),
                         message: format!(
-                            "column `{}` holds numbers; `value` must be a number or null, not {other}",
+                            "column `{}` holds numbers; `value` must be a number, text such as 25.5 or 25,5, or null, not {other}",
                             p.column
                         ),
                     });
                 }
             };
+            understood = Some(value);
             w.set_number(&p.column, p.row, value)
         } else {
             let text = match &p.value {
@@ -463,13 +471,46 @@ fn set_cell(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
             w.set_text(&p.column, p.row, text)
         }
     })?;
-    changed(engine, p.worksheet)
+    let mut out = changed(engine, p.worksheet)?;
+    if let (Some(map), Some(value)) = (out.as_object_mut(), understood) {
+        map.insert("understood".to_owned(), json!(value));
+    }
+    Ok(out)
+}
+
+/// A number typed into a cell: a point or a comma as the decimal mark, both understood (the
+/// answer says which number was read). Empty or `NA` is a missing value. Text that mixes the two
+/// marks or repeats one is refused, not guessed.
+fn parse_typed_number(text: &str) -> Result<Option<f64>, String> {
+    let t = text.trim();
+    if t.is_empty()
+        || matches!(
+            t.to_ascii_lowercase().as_str(),
+            "na" | "n/a" | "nan" | "-" | "."
+        )
+    {
+        return Ok(None);
+    }
+    let points = t.matches('.').count();
+    let commas = t.matches(',').count();
+    if points + commas > 1 {
+        return Err(format!(
+            "`{t}` has more than one decimal mark; write the number with a single point or comma, without thousands separators"
+        ));
+    }
+    let normalised = t.replace(',', ".");
+    match normalised.parse::<f64>() {
+        Ok(x) if x.is_finite() => Ok(Some(x)),
+        _ => Err(format!(
+            "`{t}` is not a number; type digits with a point or a comma as the decimal mark, or leave the cell empty for a missing value"
+        )),
+    }
 }
 
 pub(crate) const SET_CELL: CommandDef = CommandDef {
     id: "data.set_cell",
     title: "Change one cell of a worksheet",
-    description: "Sets the value of one cell (row counted from 0). A number column takes a number, or null for a missing value; a text column takes a string. The results of the analyses that read the worksheet become stale.",
+    description: "Sets the value of one cell (row counted from 0). A number column takes a number, text with a point or a comma as the decimal mark (the answer says which number was read in `understood`), or null for a missing value; a text column takes a string. The results of the analyses that read the worksheet become stale.",
     mutates: true,
     params: || {
         root(
@@ -488,7 +529,19 @@ pub(crate) const SET_CELL: CommandDef = CommandDef {
             ),
         )
     },
-    result: || root("data.set_cell result", changed_schema()),
+    result: || {
+        let mut schema = changed_schema();
+        if let Some(Value::Object(props)) = schema.get_mut("properties") {
+            props.insert(
+                "understood".to_owned(),
+                described(
+                    nullable(crate::schema::number()),
+                    "The number read from the value, null for a missing value; present for a number column.",
+                ),
+            );
+        }
+        root("data.set_cell result", schema)
+    },
     example: || json!({ "worksheet": 1, "column": "Conc", "row": 3, "value": 3.3 }),
     run: set_cell,
 };
@@ -577,3 +630,168 @@ pub(crate) fn removed_schema(schema: &mut Value, with_worksheet: bool) {
         }
     }
 }
+
+// ---- data.preview ------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviewParams {
+    csv: String,
+    #[serde(default)]
+    delimiter: Option<char>,
+    #[serde(default)]
+    decimal_comma: Option<bool>,
+    #[serde(default = "default_reading_rows")]
+    rows: usize,
+}
+
+fn default_reading_rows() -> usize {
+    8
+}
+
+/// One reading of the file as the preview shows it.
+fn reading_json(reading: &caladrius_project::Reading, rows: usize) -> Value {
+    let table = &reading.table;
+    let n_rows = table.columns.first().map_or(0, |c| c.data.len());
+    let shown = rows.min(200).min(n_rows);
+    let preview: Vec<Value> = (0..shown)
+        .map(|row| {
+            Value::Array(
+                table
+                    .columns
+                    .iter()
+                    .map(|c| match &c.data {
+                        ColumnData::Number(v) => json!(v.get(row).copied().flatten()),
+                        ColumnData::Text(v) => json!(v.get(row)),
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    let columns: Vec<Value> = table
+        .columns
+        .iter()
+        .map(|c| {
+            json!({
+                "name": c.name,
+                "role": c.role,
+                "unit": c.unit,
+                "type": match c.data { ColumnData::Number(_) => "number", ColumnData::Text(_) => "text" },
+                "missing": c.data.n_missing(),
+            })
+        })
+        .collect();
+    json!({
+        "delimiter": table.delimiter.to_string(),
+        "decimal_comma": table.decimal_comma,
+        "rows": n_rows,
+        "columns": columns,
+        "preview": preview,
+        "notes": table.notes,
+        "checks": reading.checks,
+    })
+}
+
+fn preview(_engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
+    let p: PreviewParams = parse("data.preview", params)?;
+    let options = CsvOptions {
+        delimiter: p.delimiter,
+        decimal_comma: p.decimal_comma,
+    };
+    let readings = caladrius_project::readings(p.csv.as_bytes(), &options)?;
+    let best_is_plausible = readings.first().is_some_and(|r| r.checks.is_empty());
+    respond(&json!({
+        "readings": readings.iter().map(|r| reading_json(r, p.rows)).collect::<Vec<_>>(),
+        "recommended": 0,
+        "ambiguous": readings.len() > 1,
+        "needs_choice": readings.len() > 1 || !best_is_plausible,
+    }))
+}
+
+fn reading_schema() -> Value {
+    object(
+        vec![
+            ("delimiter", string()),
+            ("decimal_comma", boolean()),
+            ("rows", integer()),
+            (
+                "columns",
+                array_of(crate::schema::open_object(
+                    vec![
+                        ("name", string()),
+                        ("role", reference("ColumnRole")),
+                        ("unit", nullable(string())),
+                        ("type", crate::schema::one_of_strings(&["number", "text"])),
+                        ("missing", integer()),
+                    ],
+                    &["name", "role", "unit", "type", "missing"],
+                )),
+            ),
+            ("preview", array_of(json!({ "type": "array" }))),
+            ("notes", array_of(string())),
+            (
+                "checks",
+                array_of(object(
+                    vec![("code", string()), ("message", string())],
+                    &["code", "message"],
+                )),
+            ),
+        ],
+        &[
+            "delimiter",
+            "decimal_comma",
+            "rows",
+            "columns",
+            "preview",
+            "notes",
+            "checks",
+        ],
+    )
+}
+
+pub(crate) const PREVIEW: CommandDef = CommandDef {
+    id: "data.preview",
+    title: "Preview a CSV before importing it",
+    description: "Reads CSV text without storing anything and returns every admissible reading of it: each delimiter (comma, semicolon, tab) with each decimal mark that gives a numeric time column and a numeric concentration column, with the columns, the first rows, what was guessed and the checks on the result (time going back, duplicated times). The first reading is recommended. `needs_choice` is true when the file can be read more than one way or the recommended reading has failed checks: the caller should show the readings and let the person choose, then pass the chosen `delimiter` and `decimal_comma` to data.import. Nothing is imported.",
+    mutates: false,
+    params: || {
+        root(
+            "data.preview parameters",
+            object(
+                vec![
+                    ("csv", described(string(), "The CSV text.")),
+                    (
+                        "delimiter",
+                        json!({ "type": "string", "minLength": 1, "maxLength": 1 }),
+                    ),
+                    ("decimal_comma", boolean()),
+                    (
+                        "rows",
+                        json!({ "type": "integer", "minimum": 0, "maximum": 200 }),
+                    ),
+                ],
+                &["csv"],
+            ),
+        )
+    },
+    result: || {
+        root(
+            "data.preview result",
+            object(
+                vec![
+                    ("readings", array_of(reading_schema())),
+                    ("recommended", integer()),
+                    ("ambiguous", boolean()),
+                    ("needs_choice", boolean()),
+                ],
+                &["readings", "recommended", "ambiguous", "needs_choice"],
+            ),
+        )
+    },
+    example: || {
+        json!({
+            "csv": "Time (h);Conc (mg/L);Dose (mg)\n0;0;100\n0,25;1,279;100\n0,5;2,195;100\n",
+        })
+    },
+    run: preview,
+};

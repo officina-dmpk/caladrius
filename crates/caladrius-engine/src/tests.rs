@@ -52,6 +52,7 @@ fn the_commands_are_the_documented_ones() {
     assert_eq!(
         command_ids(),
         [
+            "data.preview",
             "data.import",
             "data.describe",
             "data.set_column",
@@ -472,7 +473,7 @@ fn data_edits_are_checked_and_atomic() {
         (
             "data.set_cell",
             json!({ "worksheet": 1, "column": "Conc", "row": 0, "value": "text" }),
-            "invalid_parameters",
+            "invalid_number",
         ),
         (
             "data.set_cell",
@@ -1360,4 +1361,104 @@ fn a_whole_number_subject_has_one_label_whatever_its_spelling() {
         );
         assert_eq!(r["result"]["subjects"][0]["subject"], "1");
     }
+}
+
+#[test]
+fn a_preview_shows_the_readings_and_stores_nothing() {
+    let mut e = Engine::new();
+    let r = ok(
+        &mut e,
+        "data.preview",
+        json!({ "csv": "time;conc\n0,25;3,4\n0,5;5,1\n" }),
+    );
+    assert_eq!(r["needs_choice"], false);
+    let best = &r["readings"][0];
+    assert_eq!(best["delimiter"], ";");
+    assert_eq!(best["decimal_comma"], true);
+    assert_eq!(best["preview"][0], json!([0.25, 3.4]));
+    // The reported failure: a file whose comma-separated reading repeats the time 0.
+    let r = ok(
+        &mut e,
+        "data.preview",
+        json!({ "csv": "time,conc\n0,25\n0,5\n1,2\n" }),
+    );
+    assert_eq!(r["needs_choice"], true);
+    assert_eq!(r["readings"][0]["checks"][0]["code"], "duplicate_times");
+    // Nothing was imported, and the history says so.
+    assert!(e.project().worksheets().is_empty());
+    assert!(e.history().entries().iter().all(|h| !h.changed_project));
+    // A file that cannot be read says why.
+    let failure = err(&mut e, "data.preview", json!({ "csv": "a,b\n1,2\n" }));
+    assert!(
+        failure.message.contains("time") || failure.message.contains("no reading"),
+        "{failure}"
+    );
+}
+
+#[test]
+fn flags_come_with_their_sentence() {
+    let mut e = Engine::new();
+    // Three points in the terminal phase over a short span: the span flag is raised.
+    ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "w", "csv": "time,conc,dose\n0,0,10\n1,8,10\n2,6,10\n3,4.5,10\n4,3.4,10\n" }),
+    );
+    let r = ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular" }),
+    );
+    let s = &r["result"]["subjects"][0];
+    let flags = s["outcome"]["ok"]["flags"].as_array().unwrap();
+    let messages = s["flag_messages"].as_array().unwrap();
+    assert!(!flags.is_empty());
+    assert_eq!(flags.len(), messages.len());
+    assert!(
+        messages
+            .iter()
+            .all(|m| m.as_str().is_some_and(|t| t.len() > 20))
+    );
+    let f = ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "f", "csv": "time,conc,dose\n0,0,100\n0.25,1.279,100\n0.5,2.195,100\n1,3.293,100\n2,3.971,100\n4,3.611,100\n6,2.989,100\n8,2.451,100\n12,1.643,100\n24,0.495,100\n" }),
+    );
+    let id = f["worksheet"]["id"].clone();
+    let fit = ok(
+        &mut e,
+        "fit.run",
+        json!({ "worksheet": id, "model": "pk1.oral_1" }),
+    );
+    assert!(fit["result"]["flag_messages"].is_array());
+}
+
+#[test]
+fn a_cell_typed_with_either_decimal_mark_is_understood_and_the_answer_says_which() {
+    let mut e = engine_with_two_subjects();
+    for (typed, number) in [
+        ("3,25", json!(3.25)),
+        ("3.25", json!(3.25)),
+        (" 7 ", json!(7.0)),
+        ("", Value::Null),
+        ("NA", Value::Null),
+    ] {
+        let r = ok(
+            &mut e,
+            "data.set_cell",
+            json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": typed }),
+        );
+        assert_eq!(r["understood"], number, "{typed:?}");
+    }
+    let before = e.project().clone();
+    for typed in ["1,234.5", "1.2.3", "abc", "1e999", "12 5"] {
+        let failure = err(
+            &mut e,
+            "data.set_cell",
+            json!({ "worksheet": 1, "column": "Conc", "row": 2, "value": typed }),
+        );
+        assert_eq!(failure.code, "invalid_number", "{typed}");
+        assert!(failure.message.contains("Conc"), "{failure}");
+    }
+    assert_eq!(e.project(), &before, "a refused entry changes nothing");
 }

@@ -1,10 +1,20 @@
 [package]
 name = "caladrius"
-description = "App layer: the desktop application (empty placeholder until step 5)."
+description = "App layer: the desktop application (egui on wgpu), a window around caladrius-ui."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+caladrius-ui = { path = "../../crates/caladrius-ui" }
+# The window: egui on wgpu. `x11` and `wayland` are the Linux windowing back ends.
+eframe = { version = "0.32.3", default-features = false, features = ["wgpu", "default_fonts", "accesskit", "x11", "wayland"] }
+egui = { version = "0.32.3", default-features = false }
+# The graphics back ends eframe leaves to its user: Direct3D 12 (Windows), Metal (macOS), Vulkan (Linux).
+wgpu = { version = "25.0.2", default-features = false, features = ["dx12", "metal", "vulkan"] }
+# The native file dialog of "Open CSV…".
+rfd = "0.15"
 
 [lints]
 workspace = true

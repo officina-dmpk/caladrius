@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "light": {
+    "colors": {
+      "background": "#f4f6f9",
+      "panel": "#ffffff",
+      "panel_alt": "#eceff4",
+      "text": "#1b2333",
+      "text_muted": "#566074",
+      "accent": "#2255c4",
+      "accent_text": "#ffffff",
+      "border": "#cfd5df",
+      "hover": "#e3e9f5",
+      "selected": "#d3e0fb",
+      "ok": "#14702e",
+      "warning": "#9a4d00",
+      "error": "#b3261e",
+      "stale": "#8a4600",
+      "stale_background": "#fff1d6",
+      "plot_background": "#ffffff",
+      "plot_grid": "#e1e5ec",
+      "series_observed": "#33415c",
+      "series_selected": "#2255c4",
+      "series_fit": "#c62828",
+      "series_replaced": "#9a4d00",
+      "series_other": "#8b95a7"
+    },
+    "radius": { "small": 2.0, "medium": 4.0, "large": 8.0 },
+    "spacing": { "small": 4.0, "medium": 8.0, "large": 14.0, "panel_margin": 12.0, "tree_indent": 14.0 },
+    "font": { "small": 12.0, "body": 14.0, "heading": 18.0, "monospace": 13.0 }
+  },
+  "dark": {
+    "colors": {
+      "background": "#12161d",
+      "panel": "#1a202a",
+      "panel_alt": "#222a37",
+      "text": "#e6eaf2",
+      "text_muted": "#9aa5b8",
+      "accent": "#6c9bff",
+      "accent_text": "#0c1220",
+      "border": "#344054",
+      "hover": "#2a3548",
+      "selected": "#2f4570",
+      "ok": "#5fd38a",
+      "warning": "#f0a04b",
+      "error": "#ff8a80",
+      "stale": "#f0b768",
+      "stale_background": "#3a2d12",
+      "plot_background": "#161b24",
+      "plot_grid": "#2a3342",
+      "series_observed": "#c3cde0",
+      "series_selected": "#6c9bff",
+      "series_fit": "#ff7b72",
+      "series_replaced": "#f0a04b",
+      "series_other": "#6f7b90"
+    },
+    "radius": { "small": 2.0, "medium": 4.0, "large": 8.0 },
+    "spacing": { "small": 4.0, "medium": 8.0, "large": 14.0, "panel_margin": 12.0, "tree_indent": 14.0 },
+    "font": { "small": 12.0, "body": 14.0, "heading": 18.0, "monospace": 13.0 }
+  }
+}

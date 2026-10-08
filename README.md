@@ -82,3 +82,19 @@ Any other host that starts MCP servers over stdio (Pi Durable, dsh, an Apothicai
 ```sh
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"hand","version":"0"}}}' '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | caladrius-mcp
 ```
+
+## Desktop
+
+`caladrius` is the desktop application (egui on wgpu): a project tree, the worksheet, and one NCA page read from top to bottom (data, route and dose, options, results) with the concentration plot always visible beside it. Every action goes through the same engine commands as the CLI and the MCP server; the interface holds no numerical code and reads no file itself.
+
+```sh
+cargo run -p caladrius                       # open the window
+cargo run -p caladrius -- oracle/data/theoph.csv   # open it with a file to import
+cargo run -p caladrius -- --help             # usage, without a window
+```
+
+- Open a CSV with the button or drop it on the window. A preview shows the table as it will be read (separator and decimal mark detected, with the other readings listed and the checks on each: a decimal comma read as a separator, a time that goes back or repeats) before anything is imported; you can change the separator and the decimal mark there.
+- The worksheet is editable: click a cell, type a number with a point or a comma, press Enter. Columns take a role (time, concentration, subject, dose) and a unit.
+- `New analysis` opens the NCA page and runs it at once; any change of route, dose or option runs it again. The plot has a linear and a semi-log view (a zero or negative concentration is left out of the log view only, and a note says how many); click a point to add it to the terminal phase or take it out, or click a candidate row; `Back to automatic` undoes the choice. The summary comes first, with a marker and a sentence for each quality flag, then all parameters, the candidate fits and the profile on demand.
+- After an edit of the data, the analysis is marked out of date in the tree, on the page and on the plot until `Run again`.
+- Colours, radii, spacing and font sizes are the tokens of `crates/caladrius-ui/src/theme.json` (light and dark). `cargo run -p caladrius-ui --example snapshot` renders each screen to `target/snapshots/*.png` without a window.

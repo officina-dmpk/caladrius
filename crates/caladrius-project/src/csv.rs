@@ -27,6 +27,8 @@ pub struct ImportedTable {
     pub columns: Vec<Column>,
     /// The delimiter that was used.
     pub delimiter: char,
+    /// Whether a comma was read as the decimal mark.
+    pub decimal_comma: bool,
     /// Things to check: ignored text in a numeric column, roles not found, units read from
     /// headers.
     pub notes: Vec<String>,
@@ -92,6 +94,7 @@ impl ImportedTable {
         Ok(ImportedTable {
             columns,
             delimiter,
+            decimal_comma,
             notes,
         })
     }
@@ -288,13 +291,27 @@ fn key(name: &str) -> String {
 
 fn role_of(name: &str) -> Option<ColumnRole> {
     let k = key(name);
-    if k.starts_with("time") || matches!(k.as_str(), "t" | "hours" | "hour" | "hr" | "h") {
+    if k.starts_with("time")
+        || matches!(
+            k.as_str(),
+            "t" | "hours" | "hour" | "hr" | "h" | "temps" | "heures" | "heure"
+        )
+    {
         Some(ColumnRole::Time)
     } else if k.starts_with("conc") || matches!(k.as_str(), "c" | "cp" | "dv" | "cobs") {
         Some(ColumnRole::Concentration)
     } else if matches!(
         k.as_str(),
-        "subject" | "subj" | "id" | "subjectid" | "patient" | "animal" | "individual"
+        "subject"
+            | "subj"
+            | "id"
+            | "subjectid"
+            | "patient"
+            | "animal"
+            | "individual"
+            | "sujet"
+            | "individu"
+            | "volontaire"
     ) {
         Some(ColumnRole::Subject)
     } else if k.starts_with("dose") || matches!(k.as_str(), "amt" | "amount") {
@@ -355,4 +372,163 @@ fn assign_roles(columns: &mut [Column], notes: &mut Vec<String>) {
             ));
         }
     }
+}
+
+// ---- readings: the ways a file can be read, with plausibility checks (UX-IMP-01) ------------
+
+/// A problem with one way of reading a file, found by looking at what it gives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReadingCheck {
+    /// `time_not_increasing` or `duplicate_times`.
+    pub code: String,
+    /// What was found and what to do.
+    pub message: String,
+}
+
+/// One admissible way of reading a CSV: a delimiter and a decimal mark, the table they give, and
+/// what looks wrong in it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Reading {
+    /// The table this reading gives (its `delimiter` and `decimal_comma` say how).
+    pub table: ImportedTable,
+    /// Problems of the result; a reading with none is plausible.
+    pub checks: Vec<ReadingCheck>,
+}
+
+fn numbers_of(column: &Column) -> Option<&Vec<Option<f64>>> {
+    match &column.data {
+        ColumnData::Number(v) => Some(v),
+        ColumnData::Text(_) => None,
+    }
+}
+
+/// The checks on one table: within each subject the times must not go back, and must not repeat.
+fn check_table(table: &ImportedTable) -> Vec<ReadingCheck> {
+    let mut out = Vec::new();
+    let Some(time) = table
+        .columns
+        .iter()
+        .find(|c| c.role == ColumnRole::Time)
+        .and_then(numbers_of)
+    else {
+        return out;
+    };
+    let subject = table.columns.iter().find(|c| c.role == ColumnRole::Subject);
+    let label = |row: usize| subject.map_or_else(String::new, |s| s.data.text_at(row));
+    let mut groups: Vec<(String, Vec<(usize, f64)>)> = Vec::new();
+    for (row, t) in time.iter().enumerate() {
+        let Some(t) = t else { continue };
+        let key = label(row);
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, rows)) => rows.push((row, *t)),
+            None => groups.push((key, vec![(row, *t)])),
+        }
+    }
+    let of = |key: &str| {
+        if key.is_empty() {
+            String::new()
+        } else {
+            format!(" of subject {key}")
+        }
+    };
+    let mut backwards = None;
+    let mut repeated = None;
+    for (key, rows) in &groups {
+        for pair in rows.windows(2) {
+            if let [(_, a), (row, b)] = pair {
+                if b < a && backwards.is_none() {
+                    backwards = Some(format!(
+                        "time goes back at row {}{} ({b} after {a}); a profile is listed in time order",
+                        row + 1,
+                        of(key)
+                    ));
+                }
+                if b == a && repeated.is_none() {
+                    repeated = Some(format!(
+                        "time {b} appears twice at row {}{}; duplicated times are an error for an NCA (keep one row, or give them to different subjects)",
+                        row + 1,
+                        of(key)
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(message) = backwards {
+        out.push(ReadingCheck {
+            code: "time_not_increasing".to_owned(),
+            message,
+        });
+    }
+    if let Some(message) = repeated {
+        out.push(ReadingCheck {
+            code: "duplicate_times".to_owned(),
+            message,
+        });
+    }
+    out
+}
+
+/// Every admissible way of reading `bytes`: each delimiter (comma, semicolon, tab) with each
+/// decimal mark (a decimal comma only with another delimiter) that gives a table with a numeric
+/// time column and a numeric concentration column. Identical tables are listed once. The
+/// readings without a failed check come first, the default reading (what [`ImportedTable::from_csv`]
+/// does without options) before the others. Options that fix the delimiter or the decimal mark
+/// restrict the list.
+pub fn readings(bytes: &[u8], options: &CsvOptions) -> Result<Vec<Reading>> {
+    let default = ImportedTable::from_csv(bytes, options);
+    let mut tables: Vec<ImportedTable> = Vec::new();
+    let mut first_error = None;
+    match default {
+        Ok(t) => tables.push(t),
+        Err(e) => first_error = Some(e),
+    }
+    let delimiters = options.delimiter.map_or(vec![',', ';', '\t'], |d| vec![d]);
+    for d in delimiters {
+        let decimals = options.decimal_comma.map_or(
+            if d == ',' {
+                vec![false]
+            } else {
+                vec![false, true]
+            },
+            |c| vec![c],
+        );
+        for decimal_comma in decimals {
+            let candidate = CsvOptions {
+                delimiter: Some(d),
+                decimal_comma: Some(decimal_comma),
+            };
+            if let Ok(t) = ImportedTable::from_csv(bytes, &candidate) {
+                if !tables.iter().any(|x| x.columns == t.columns) {
+                    tables.push(t);
+                }
+            }
+        }
+    }
+    let usable = |t: &ImportedTable| {
+        let numeric = |role| {
+            t.columns
+                .iter()
+                .any(|c| c.role == role && numbers_of(c).is_some())
+        };
+        numeric(ColumnRole::Time) && numeric(ColumnRole::Concentration)
+    };
+    let mut out: Vec<Reading> = tables
+        .into_iter()
+        .filter(usable)
+        .map(|table| {
+            let checks = check_table(&table);
+            Reading { table, checks }
+        })
+        .collect();
+    if out.is_empty() {
+        return Err(first_error.unwrap_or_else(|| {
+            ProjectError::new(
+                "csv_no_reading",
+                "no reading of the file gives a numeric time column and a numeric concentration column; check the header names, the separator and the decimal mark",
+            )
+        }));
+    }
+    // Stable: plausible readings first, each group in the order found (the default first).
+    out.sort_by_key(|r| !r.checks.is_empty());
+    Ok(out)
 }

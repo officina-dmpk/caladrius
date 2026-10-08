@@ -1,10 +1,22 @@
 [package]
 name = "caladrius-ui"
-description = "Layer L3: egui interface (empty placeholder: no UI framework dependency before step 5)."
+description = "Layer L3: egui interface, driven only through the commands of caladrius-engine."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+caladrius-engine = { path = "../caladrius-engine" }
+egui = { version = "0.32.3", default-features = false, features = ["default_fonts"] }
+egui_plot = "0.33.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+# Offscreen rendering of the screens to PNG (golden rule 8): wgpu draws the egui output without a window.
+egui_kittest = { version = "0.32.3", features = ["wgpu"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true

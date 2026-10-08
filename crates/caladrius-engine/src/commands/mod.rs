@@ -31,6 +31,7 @@ pub(crate) struct CommandDef {
 /// In table order: the examples are a runnable script (`tests/`), so a command comes after the
 /// ones that create what its example refers to.
 pub(crate) const COMMANDS: &[CommandDef] = &[
+    data::PREVIEW,
     data::IMPORT,
     data::DESCRIBE,
     data::SET_COLUMN,

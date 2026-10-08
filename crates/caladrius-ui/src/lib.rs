@@ -5,4 +5,26 @@
     clippy::todo,
     clippy::unreachable
 )]
-//! Layer L3: egui interface (empty placeholder: no UI framework dependency before step 5).
+//! Layer L3: the egui interface. It talks to the engine only through the commands of
+//! `caladrius-engine`, holds no numerical code and reads no file: the program around it passes
+//! the bytes of a CSV file in ([`UiApp::load_csv`]) and asks for a file picker ([`Request`]).
+//!
+//! - [`theme`]: the tokens (colours, radii, spacing, font sizes) read from `theme.json`, light and dark.
+//! - [`model`]: typed views of the engine's JSON answers.
+//! - [`plotdata`]: what the profile plot draws, including the safe semi-log view.
+//! - [`app`]: the application, its project tree and its screens ([`import`], [`sheet`], [`nca`]).
+
+pub mod app;
+pub mod fmt;
+pub mod import;
+pub mod model;
+pub mod nca;
+pub mod plotdata;
+pub mod sheet;
+pub mod theme;
+
+pub use app::{Action, Request, Selection, UiApp, UiState};
+
+#[cfg(test)]
+mod tests;
+pub use theme::{ThemeMode, Tokens};

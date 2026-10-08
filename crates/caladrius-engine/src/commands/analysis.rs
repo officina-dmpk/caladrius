@@ -24,7 +24,7 @@ use crate::schema::{
 /// The analysis as a machine and a person read it.
 pub(crate) fn view(project: &Project, id: AnalysisId) -> Result<Value, CommandError> {
     let a = project.analysis(id)?;
-    respond(&json!({
+    let mut value = respond(&json!({
         "id": a.id(),
         "label": project.label_of(id)?,
         "name": a.name(),
@@ -32,7 +32,42 @@ pub(crate) fn view(project: &Project, id: AnalysisId) -> Result<Value, CommandEr
         "spec": a.spec(),
         "status": project.status(id)?,
         "result": a.result(),
-    }))
+    }))?;
+    add_flag_messages(a.result(), &mut value);
+    Ok(value)
+}
+
+/// Writes the sentence of each quality flag next to the flags (`flag_messages`, in the same
+/// order) and the sentence of each parameter that was not calculated (`not_calculated_messages`,
+/// by name), so a client shows what to check without holding the wording itself.
+fn add_flag_messages(result: Option<&AnalysisResult>, view: &mut Value) {
+    match result {
+        Some(AnalysisResult::Nca { subjects }) => {
+            for (i, s) in subjects.iter().enumerate() {
+                let Some(ok) = s.outcome.ok() else { continue };
+                let messages: Vec<String> = ok.flags().iter().map(ToString::to_string).collect();
+                // And the sentence of each parameter that was not calculated.
+                let reasons: std::collections::BTreeMap<&str, String> = ok
+                    .parameters()
+                    .iter()
+                    .filter_map(|p| p.value.reason().map(|r| (p.name.as_str(), r.to_string())))
+                    .collect();
+                if let Some(slot) = view.pointer_mut(&format!("/result/subjects/{i}")) {
+                    slot["flag_messages"] = json!(messages);
+                    slot["not_calculated_messages"] = json!(reasons);
+                }
+            }
+        }
+        Some(AnalysisResult::Fit(run)) => {
+            if let Some(ok) = run.outcome.ok() {
+                let messages: Vec<String> = ok.flags().iter().map(ToString::to_string).collect();
+                if let Some(slot) = view.pointer_mut("/result") {
+                    slot["flag_messages"] = json!(messages);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Fails early when `analysis` does not exist or is of another kind.
