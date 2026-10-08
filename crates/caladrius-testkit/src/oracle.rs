@@ -82,8 +82,9 @@ pub struct PknaOptions {
     /// `"lin up/log down"` or `"linear"`.
     #[serde(rename = "auc.method")]
     pub auc_method: String,
+    /// What PKNCA does with a missing concentration: drop it, or replace it by a number.
     #[serde(rename = "conc.na")]
-    pub conc_na: String,
+    pub conc_na: NaRule,
     #[serde(rename = "conc.blq")]
     pub conc_blq: BlqHandling,
     #[serde(rename = "first.tmax")]
@@ -104,12 +105,84 @@ pub struct PknaOptions {
     pub max_missing: f64,
 }
 
-/// Handling of below-limit concentrations (zeros) at the first, middle and last positions.
+/// What PKNCA does with the zeros of one class: `"keep"`, `"drop"`, or a number that replaces them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BlqRule {
+    Keep,
+    Drop,
+    Set(f64),
+}
+
+impl<'de> Deserialize<'de> for BlqRule {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Text(String),
+            Number(f64),
+        }
+        match Raw::deserialize(deserializer)? {
+            Raw::Text(t) if t == "keep" => Ok(BlqRule::Keep),
+            Raw::Text(t) if t == "drop" => Ok(BlqRule::Drop),
+            Raw::Text(t) => Err(serde::de::Error::custom(format!(
+                "unknown BLQ rule {t:?}: expected \"keep\", \"drop\" or a number"
+            ))),
+            Raw::Number(x) => Ok(BlqRule::Set(x)),
+        }
+    }
+}
+
+/// What PKNCA does with a missing concentration: `"drop"`, or a number that replaces it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NaRule {
+    Drop,
+    Replace(f64),
+}
+
+impl<'de> Deserialize<'de> for NaRule {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Text(String),
+            Number(f64),
+        }
+        match Raw::deserialize(deserializer)? {
+            Raw::Text(t) if t == "drop" => Ok(NaRule::Drop),
+            Raw::Text(t) => Err(serde::de::Error::custom(format!(
+                "unknown missing-value rule {t:?}: expected \"drop\" or a number"
+            ))),
+            Raw::Number(x) => Ok(NaRule::Replace(x)),
+        }
+    }
+}
+
+/// Handling of below-limit concentrations (zeros): either by position relative to the quantifiable
+/// points (`first`, `middle`, `last`) or by position relative to Tmax (`before.tmax`,
+/// `after.tmax`). A case sets one family or the other; the classes it does not name are `None`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct BlqHandling {
-    pub first: String,
-    pub middle: String,
-    pub last: String,
+    #[serde(default)]
+    pub first: Option<BlqRule>,
+    #[serde(default)]
+    pub middle: Option<BlqRule>,
+    #[serde(default)]
+    pub last: Option<BlqRule>,
+    #[serde(default, rename = "before.tmax")]
+    pub before_tmax: Option<BlqRule>,
+    #[serde(default, rename = "after.tmax")]
+    pub after_tmax: Option<BlqRule>,
+}
+
+/// Engine settings a case needs that PKNCA has no option for. Absent in the older cases.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct EngineHints {
+    /// Start policy: `"none"`, `"zero"` or `"c0"`. Absent: the engine's default.
+    #[serde(default)]
+    pub start: Option<String>,
+    /// Negative-concentration policy: `"error"`, `"allow"` or `"set_zero"`. Absent: the default.
+    #[serde(default)]
+    pub negative: Option<String>,
 }
 
 /// Units of a case.
@@ -137,8 +210,14 @@ pub struct CaseOptions {
     pub dataset: String,
     /// Path of the dataset CSV relative to `oracle/`.
     pub data_file: String,
-    /// `"extravascular"` or `"iv_bolus"`.
+    /// `"extravascular"`, `"iv_bolus"` or `"iv_infusion"` (then `infusion_duration` is set).
     pub route: String,
+    /// Duration of the infusion, in the time unit of the profile (`iv_infusion` only).
+    #[serde(default)]
+    pub infusion_duration: Option<f64>,
+    /// Engine settings with no PKNCA counterpart (edge cases, task T-012).
+    #[serde(default)]
+    pub engine: EngineHints,
     pub units: Units,
     pub versions: Versions,
     pub pknca_options: PknaOptions,
@@ -224,7 +303,12 @@ pub fn parse_dataset(name: &str, path: &str, text: &str) -> Result<Dataset, Orac
             .parse()
             .map_err(|_| csv_err(path, line, format!("subject is not an integer: {s:?}")))?;
         let time = number(path, line, t, "time")?;
-        let conc = number(path, line, c, "conc")?;
+        // An empty concentration is a missing value (NaN), as in the edge-case profiles.
+        let conc = if c.trim().is_empty() {
+            f64::NAN
+        } else {
+            number(path, line, c, "conc")?
+        };
         let dose = number(path, line, d, "dose")?;
         match profiles.last_mut() {
             Some(p) if p.subject == subject => {
@@ -511,7 +595,10 @@ mod tests {
         assert_eq!(theoph.options.pknca_options.auc_method, "lin up/log down");
         assert_eq!(theoph.options.pknca_options.min_hl_points, 3);
         assert!(!theoph.options.pknca_options.allow_tmax_in_half_life);
-        assert_eq!(theoph.options.pknca_options.conc_blq.middle, "drop");
+        assert_eq!(
+            theoph.options.pknca_options.conc_blq.middle,
+            Some(BlqRule::Drop)
+        );
         let indo = load_case("indometh_linear").unwrap();
         assert_eq!(indo.dataset.profiles.len(), 6);
         assert!(

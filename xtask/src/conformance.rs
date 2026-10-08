@@ -16,8 +16,9 @@ use std::path::Path;
 
 use caladrius_nca::{
     AucMethod, BlqAction, BlqPolicy, LambdaZOptions, MissingPolicy, NcaInput, NcaOptions,
-    NcaResult, Route, TmaxTie, run as run_nca,
+    NcaResult, NegativePolicy, Route, StartPolicy, TmaxTie, run as run_nca,
 };
+use caladrius_testkit::oracle::{BlqRule, NaRule};
 use caladrius_testkit::{OracleCase, Tolerance, list_cases, load_case};
 
 use crate::console;
@@ -70,17 +71,16 @@ fn percent(count: Count) -> f64 {
     }
 }
 
-fn blq_action(text: &str) -> Result<BlqAction> {
-    match text {
-        "keep" => Ok(BlqAction::Keep),
-        "drop" => Ok(BlqAction::Drop),
-        other => Err(XtaskError::new(format!(
-            "unknown BLQ action {other:?} in the oracle options"
-        ))),
+fn blq_action(rule: BlqRule) -> BlqAction {
+    match rule {
+        BlqRule::Keep => BlqAction::Keep,
+        BlqRule::Drop => BlqAction::Drop,
+        BlqRule::Set(x) => BlqAction::Set(x),
     }
 }
 
-/// The engine options matching the PKNCA options recorded with the case.
+/// The engine options matching the PKNCA options recorded with the case, and the engine hints the
+/// case file carries for what PKNCA has no option for (start and negative-value policies).
 fn options_of(case: &OracleCase) -> Result<NcaOptions> {
     let pk = &case.options.pknca_options;
     let unknown = |what: &str, value: &str| {
@@ -89,23 +89,61 @@ fn options_of(case: &OracleCase) -> Result<NcaOptions> {
             case.name
         ))
     };
+    let incomplete = || {
+        XtaskError::new(format!(
+            "{}: the BLQ rule of the oracle options names neither first/middle/last nor before/after Tmax completely",
+            case.name
+        ))
+    };
     let auc_method = match pk.auc_method.as_str() {
         "linear" => AucMethod::Linear,
         "lin up/log down" => AucMethod::LinUpLogDown,
         other => return Err(unknown("AUC method", other)),
     };
-    let missing = match pk.conc_na.as_str() {
-        "drop" => MissingPolicy::Drop,
-        other => return Err(unknown("missing-value rule", other)),
+    let missing = match pk.conc_na {
+        NaRule::Drop => MissingPolicy::Drop,
+        NaRule::Replace(x) => MissingPolicy::Replace(x),
+    };
+    let rule = &pk.conc_blq;
+    let blq = match (
+        rule.first,
+        rule.middle,
+        rule.last,
+        rule.before_tmax,
+        rule.after_tmax,
+    ) {
+        (Some(first), Some(middle), Some(last), None, None) => BlqPolicy::Position {
+            first: blq_action(first),
+            middle: blq_action(middle),
+            last: blq_action(last),
+        },
+        (None, None, None, Some(before), Some(after)) => BlqPolicy::Tmax {
+            before: blq_action(before),
+            after: blq_action(after),
+        },
+        _ => return Err(incomplete()),
+    };
+    let hints = &case.options.engine;
+    let start = match hints.start.as_deref() {
+        None => StartPolicy::default(),
+        Some("none") => StartPolicy::None,
+        Some("zero") => StartPolicy::Zero,
+        Some("c0") => StartPolicy::C0,
+        Some(other) => return Err(unknown("start policy", other)),
+    };
+    let negative = match hints.negative.as_deref() {
+        None => NegativePolicy::default(),
+        Some("error") => NegativePolicy::Error,
+        Some("allow") => NegativePolicy::Allow,
+        Some("set_zero") => NegativePolicy::SetZero,
+        Some(other) => return Err(unknown("negative-value policy", other)),
     };
     Ok(NcaOptions {
         auc_method,
         missing,
-        blq: BlqPolicy::Position {
-            first: blq_action(&pk.conc_blq.first)?,
-            middle: blq_action(&pk.conc_blq.middle)?,
-            last: blq_action(&pk.conc_blq.last)?,
-        },
+        blq,
+        start,
+        negative,
         tmax_tie: if pk.first_tmax {
             TmaxTie::First
         } else {
@@ -121,10 +159,15 @@ fn options_of(case: &OracleCase) -> Result<NcaOptions> {
 }
 
 fn route_of(case: &OracleCase) -> Result<Route> {
-    match case.options.route.as_str() {
-        "extravascular" => Ok(Route::Extravascular),
-        "iv_bolus" => Ok(Route::IvBolus),
-        other => Err(XtaskError::new(format!(
+    match (case.options.route.as_str(), case.options.infusion_duration) {
+        ("extravascular", _) => Ok(Route::Extravascular),
+        ("iv_bolus", _) => Ok(Route::IvBolus),
+        ("iv_infusion", Some(duration)) => Ok(Route::IvInfusion { duration }),
+        ("iv_infusion", None) => Err(XtaskError::new(format!(
+            "{}: route iv_infusion without an infusion_duration in the oracle options",
+            case.name
+        ))),
+        (other, _) => Err(XtaskError::new(format!(
             "{}: unknown route {other:?} in the oracle options",
             case.name
         ))),
@@ -696,12 +739,16 @@ mod tests {
     }
 
     #[test]
-    fn every_public_case_is_fully_validated() {
+    fn every_public_case_is_fully_validated_and_every_edge_case_runs() {
         for name in list_cases().unwrap() {
             let report = evaluate(&load_case(&name).unwrap()).unwrap();
             let total = report.total();
             assert!(report.errors.is_empty(), "{name}: {:?}", report.errors);
-            assert_eq!(total.validated, total.expected, "{name}");
+            // The edge cases (task T-012) record what the engine does not yet reproduce: their
+            // floors go up as the engine improves, but they are not required to be complete.
+            if !name.starts_with("edge_") {
+                assert_eq!(total.validated, total.expected, "{name}");
+            }
         }
     }
 }

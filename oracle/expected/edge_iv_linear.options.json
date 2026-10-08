@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "case": "edge_iv_linear",
+  "dataset": "edge_iv",
+  "data_file": "data/edge_iv.csv",
+  "generated_by": "oracle/scripts/nca_pknca.R",
+  "route": "iv_bolus",
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "dose": "25 mg IV bolus (test constant)",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "PKNCA": "0.12.1",
+    "jsonlite": "2.0.0"
+  },
+  "pknca_options": {
+    "conc.na": "drop",
+    "conc.blq": {
+      "first": "keep",
+      "middle": "drop",
+      "last": "keep"
+    },
+    "first.tmax": true,
+    "allow.tmax.in.half.life": false,
+    "min.hl.points": 3,
+    "adj.r.squared.factor": 0.0001,
+    "min.hl.r.squared": 0.9,
+    "min.span.ratio": 2,
+    "max.aucinf.pext": 20,
+    "max.missing": 0.5,
+    "auc.method": "linear"
+  },
+  "pknca_dose_route": "intravascular",
+  "interval": {
+    "start": 0,
+    "end": "Inf"
+  },
+  "parameter_notes": {
+    "aucpext": "percentage of AUC(0-inf) that is extrapolated, in percent",
+    "lambda.z": "1/h; selected by PKNCA best adjusted R squared among the last 3 or more points, Tmax excluded",
+    "half.life": "ln(2) / lambda.z, in h",
+    "mrt": "extravascular: mrt.obs/mrt.pred = AUMC/AUC (no absorption-time correction); IV: mrt.iv.obs/mrt.iv.pred",
+    "cl": "dose / AUC(0-inf); this is CL/F for the oral case",
+    "vz": "dose / (lambda.z * AUC(0-inf)); this is Vz/F for the oral case"
+  },
+  "preprocessing": [
+    "none: the profile is given to PKNCA as it is in the data file; no point is added"
+  ],
+  "n_subjects": 3,
+  "parameters": ["c0", "cmax", "tmax", "tfirst", "tlast", "clast.obs", "lambda.z", "r.squared", "adj.r.squared", "lambda.z.time.first", "lambda.z.time.last", "lambda.z.n.points", "clast.pred", "half.life", "span.ratio", "auclast", "aucall", "aumclast", "aumcall", "aucinf.obs", "aucinf.pred", "aumcinf.obs", "aumcinf.pred", "aucpext.obs", "aucpext.pred", "aumcpext.obs", "aumcpext.pred", "cl.obs", "cl.pred", "mrt.iv.obs", "mrt.iv.pred", "mrt.iv.last", "vz.obs", "vz.pred", "vss.iv.obs", "vss.iv.pred", "vss.iv.last", "vss.obs", "vss.pred", "aucivlast", "aucivall", "aucivinf.obs", "aucivinf.pred", "aucivpbextlast", "aucivpbextall", "aucivpbextinf.obs", "aucivpbextinf.pred", "cmax.dn", "clast.obs.dn", "auclast.dn", "aucall.dn", "aucinf.obs.dn", "aucinf.pred.dn", "aumclast.dn", "aumcall.dn", "aumcinf.obs.dn", "aumcinf.pred.dn"],
+  "n_values": 171,
+  "n_na": 0,
+  "case_note": "the same profiles with the linear rule",
+  "engine": {
+    "start": "none"
+  },
+  "derived_parameters": {
+    "aumcpext.obs": "100 * (1 - aumclast / aumcinf.obs), computed by the script: PKNCA has no such parameter",
+    "aumcpext.pred": "100 * (1 - aumclast / aumcinf.pred), computed by the script: PKNCA has no such parameter"
+  }
+}

@@ -18,6 +18,10 @@
 # profiles of oracle/data/synthetic_lz.csv (read, never written, by this script); they
 # settle the lambda_z open items O-01 and O-02 of specs/nca.md. A case may override
 # PKNCA options with the `options` field of its entry in `cases`.
+# Edge-case cases (task T-012), from the hand-made profiles oracle/data/edge_*.csv: BLQ policies,
+# missing and negative values, IV infusion, Tlag, dose-normalised values, percent
+# back-extrapolated, MRT to Tlast, plain Vss, percent AUMC extrapolated. They are run on the
+# profile as given (no added C0 point); see oracle/data/README.md.
 # Every option that can change a number is set explicitly below; none relies on a
 # PKNCA default. Never edit the generated files by hand.
 
@@ -99,6 +103,12 @@ read_profile <- function(path) {
 th <- read_profile(file.path(data_dir, "theoph.csv"))
 im <- read_profile(file.path(data_dir, "indometh.csv"))
 syn <- read_profile(file.path(data_dir, "synthetic_lz.csv"))
+edge_blq <- read_profile(file.path(data_dir, "edge_blq.csv"))
+edge_missing <- read_profile(file.path(data_dir, "edge_missing.csv"))
+edge_negative <- read_profile(file.path(data_dir, "edge_negative.csv"))
+edge_oral <- read_profile(file.path(data_dir, "edge_oral.csv"))
+edge_iv <- read_profile(file.path(data_dir, "edge_iv.csv"))
+edge_infusion <- read_profile(file.path(data_dir, "edge_infusion.csv"))
 
 # ---------------------------------------------------------------- PKNCA run
 param_oral <- c(
@@ -121,7 +131,15 @@ param_iv <- c(
   "vss.iv.obs", "vss.iv.pred"
 )
 
-run_pknca <- function(profile, route, auc_method, params, option_overrides = list()) {
+# Options of a case: the explicit base, overridden by the case. A `conc.blq` override replaces the
+# whole rule (merging would leave the first/middle/last classes next to before/after Tmax).
+merge_options <- function(option_overrides) {
+  opts <- modifyList(base_options, option_overrides)
+  if ("conc.blq" %in% names(option_overrides)) opts$conc.blq <- option_overrides$conc.blq
+  opts
+}
+
+run_pknca <- function(profile, route, auc_method, params, option_overrides = list(), duration = 0) {
   if ("excl_hl" %in% names(profile)) {
     conc <- PKNCAconc(profile[, c("subject", "time", "conc", "excl_hl")], conc ~ time | subject,
                       exclude_half.life = "excl_hl")
@@ -130,10 +148,15 @@ run_pknca <- function(profile, route, auc_method, params, option_overrides = lis
   }
   dose_rows <- profile[!duplicated(profile$subject), c("subject", "dose")]
   dose_rows$time <- 0
-  dose <- PKNCAdose(dose_rows, dose ~ time | subject, route = route)
+  if (duration > 0) {
+    dose_rows$duration <- duration
+    dose <- PKNCAdose(dose_rows, dose ~ time | subject, route = route, duration = "duration")
+  } else {
+    dose <- PKNCAdose(dose_rows, dose ~ time | subject, route = route)
+  }
   iv <- data.frame(start = 0, end = Inf)
   for (p in params) iv[[p]] <- TRUE
-  opts <- modifyList(base_options, option_overrides)
+  opts <- merge_options(option_overrides)
   opts$auc.method <- auc_method
   d <- PKNCAdata(conc, dose, intervals = iv, options = opts)
   res <- suppressWarnings(as.data.frame(pk.nca(d)))
@@ -182,6 +205,100 @@ build_case <- function(profile, route, auc_method, params, option_overrides = li
   )
 }
 
+# ---------------------------------------------------------------- edge-case parameter lists
+# `aumcpext.*` are not PKNCA parameters: the script derives them from PKNCA's aumclast and
+# aumcinf (NCA-EXT-03b: 100 * (1 - AUMClast / AUMCinf)), and says so in the options file.
+param_dn <- c("cmax.dn", "clast.obs.dn", "auclast.dn", "aucall.dn", "aucinf.obs.dn",
+              "aucinf.pred.dn", "aumclast.dn", "aumcall.dn", "aumcinf.obs.dn", "aumcinf.pred.dn")
+derived_aumcpext <- c("aumcpext.obs", "aumcpext.pred")
+param_edge_core <- c(
+  "cmax", "tmax", "tfirst", "tlast", "clast.obs",
+  "lambda.z", "r.squared", "adj.r.squared", "lambda.z.time.first",
+  "lambda.z.time.last", "lambda.z.n.points", "clast.pred", "half.life", "span.ratio",
+  "auclast", "aucall", "aumclast", "aumcall",
+  "aucinf.obs", "aucinf.pred", "aumcinf.obs", "aumcinf.pred",
+  "aucpext.obs", "aucpext.pred", derived_aumcpext
+)
+param_edge_blq <- c(param_edge_core, "tlag", "cl.obs", "cl.pred", "mrt.obs", "mrt.pred", "mrt.last",
+                    "vz.obs", "vz.pred")
+param_edge_oral <- c(param_edge_core, "tlag", "cl.obs", "cl.pred", "mrt.obs", "mrt.pred", "mrt.last",
+                     "vz.obs", "vz.pred", "vss.obs", "vss.pred", param_dn)
+param_edge_iv <- c(
+  "c0", param_edge_core,
+  "cl.obs", "cl.pred", "mrt.iv.obs", "mrt.iv.pred", "mrt.iv.last", "vz.obs", "vz.pred",
+  "vss.iv.obs", "vss.iv.pred", "vss.iv.last", "vss.obs", "vss.pred",
+  "aucivlast", "aucivall", "aucivinf.obs", "aucivinf.pred",
+  "aucivpbextlast", "aucivpbextall", "aucivpbextinf.obs", "aucivpbextinf.pred", param_dn
+)
+param_edge_infusion <- c(
+  param_edge_core,
+  "cl.obs", "cl.pred", "mrt.iv.obs", "mrt.iv.pred", "mrt.iv.last", "vz.obs", "vz.pred",
+  "vss.iv.obs", "vss.iv.pred", "vss.iv.last", "vss.obs", "vss.pred", param_dn
+)
+param_edge_negative <- c(param_edge_core, "cl.obs", "mrt.obs", "vz.obs")
+
+edge_note <- "100 mg oral (test constant)"
+blq_case <- function(name, rule, note) {
+  list(name = name, dataset = "edge_blq", profile = edge_blq, route = "extravascular",
+       auc_method = "lin up/log down", params = param_edge_blq, dose_note = edge_note,
+       options = list(conc.blq = rule), direct = TRUE,
+       engine = list(start = "none"), case_note = note)
+}
+missing_case <- function(name, rule, note) {
+  list(name = name, dataset = "edge_missing", profile = edge_missing, route = "extravascular",
+       auc_method = "lin up/log down", params = param_edge_core, dose_note = edge_note,
+       options = list(conc.na = rule), direct = TRUE,
+       engine = list(start = "none"), case_note = note)
+}
+
+edge_cases <- list(
+  blq_case("edge_blq_default", list(first = "keep", middle = "drop", last = "keep"),
+           "PKNCA default policy written out: zeros before the first positive kept, interior zeros dropped, trailing zeros kept"),
+  blq_case("edge_blq_keep", list(first = "keep", middle = "keep", last = "keep"),
+           "every zero kept"),
+  blq_case("edge_blq_last_drop", list(first = "keep", middle = "keep", last = "drop"),
+           "interior zeros kept, trailing zeros dropped"),
+  blq_case("edge_blq_first_drop", list(first = "drop", middle = "drop", last = "drop"),
+           "every zero dropped, including the one at the dose time: no AUC without a start concentration"),
+  blq_case("edge_blq_set", list(first = "keep", middle = 0.3, last = 0.05),
+           "interior zeros replaced by 0.3, trailing zeros by 0.05, leading zeros kept"),
+  blq_case("edge_blq_tmax", list(before.tmax = "keep", after.tmax = "drop"),
+           "classes by position relative to Tmax: zeros before Tmax kept, zeros from Tmax on dropped"),
+  missing_case("edge_missing_drop", "drop", "missing concentrations dropped with their times"),
+  missing_case("edge_missing_replace", 1,
+               "missing concentrations replaced by 1 before any other step"),
+  list(name = "edge_negative_linear", dataset = "edge_negative", profile = edge_negative,
+       route = "extravascular", auc_method = "linear", params = param_edge_negative,
+       dose_note = edge_note, options = list(), direct = TRUE,
+       engine = list(start = "none", negative = "allow"),
+       case_note = "negative concentrations kept (PKNCA only warns); linear rule, because lin up/log down gives NaN areas on a negative value"),
+  list(name = "edge_oral", dataset = "edge_oral", profile = edge_oral, route = "extravascular",
+       auc_method = "lin up/log down", params = param_edge_oral,
+       dose_note = "dose per subject, 20 to 250 mg (test constants)", options = list(),
+       direct = TRUE, engine = list(start = "none"),
+       case_note = "Tlag, MRT to Tlast, plain Vss, dose-normalised values and percent AUMC extrapolated on oral profiles with and without a lag"),
+  list(name = "edge_iv", dataset = "edge_iv", profile = edge_iv, route = "intravascular",
+       auc_method = "lin up/log down", params = param_edge_iv,
+       dose_note = "25 mg IV bolus (test constant)", options = list(), direct = TRUE,
+       engine = list(start = "none"),
+       case_note = "IV bolus with a record at the dose time (observed C0, or a zero placeholder): C0 methods, percent back-extrapolated, IV AUC"),
+  list(name = "edge_iv_linear", dataset = "edge_iv", profile = edge_iv, route = "intravascular",
+       auc_method = "linear", params = param_edge_iv,
+       dose_note = "25 mg IV bolus (test constant)", options = list(), direct = TRUE,
+       engine = list(start = "none"),
+       case_note = "the same profiles with the linear rule"),
+  list(name = "edge_infusion", dataset = "edge_infusion", profile = edge_infusion,
+       route = "intravascular", duration = 2, auc_method = "lin up/log down",
+       params = param_edge_infusion, dose_note = "dose per subject, 50 to 200 mg (test constants), infused over 2 h",
+       options = list(), direct = TRUE, engine = list(start = "none"),
+       case_note = "IV infusion of 2 h: MRT and Vss corrected for the infusion duration, lambda_z only after the end of the infusion"),
+  list(name = "edge_infusion_linear", dataset = "edge_infusion", profile = edge_infusion,
+       route = "intravascular", duration = 2, auc_method = "linear",
+       params = param_edge_infusion, dose_note = "dose per subject, 50 to 200 mg (test constants), infused over 2 h",
+       options = list(), direct = TRUE, engine = list(start = "none"),
+       case_note = "the same infusion profiles with the linear rule")
+)
+
 cases <- list(
   list(name = "theoph", dataset = "theoph", profile = th, route = "extravascular",
        auc_method = "lin up/log down", params = param_oral,
@@ -202,6 +319,7 @@ cases <- list(
        auc_method = "lin up/log down", params = param_oral,
        dose_note = "100 mg oral (test constant)", options = list(adj.r.squared.factor = 1e-3))
 )
+cases <- c(cases, edge_cases)
 
 versions <- list(
   R = R.version.string,
@@ -211,18 +329,38 @@ versions <- list(
 
 for (cs in cases) {
   overrides <- if (is.null(cs$options)) list() else cs$options
-  res <- build_case(cs$profile, cs$route, cs$auc_method, cs$params, overrides)
+  duration <- if (is.null(cs$duration)) 0 else cs$duration
+  subjects <- sort(unique(cs$profile$subject))
+  if (isTRUE(cs$direct)) {
+    pknca_params <- setdiff(cs$params, derived_aumcpext)
+    res <- run_pknca(cs$profile, cs$route, cs$auc_method, pknca_params, overrides, duration)
+    # A parameter PKNCA does not return for a subject (for example Tlag of a profile that never
+    # rises) is NA; the grid is completed so that every subject has every parameter.
+    grid <- expand.grid(subject = subjects, parameter = pknca_params, stringsAsFactors = FALSE)
+    grid$value <- res$value[match(paste(grid$subject, grid$parameter), paste(res$subject, res$parameter))]
+    res <- grid
+    if (any(derived_aumcpext %in% cs$params)) {
+      pick <- function(name) res$value[match(paste(subjects, name), paste(res$subject, res$parameter))]
+      extra <- rbind(
+        data.frame(subject = subjects, parameter = "aumcpext.obs",
+                   value = 100 * (1 - pick("aumclast") / pick("aumcinf.obs"))),
+        data.frame(subject = subjects, parameter = "aumcpext.pred",
+                   value = 100 * (1 - pick("aumclast") / pick("aumcinf.pred"))))
+      res <- rbind(res, extra)
+    }
+  } else {
+    res <- build_case(cs$profile, cs$route, cs$auc_method, cs$params, overrides)
+  }
   res$parameter <- factor(res$parameter, levels = cs$params)
   res <- res[order(res$subject, res$parameter), ]
   res$parameter <- as.character(res$parameter)
-  subjects <- sort(unique(cs$profile$subject))
   stopifnot(nrow(res) == length(subjects) * length(cs$params))
 
   write_lines_lf(c("subject,parameter,value",
                    sprintf("%d,%s,%s", res$subject, res$parameter, num(res$value))),
                  file.path(exp_dir, paste0(cs$name, ".csv")))
 
-  opts <- modifyList(base_options, overrides)
+  opts <- merge_options(overrides)
   opts$auc.method <- cs$auc_method
   meta <- list(
     schema = 1L,
@@ -230,7 +368,7 @@ for (cs in cases) {
     dataset = cs$dataset,
     data_file = paste0("data/", cs$dataset, ".csv"),
     generated_by = "oracle/scripts/nca_pknca.R",
-    route = if (cs$route == "extravascular") "extravascular" else "iv_bolus",
+    route = if (cs$route == "extravascular") "extravascular" else if (duration > 0) "iv_infusion" else "iv_bolus",
     units = list(dose = "mg", time = "h", concentration = "mg/L"),
     dose = cs$dose_note,
     versions = versions,
@@ -245,7 +383,9 @@ for (cs in cases) {
       cl = "dose / AUC(0-inf); this is CL/F for the oral case",
       vz = "dose / (lambda.z * AUC(0-inf)); this is Vz/F for the oral case"
     ),
-    preprocessing = if (cs$route == "extravascular") {
+    preprocessing = if (isTRUE(cs$direct)) {
+      list("none: the profile is given to PKNCA as it is in the data file; no point is added")
+    } else if (cs$route == "extravascular") {
       list("none: every subject has a sample at the dose time")
     } else {
       list(
@@ -259,6 +399,17 @@ for (cs in cases) {
     n_values = nrow(res),
     n_na = sum(is.na(res$value))
   )
+  if (isTRUE(cs$direct)) {
+    # Fields of the edge-case cases only (the older options files do not have them).
+    meta$case_note <- cs$case_note
+    if (duration > 0) meta$infusion_duration <- duration
+    meta$engine <- cs$engine
+    if (any(derived_aumcpext %in% cs$params)) {
+      meta$derived_parameters <- list(
+        "aumcpext.obs" = "100 * (1 - aumclast / aumcinf.obs), computed by the script: PKNCA has no such parameter",
+        "aumcpext.pred" = "100 * (1 - aumclast / aumcinf.pred), computed by the script: PKNCA has no such parameter")
+    }
+  }
   write_lines_lf(toJSON(meta, pretty = TRUE, auto_unbox = TRUE, digits = NA, null = "null"),
                  file.path(exp_dir, paste0(cs$name, ".options.json")))
   cat(sprintf("%-16s %3d subjects, %4d values (%d NA)\n", cs$name, length(subjects), nrow(res), sum(is.na(res$value))))

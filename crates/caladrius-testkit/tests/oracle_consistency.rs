@@ -156,6 +156,11 @@ fn every_public_case_is_reproduced_by_independent_arithmetic() {
     let cases = list_cases().expect("list cases");
     assert!(!cases.is_empty());
     for name in cases {
+        // The edge cases (task T-012) need cleaning, infusion and other rules this derivation does
+        // not have; `edge_consistency.rs` cross-checks them.
+        if name.starts_with("edge_") {
+            continue;
+        }
         let case = load_case(&name).expect("load case");
         let derived = derive(&case);
         assert!(
