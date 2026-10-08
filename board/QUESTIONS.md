@@ -116,3 +116,17 @@ If you ever use a BLQ rule that replaces trailing values by a number in the refe
 Decision taken meanwhile: the PKNCA-compatible default stays, with the flag; a consistent alternative is not offered (O-18).
 
 Answer: _pending_.
+
+## Q-011 (2026-10-08, oracle): how to drop the exports of the reference software
+
+The private oracle (task T-019) reads `private/exports/td1/` and the coursework data in `private/coursework/`. Nothing there yet except the data. When you export, please:
+
+1. Export the NCA "Final Parameters" table and the "Summary" table as text (CSV or tab-separated; the decimal separator and the delimiter do not matter), once for each of the two AUC methods (linear trapezoid with linear interpolation; linear-up/log-down), with the settings of the exercise otherwise left at the defaults.
+2. Put the four files in `private/exports/td1/`. Name them so that the name says the table and the method, for example "final parameters linear.csv", "summary linear.csv", "final parameters lin up log down.csv", "summary lin up log down.csv". If the names are something else, add `private/exports/td1/manifest.json`: a list of `{"file": "<name>", "method": "linear" or "lin_up_log_down", "table": "final" or "summary"}`.
+3. Export with the displayed precision you want compared: the test accepts a value when the engine's value, rounded to the number of decimals written in the export, is the written number. A table exported with more digits is a stricter test.
+
+What the loader assumes (all `assumed` until the first export is read): a table with a header row; either one row per parameter (a name column and a value column) or one row per profile or statistic (parameter names as column headers, an optional units row under them, the row labelled mean used for a summary of one profile); export parameter names are mapped to the project's names by a small table in `crates/caladrius-testkit/src/private.rs` (`canonical_name`); a name it does not know is counted as "not mapped", never as a failure.
+
+Decision taken meanwhile: with no export in the folder, the private tests print a "SKIPPED" line with this explanation and pass; `cargo xtask conformance` prints private counts on the console when exports exist and writes them (counts only) into `docs/conformance.md` only with `--private`, because publishing a numeric comparison with the reference software is your decision (AGENTS.md section 2).
+
+Answer: _pending_.

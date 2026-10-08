@@ -24,6 +24,10 @@ use caladrius_nca::{
     NcaResult, NegativePolicy, Route, StartPolicy, TmaxTie, run as run_nca,
 };
 use caladrius_testkit::oracle::{BlqRule, NaRule};
+use caladrius_testkit::private::{
+    MethodHint, PRIVATE_CASES, PrivateCase, PrivateCounts, discover_exports,
+    evaluate as evaluate_private, load_coursework_profile, read_export,
+};
 use caladrius_testkit::{OracleCase, Tolerance, list_cases, load_case};
 
 use crate::console;
@@ -490,7 +494,124 @@ expected as not available must be not available. A value covered by a documented
     out
 }
 
-pub fn run() -> Result<()> {
+/// Counts of one private export (nothing from `private/` but counts and our own labels).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrivateLine {
+    /// `<exercise>`, the kind of table and the AUC method, for example `td1 summary linear`.
+    label: String,
+    counts: PrivateCounts,
+}
+
+/// Runs the engine on the coursework data of every private case and compares it with the exports
+/// found for it. A case without coursework data or exports contributes nothing (it is skipped).
+/// Returns the counts and the notes to print (no value, no file name).
+fn private_lines() -> Result<(Vec<PrivateLine>, Vec<String>)> {
+    let private_error =
+        |e: caladrius_testkit::private::PrivateError| XtaskError::new(e.to_string());
+    let mut lines = Vec::new();
+    let mut notes = Vec::new();
+    if !caladrius_testkit::private::private_dir().is_dir() {
+        return Ok((lines, notes)); // a checkout without private/: nothing to say
+    }
+    for case in PRIVATE_CASES {
+        let Some(profile) = load_coursework_profile(case).map_err(private_error)? else {
+            notes.push(format!("private {}: no coursework data, skipped", case.id));
+            continue;
+        };
+        let Some(discovery) = discover_exports(case.id).map_err(private_error)? else {
+            notes.push(format!("private {}: no export files, skipped", case.id));
+            continue;
+        };
+        if discovery.unclassified > 0 {
+            notes.push(format!(
+                "private {}: {} export file(s) not classified by name; add private/exports/{}/manifest.json",
+                case.id, discovery.unclassified, case.id
+            ));
+        }
+        for file in &discovery.files {
+            let values = private_engine_values(case, &profile, file.method)?;
+            let entries = read_export(file).map_err(private_error)?;
+            lines.push(PrivateLine {
+                label: format!("{} {} {}", case.id, file.kind.label(), file.method.label()),
+                counts: evaluate_private(&entries, &values),
+            });
+        }
+    }
+    // Stable order: by label.
+    lines.sort_by(|a, b| a.label.cmp(&b.label));
+    Ok((lines, notes))
+}
+
+fn private_engine_values(
+    case: &PrivateCase,
+    profile: &caladrius_testkit::private::CourseworkProfile,
+    method: MethodHint,
+) -> Result<BTreeMap<String, Option<f64>>> {
+    let route = match case.route {
+        "extravascular" => Route::Extravascular,
+        "iv_bolus" => Route::IvBolus,
+        other => {
+            return Err(XtaskError::new(format!(
+                "private case {}: unsupported route {other}",
+                case.id
+            )));
+        }
+    };
+    let input = NcaInput {
+        time: profile.time.clone(),
+        conc: profile.conc.clone(),
+        dose: case.dose,
+        route,
+        options: NcaOptions {
+            auc_method: match method {
+                MethodHint::Linear => AucMethod::Linear,
+                MethodHint::LinUpLogDown => AucMethod::LinUpLogDown,
+            },
+            ..NcaOptions::default()
+        },
+    };
+    let result = run_nca(&input).map_err(|e| {
+        XtaskError::new(format!(
+            "private case {}: the engine refused the profile: {e}",
+            case.id
+        ))
+    })?;
+    Ok(result
+        .parameters()
+        .iter()
+        .map(|p| (p.name.clone(), p.value.value()))
+        .collect())
+}
+
+/// The section of `docs/conformance.md` for the private oracle: counts only, per export, with our
+/// own labels. No value, no parameter name, no file name from `private/`.
+fn private_section(lines: &[PrivateLine]) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("\n## Private oracle (counts only)\n\n");
+    out.push_str(
+        "Written by `cargo xtask conformance --private` from the exports of the reference software in `private/` (git-ignored): only counts. A value is validated when it is equal to the engine's at the precision displayed in the export. \"Not reproduced\" are values that differ, \"not computed\" are values of parameters the engine does not report, \"not mapped\" are export columns the project has no name for. Floors do not apply: the data are not in the repository.\n\n",
+    );
+    out.push_str("| export | values validated | not reproduced | not computed | not mapped | unreadable |\n|---|---|---|---|---|---|\n");
+    for l in lines {
+        let c = &l.counts;
+        out.push_str(&format!(
+            "| {} | {} / {} | {} | {} | {} | {} |\n",
+            l.label,
+            c.validated,
+            c.expected(),
+            c.mismatched.len(),
+            c.engine_missing.len(),
+            c.unmapped,
+            c.unreadable
+        ));
+    }
+    out
+}
+
+pub fn run(private: bool) -> Result<()> {
     let root = workspace::root()?;
     let oracle_error = |e: caladrius_testkit::OracleError| XtaskError::new(e.to_string());
     let mut reports = Vec::new();
@@ -498,7 +619,19 @@ pub fn run() -> Result<()> {
         let case = load_case(&name).map_err(oracle_error)?;
         reports.push(evaluate(&case)?);
     }
-    update_file(&root.join(OUTPUT), &reports)?;
+    // The private oracle is reported on the console whenever its files are there; its counts go
+    // into the file only on request (publishing a numeric comparison with the reference software
+    // is the human's decision, AGENTS.md section 2).
+    let (private_lines, private_notes) = private_lines()?;
+    update_file_with(
+        &root.join(OUTPUT),
+        &reports,
+        &if private {
+            private_section(&private_lines)
+        } else {
+            String::new()
+        },
+    )?;
     for r in &reports {
         let t = r.total();
         let documented = if t.documented > 0 {
@@ -514,16 +647,38 @@ pub fn run() -> Result<()> {
             percent(t)
         ));
     }
+    for l in &private_lines {
+        let c = &l.counts;
+        console::out(&format!(
+            "private {:<34} {:>3} / {:<3} values validated, {} not reproduced, {} not computed, {} not mapped, {} unreadable",
+            l.label,
+            c.validated,
+            c.expected(),
+            c.mismatched.len(),
+            c.engine_missing.len(),
+            c.unmapped,
+            c.unreadable
+        ));
+    }
+    for note in &private_notes {
+        console::out(note);
+    }
     console::out(&format!("conformance: wrote {OUTPUT}"));
     Ok(())
 }
 
 /// Checks the floors recorded in `path` against `reports`, then rewrites `path`. Any error leaves
 /// the file as it was.
+#[cfg(test)]
 fn update_file(path: &Path, reports: &[CaseReport]) -> Result<()> {
+    update_file_with(path, reports, "")
+}
+
+/// [`update_file`] with extra text (the private section) appended after the generated document.
+fn update_file_with(path: &Path, reports: &[CaseReport], extra: &str) -> Result<()> {
     let previous = read_previous(path)?;
     check_floors(&parse_floors(&previous)?, reports)?;
-    write_atomic(path, &render(reports))
+    write_atomic(path, &format!("{}{extra}", render(reports)))
 }
 
 /// Writes `text` to a temporary file next to `path`, then renames it over `path`, so a crash never
@@ -686,6 +841,51 @@ mod tests {
         let old = "<!-- floor a cmax 4 5 -->\n";
         let floors = parse_floors(old).unwrap();
         assert!(check_floors(&floors, &[with_documented("a", 4, 4, 1)]).is_ok());
+    }
+
+    #[test]
+    fn the_private_section_has_counts_and_labels_only() {
+        let lines = vec![PrivateLine {
+            label: "td1 summary linear".to_owned(),
+            counts: PrivateCounts {
+                validated: 7,
+                mismatched: vec![("auclast", 2)],
+                engine_missing: vec!["tlag"],
+                unmapped: 3,
+                unreadable: 1,
+            },
+        }];
+        let text = private_section(&lines);
+        assert!(
+            text.contains("| td1 summary linear | 7 / 9 | 1 | 1 | 3 | 1 |"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("auclast") && !text.contains("tlag"),
+            "{text}"
+        );
+        assert_eq!(private_section(&[]), "");
+    }
+
+    #[test]
+    fn the_private_section_does_not_disturb_the_floors() {
+        let dir = scratch("private-section");
+        let path = dir.join("conformance.md");
+        update_file(&path, &[report("a", 3, 4)]).unwrap();
+        let plain = fs::read_to_string(&path).unwrap();
+        update_file_with(
+            &path,
+            &[report("a", 3, 4)],
+            "\n## Private oracle (counts only)\n",
+        )
+        .unwrap();
+        let with = fs::read_to_string(&path).unwrap();
+        assert!(with.starts_with(&plain) && with.contains("Private oracle"));
+        // The floors are still read, and a run without the section drops it again.
+        assert!(parse_floors(&with).is_ok());
+        update_file(&path, &[report("a", 3, 4)]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), plain);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

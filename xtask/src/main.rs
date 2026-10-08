@@ -26,6 +26,7 @@ tasks:
   layers       print the layer table and check the dependency rules between crates
   wasm         cargo check the L0 to L3 crates for wasm32-unknown-unknown
   conformance  run caladrius-nca on every oracle case and write docs/conformance.md
+               (`conformance --private` also writes the counts of the private oracle into it)
   help         show this message";
 
 /// The tasks this binary can run.
@@ -33,7 +34,10 @@ tasks:
 enum Task {
     Layers,
     Wasm,
-    Conformance,
+    /// `private`: also write the counts of the private oracle into `docs/conformance.md`.
+    Conformance {
+        private: bool,
+    },
     Help,
 }
 
@@ -44,10 +48,15 @@ fn parse_task(args: &[OsString]) -> std::result::Result<Task, String> {
         [task] => match task.to_str() {
             Some("layers") => Ok(Task::Layers),
             Some("wasm") => Ok(Task::Wasm),
-            Some("conformance") => Ok(Task::Conformance),
+            Some("conformance") => Ok(Task::Conformance { private: false }),
             Some("help" | "-h" | "--help") => Ok(Task::Help),
             _ => Err(format!("unknown task `{}`", task.to_string_lossy())),
         },
+        [task, flag]
+            if task.to_str() == Some("conformance") && flag.to_str() == Some("--private") =>
+        {
+            Ok(Task::Conformance { private: true })
+        }
         [_, extra, ..] => Err(format!("unexpected argument `{}`", extra.to_string_lossy())),
     }
 }
@@ -65,7 +74,7 @@ fn main() -> ExitCode {
     let outcome: Result<()> = match task {
         Task::Layers => layers::run(),
         Task::Wasm => wasm::run(),
-        Task::Conformance => conformance::run(),
+        Task::Conformance { private } => conformance::run(private),
         Task::Help => {
             console::out(USAGE);
             Ok(())
@@ -93,7 +102,14 @@ mod tests {
     fn known_tasks_are_recognised() {
         assert_eq!(parse(&["layers"]), Ok(Task::Layers));
         assert_eq!(parse(&["wasm"]), Ok(Task::Wasm));
-        assert_eq!(parse(&["conformance"]), Ok(Task::Conformance));
+        assert_eq!(
+            parse(&["conformance"]),
+            Ok(Task::Conformance { private: false })
+        );
+        assert_eq!(
+            parse(&["conformance", "--private"]),
+            Ok(Task::Conformance { private: true })
+        );
         assert_eq!(parse(&["help"]), Ok(Task::Help));
         assert_eq!(parse(&["--help"]), Ok(Task::Help));
         assert_eq!(parse(&["-h"]), Ok(Task::Help));
@@ -105,6 +121,14 @@ mod tests {
         assert_eq!(parse(&["bogus"]), Err("unknown task `bogus`".to_owned()));
         assert_eq!(
             parse(&["layers", "--fast"]),
+            Err("unexpected argument `--fast`".to_owned())
+        );
+        assert_eq!(
+            parse(&["layers", "--private"]),
+            Err("unexpected argument `--private`".to_owned())
+        );
+        assert_eq!(
+            parse(&["conformance", "--fast"]),
             Err("unexpected argument `--fast`".to_owned())
         );
     }

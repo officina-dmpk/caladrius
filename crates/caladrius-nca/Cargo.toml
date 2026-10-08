@@ -10,6 +10,11 @@ rust-version.workspace = true
 # Options, inputs, results and errors are data (golden rule 4): they must serialize.
 serde = { version = "1.0.229", features = ["derive"] }
 
+[features]
+# Tests against the reference software's exports in `private/` (AGENTS.md section 5.2); they are
+# skipped, with a message, when the exports are not there. Nothing from `private/` is versioned.
+private-oracle = []
+
 [dev-dependencies]
 caladrius-testkit = { path = "../caladrius-testkit" }
 # Exact float round trip, for the serialization tests.

@@ -10,6 +10,7 @@
 //! - [`tolerance`]: the tolerances of `AGENTS.md` section 5, defined once.
 //! - [`compare`]: tables of values and a comparison that reports every value outside tolerance.
 //! - [`oracle`]: loaders for the versioned public oracle in `oracle/`.
+//! - [`private`]: the private oracle (exports of the reference software, equality at the displayed precision).
 //! - [`step3`]: loaders for the closed-form model values and the reference fits of step 3.
 //! - [`naive`]: independent, deliberately simple computations (second implementation for cross-checks).
 //!
@@ -19,6 +20,7 @@
 pub mod compare;
 pub mod naive;
 pub mod oracle;
+pub mod private;
 pub mod step3;
 pub mod tolerance;
 
