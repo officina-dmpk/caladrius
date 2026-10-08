@@ -1,10 +1,22 @@
 [package]
 name = "caladrius-mcp"
-description = "App layer: MCP server exposing the command registry to agents such as Apothicaire (empty placeholder until step 4)."
+description = "App layer: MCP server over stdio exposing the command registry to agents such as Apothicaire."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[[bin]]
+name = "caladrius-mcp"
+path = "src/main.rs"
+
+[dependencies]
+caladrius-engine = { path = "../../crates/caladrius-engine" }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+# The integration test checks a tool call against the public oracle.
+caladrius-testkit = { path = "../../crates/caladrius-testkit" }
 
 [lints]
 workspace = true

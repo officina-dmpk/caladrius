@@ -63,6 +63,11 @@ dependencies = [
 [[package]]
 name = "caladrius-mcp"
 version = "0.1.0"
+dependencies = [
+ "caladrius-engine",
+ "caladrius-testkit",
+ "serde_json",
+]
 
 [[package]]
 name = "caladrius-models"
