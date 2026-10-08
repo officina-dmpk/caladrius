@@ -19,9 +19,9 @@
 //!   independent derivation, checked against central differences below). These test the
 //!   optimizer, the weights and the statistics for the new models at the contract tolerances.
 //! - `the_engine_has_closed_form_derivatives_for_*` (one per model): the engine as shipped, `run`
-//!   with `Derivatives::Analytic`, on every case of the model. They fail with
-//!   `AnalyticDerivativesUnavailable` until the engine gains the closed forms for the model (an
-//!   engine card), and then check only that the fits converge.
+//!   with `Derivatives::Analytic`, on every case of the model: convergence and the six value groups
+//!   of the `analytic_*` tests. They fail with `AnalyticDerivativesUnavailable` until the engine
+//!   gains the closed forms for the model (card T-030), and then compare the shipped path with R.
 //! - `forward_difference_converges`: the engine as shipped with its default derivatives converges.
 //!   Its estimates are not compared with the exact minimum here: forward differences stop at a
 //!   point that differs from it by the error of the increment, which is also true of the older
@@ -233,8 +233,9 @@ oracle_tests! {
     lag_uniform, lag_inv_y, lag_inv_y2, lag_inv_yhat, lag_inv_yhat2,
 }
 
-/// The engine as shipped has to accept `Derivatives::Analytic` for the model (FIT-JAC-02) and
-/// converge on every case of it.
+/// The engine as shipped (`run`, not the test-side `FitModel`) has to accept
+/// `Derivatives::Analytic` for the model (FIT-JAC-02), converge on every case of it and reproduce
+/// the R values in the seven groups of the `analytic_*` tests, at the same tolerances.
 fn engine_has_closed_forms(prefix: &str) {
     let cases: Vec<String> = caladrius_testkit::list_fit_cases()
         .unwrap()
@@ -244,6 +245,16 @@ fn engine_has_closed_forms(prefix: &str) {
     assert_eq!(cases.len(), 5, "{cases:?}");
     for case in cases {
         check_status(&case, Derivatives::Analytic, engine);
+        for group in [
+            "estimates",
+            "wrss",
+            "statistics",
+            "intervals",
+            "information_criteria",
+            "secondary",
+        ] {
+            check_group(&case, group, Derivatives::Analytic, engine);
+        }
     }
 }
 

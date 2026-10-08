@@ -31,10 +31,10 @@ impl Tolerance {
         rel: 1e-4,
         abs: 1e-12,
     };
-    /// Fitted parameters and statistics on a case checked by hand (`specs/fit.md` section 11, F2):
-    /// relative error at most 1e-6, the NCA tolerance. It shows that `FIT_PARAMETERS` is a margin
-    /// of caution (task T-029); it does not replace it.
-    pub const FIT_PARAMETERS_HAND_CHECKED: Tolerance = Tolerance::Relative {
+    /// Fitted parameters and statistics on the five-point example (`specs/fit.md` section 11, F2,
+    /// small enough to be worked on paper): relative error at most 1e-6, the NCA tolerance. It
+    /// shows that `FIT_PARAMETERS` is a margin of caution (task T-029); it does not replace it.
+    pub const FIT_PARAMETERS_SMALL_CASE: Tolerance = Tolerance::Relative {
         rel: 1e-6,
         abs: 1e-12,
     };
@@ -160,12 +160,12 @@ mod tests {
                 abs: 1e-12
             }
         );
-        // The hand-checked tolerance is the stricter one, never looser than the contract.
+        // The small-case tolerance is the stricter one, never looser than the contract.
         assert_eq!(
-            Tolerance::FIT_PARAMETERS_HAND_CHECKED,
+            Tolerance::FIT_PARAMETERS_SMALL_CASE,
             Tolerance::NCA_VS_PKNCA
         );
-        assert!(!Tolerance::FIT_PARAMETERS_HAND_CHECKED.accepts(1.0 + 2e-6, 1.0));
+        assert!(!Tolerance::FIT_PARAMETERS_SMALL_CASE.accepts(1.0 + 2e-6, 1.0));
         assert!(Tolerance::FIT_PARAMETERS.accepts(1.0 + 2e-6, 1.0));
     }
 
