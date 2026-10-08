@@ -31,5 +31,6 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-019 | Private oracle infrastructure (feature private-oracle, export loader, private conformance counts) and exercise 1 NCA | oracle | done | T-013 |
 | T-020 | caladrius-project (data model) and caladrius-engine (command registry, schemas, history) | interface | done | T-011b |
 | T-021 | caladrius-cli and conformance extended to models and fit | interface | done | T-020 |
-| T-022 | caladrius-mcp (MCP server over stdio) | interface | to review | T-020 |
+| T-022 | caladrius-mcp (MCP server over stdio) | interface | done | T-020 |
 | T-023 | specs/nca.md: facts observed on the reference screen (default AUC method, λz weighting, empty acceptance criteria) | reader | done | T-016 |
+| T-024 | caladrius-ui first slice: theme tokens, worksheet, NCA page with λz point selection, snapshots | interface | in progress | T-022, T-017 |

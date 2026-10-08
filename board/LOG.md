@@ -26,3 +26,4 @@
 - 2026-10-08 T-019 (oracle): private oracle infrastructure (feature private-oracle, export loader for xls/rtf, displayed-precision comparison, private counts); exercise 1 compared with the reference software: full agreement on both AUC methods (41 + 41 + 76 + 76 values; counts only); commits b31831c, ec76feb.
 - 2026-10-08 T-020 (interface): caladrius-project (worksheets, analyses, stale marking, bytes import/save) and caladrius-engine (18 commands, schemas, history); commits bfda7d9, c9c9a81; review approved.
 - 2026-10-08 T-021 (interface): caladrius-cli (commands, json/csv, project files), engine follow-ups, conformance for models (886) and fits (5340); commits 0dd4ba6, ac29053; review approved.
+- 2026-10-08 T-022 (interface): caladrius-mcp stdio server (18 tools, schemas, bounded reads, batches, notifications); commits e9abd59, 6ec4320; review approved. STEP 4 REACHED (673 workspace tests).
