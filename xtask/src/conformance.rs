@@ -2,17 +2,21 @@
 //! writes `docs/conformance.md`, the validated parameters per case (AGENTS.md section 5).
 //!
 //! A value is validated when it is within `Tolerance::NCA_VS_PKNCA` of the expected one, or when
-//! both are not available. The file records a floor per case (the number of validated values); a
-//! run that validates fewer values than the floor fails and leaves the file unchanged, so floors
-//! only go up (golden rule 2).
+//! it is expected as not available and the engine computes the parameter and reports it as not
+//! available (a parameter the engine does not compute never matches). The file records a floor per
+//! parameter per case: the number of validated values and the number of expected rows. A run
+//! fails, and leaves the file unchanged, when a parameter validates fewer values, loses expected
+//! rows, gains unvalidated rows, or has disappeared; when a floor line is malformed; or when a
+//! non-empty previous file holds no floor at all. So floors only go up (golden rule 2). The file
+//! is written to a temporary file then renamed.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use caladrius_nca::{
-    AucMethod, BlqAction, BlqPolicy, LambdaZOptions, MissingPolicy, NcaInput, NcaOptions, Route,
-    TmaxTie, run as run_nca,
+    AucMethod, BlqAction, BlqPolicy, LambdaZOptions, MissingPolicy, NcaInput, NcaOptions,
+    NcaResult, Route, TmaxTie, run as run_nca,
 };
 use caladrius_testkit::{OracleCase, Tolerance, list_cases, load_case};
 
@@ -22,8 +26,11 @@ use crate::workspace;
 
 /// Output file, relative to the workspace root.
 const OUTPUT: &str = "docs/conformance.md";
-/// Marker of a floor line in the output file: `<!-- floor <case> <validated> -->`.
+/// Marker of a floor line in the output file:
+/// `<!-- floor <case> <parameter> <validated> <expected> -->`.
 const FLOOR_MARK: &str = "<!-- floor ";
+/// Closing of a floor line.
+const FLOOR_END: &str = "-->";
 
 /// Validated and expected counts of one parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -124,6 +131,22 @@ fn route_of(case: &OracleCase) -> Result<Route> {
     }
 }
 
+/// Whether one expected row is reproduced. `result` is the engine's result for the subject, `None`
+/// when the engine refused the subject. A value expected as not available only matches when the
+/// engine computes the parameter (`parameter(name)` is `Some`) and reports it as not available.
+fn row_validated(expected: Option<f64>, result: Option<&NcaResult>, name: &str) -> bool {
+    let Some(result) = result else {
+        return false;
+    };
+    match (expected, result.parameter(name)) {
+        (_, None) => false,
+        (Some(e), Some(p)) => p
+            .value()
+            .is_some_and(|a| Tolerance::NCA_VS_PKNCA.accepts(a, e)),
+        (None, Some(p)) => p.value().is_none(),
+    }
+}
+
 /// Runs the engine on every subject of `case` and counts the validated values per parameter.
 fn evaluate(case: &OracleCase) -> Result<CaseReport> {
     let options = options_of(case)?;
@@ -147,20 +170,17 @@ fn evaluate(case: &OracleCase) -> Result<CaseReport> {
     }
     let mut counts: BTreeMap<&str, Count> = BTreeMap::new();
     for (subject, name, expected) in case.expected.iter() {
-        let actual = results.get(subject).and_then(|r| r.get(name));
-        let ok = match (expected, actual) {
-            (Some(e), Some(a)) => Tolerance::NCA_VS_PKNCA.accepts(a, e),
-            (None, None) => true,
-            _ => false,
-        };
+        let ok = row_validated(expected, results.get(subject), name);
         let count = counts.entry(name).or_default();
         count.expected += 1;
         count.validated += usize::from(ok);
     }
+    let mut seen = std::collections::BTreeSet::new();
     let parameters = case
         .options
         .parameters
         .iter()
+        .filter(|p| seen.insert(p.as_str()))
         .map(|p| {
             (
                 p.clone(),
@@ -177,38 +197,133 @@ fn evaluate(case: &OracleCase) -> Result<CaseReport> {
     })
 }
 
-/// Floors recorded in a previous output: case name to validated count.
-fn parse_floors(text: &str) -> BTreeMap<String, usize> {
-    text.lines()
-        .filter_map(|line| line.trim().strip_prefix(FLOOR_MARK))
-        .filter_map(|rest| rest.strip_suffix("-->"))
-        .filter_map(|rest| {
-            let mut words = rest.split_whitespace();
-            let case = words.next()?;
-            let validated = words.next()?.parse().ok()?;
-            Some((case.to_owned(), validated))
-        })
-        .collect()
+/// Floors recorded in a previous output.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Floors {
+    /// Per case and parameter: the validated and expected counts.
+    parameters: BTreeMap<(String, String), Count>,
+    /// Per case: the total validated count, from the first file format (one total per case). Still
+    /// enforced, then replaced by per-parameter floors when the file is rewritten.
+    legacy_totals: BTreeMap<String, usize>,
 }
 
-/// Every case of the previous floors must still exist and validate at least as many values.
-fn check_floors(floors: &BTreeMap<String, usize>, reports: &[CaseReport]) -> Result<()> {
+impl Floors {
+    fn is_empty(&self) -> bool {
+        self.parameters.is_empty() && self.legacy_totals.is_empty()
+    }
+}
+
+/// Reads the floors of a previous output. A line that starts a floor but does not parse is an
+/// error, and so is a non-empty text without any floor: a floor must never vanish silently.
+fn parse_floors(text: &str) -> Result<Floors> {
+    let mut floors = Floors::default();
+    for (index, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if !line.starts_with(FLOOR_MARK) {
+            continue;
+        }
+        let bad = |why: &str| {
+            XtaskError::new(format!(
+                "{OUTPUT} line {}: malformed floor line ({why}): {line:?}; expected \
+`{FLOOR_MARK}<case> <parameter> <validated> <expected> {FLOOR_END}`. Fix or restore the file \
+from version control; floors are not dropped silently",
+                index + 1
+            ))
+        };
+        let body = line
+            .strip_prefix(FLOOR_MARK)
+            .and_then(|rest| rest.strip_suffix(FLOOR_END))
+            .ok_or_else(|| bad("missing closing marker"))?;
+        let words: Vec<&str> = body.split_whitespace().collect();
+        let number = |word: &str| {
+            word.parse::<usize>()
+                .map_err(|_| bad("count is not a whole number"))
+        };
+        match words.as_slice() {
+            [case, parameter, validated, expected] => {
+                let count = Count {
+                    validated: number(validated)?,
+                    expected: number(expected)?,
+                };
+                if count.validated > count.expected {
+                    return Err(bad("validated is larger than expected"));
+                }
+                let key = ((*case).to_owned(), (*parameter).to_owned());
+                if floors.parameters.insert(key, count).is_some() {
+                    return Err(bad("duplicated floor"));
+                }
+            }
+            [case, validated] => {
+                if floors
+                    .legacy_totals
+                    .insert((*case).to_owned(), number(validated)?)
+                    .is_some()
+                {
+                    return Err(bad("duplicated floor"));
+                }
+            }
+            _ => return Err(bad("wrong number of fields")),
+        }
+    }
+    if floors.is_empty() && !text.trim().is_empty() {
+        return Err(XtaskError::new(format!(
+            "{OUTPUT} is not empty but holds no floor line; refusing to regenerate it without \
+floors. Restore the file from version control"
+        )));
+    }
+    Ok(floors)
+}
+
+/// Every floor must still be met: the case and the parameter exist, the parameter validates at
+/// least as many values, keeps at least as many expected rows, and has no more unvalidated rows.
+fn check_floors(floors: &Floors, reports: &[CaseReport]) -> Result<()> {
     let mut drops = Vec::new();
-    for (case, &floor) in floors {
+    for ((case, parameter), floor) in &floors.parameters {
+        let Some(report) = reports.iter().find(|r| &r.name == case) else {
+            drops.push(format!("case {case} is no longer in oracle/"));
+            continue;
+        };
+        let Some((_, count)) = report.parameters.iter().find(|(name, _)| name == parameter) else {
+            drops.push(format!(
+                "{case}: parameter {parameter} is no longer checked"
+            ));
+            continue;
+        };
+        if count.validated < floor.validated {
+            drops.push(format!(
+                "{case}: {parameter} validates {} values, floor is {}",
+                count.validated, floor.validated
+            ));
+        }
+        if count.expected < floor.expected {
+            drops.push(format!(
+                "{case}: {parameter} has {} expected rows, floor is {}",
+                count.expected, floor.expected
+            ));
+        }
+        let unvalidated = count.expected.saturating_sub(count.validated);
+        let floor_unvalidated = floor.expected.saturating_sub(floor.validated);
+        if unvalidated > floor_unvalidated {
+            drops.push(format!(
+                "{case}: {parameter} has {unvalidated} unvalidated rows, floor allows {floor_unvalidated}"
+            ));
+        }
+    }
+    for (case, &floor) in &floors.legacy_totals {
         match reports.iter().find(|r| &r.name == case) {
-            None => drops.push(format!(
-                "case {case} (floor {floor}) is no longer in oracle/"
-            )),
+            None => drops.push(format!("case {case} is no longer in oracle/")),
             Some(report) => {
                 let validated = report.total().validated;
                 if validated < floor {
                     drops.push(format!(
-                        "case {case}: {validated} values validated, floor is {floor}"
+                        "{case}: {validated} values validated, floor is {floor}"
                     ));
                 }
             }
         }
     }
+    drops.sort();
+    drops.dedup();
     if drops.is_empty() {
         Ok(())
     } else {
@@ -233,7 +348,7 @@ fn render(reports: &[CaseReport]) -> String {
     out.push_str(
         "Generated by `cargo xtask conformance`; never edit by hand. Each value of `oracle/expected/` is \
 compared with `caladrius-nca`, within a relative error of 1e-6 (`Tolerance::NCA_VS_PKNCA`); a value \
-expected as not available must be not available. The floor of each case (last lines) can only go up.\n\n",
+expected as not available must be not available. The floors (last lines: validated and expected rows per parameter per case) can only go up.\n\n",
     );
     out.push_str(&format!(
         "**Overall: {} of {} values validated ({:.1} %).**\n\n",
@@ -287,11 +402,12 @@ expected as not available must be not available. The floor of each case (last li
     }
     out.push('\n');
     for r in reports {
-        out.push_str(&format!(
-            "{FLOOR_MARK}{} {} -->\n",
-            r.name,
-            r.total().validated
-        ));
+        for (name, c) in &r.parameters {
+            out.push_str(&format!(
+                "{FLOOR_MARK}{} {name} {} {} {FLOOR_END}\n",
+                r.name, c.validated, c.expected
+            ));
+        }
     }
     out
 }
@@ -304,14 +420,7 @@ pub fn run() -> Result<()> {
         let case = load_case(&name).map_err(oracle_error)?;
         reports.push(evaluate(&case)?);
     }
-    let path = root.join(OUTPUT);
-    let previous = read_previous(&path)?;
-    check_floors(&parse_floors(&previous), &reports)?;
-    let text = render(&reports);
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| XtaskError::io("create", dir, &e))?;
-    }
-    fs::write(&path, &text).map_err(|e| XtaskError::io("write", &path, &e))?;
+    update_file(&root.join(OUTPUT), &reports)?;
     for r in &reports {
         let t = r.total();
         console::out(&format!(
@@ -324,6 +433,30 @@ pub fn run() -> Result<()> {
     }
     console::out(&format!("conformance: wrote {OUTPUT}"));
     Ok(())
+}
+
+/// Checks the floors recorded in `path` against `reports`, then rewrites `path`. Any error leaves
+/// the file as it was.
+fn update_file(path: &Path, reports: &[CaseReport]) -> Result<()> {
+    let previous = read_previous(path)?;
+    check_floors(&parse_floors(&previous)?, reports)?;
+    write_atomic(path, &render(reports))
+}
+
+/// Writes `text` to a temporary file next to `path`, then renames it over `path`, so a crash never
+/// leaves a half-written file.
+fn write_atomic(path: &Path, text: &str) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| XtaskError::io("create", dir, &e))?;
+    }
+    let mut temp_name = path.as_os_str().to_owned();
+    temp_name.push(".tmp");
+    let temp = std::path::PathBuf::from(temp_name);
+    fs::write(&temp, text).map_err(|e| XtaskError::io("write", &temp, &e))?;
+    fs::rename(&temp, path).map_err(|e| {
+        let _ = fs::remove_file(&temp);
+        XtaskError::io("rename onto", path, &e)
+    })
 }
 
 /// The previous output, or an empty text when there is none yet.
@@ -339,35 +472,74 @@ fn read_previous(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
 
-    fn report(name: &str, validated: usize, expected: usize) -> CaseReport {
+    fn param(name: &str, validated: usize, expected: usize) -> (String, Count) {
+        (
+            name.to_owned(),
+            Count {
+                validated,
+                expected,
+            },
+        )
+    }
+
+    fn report_of(name: &str, parameters: Vec<(String, Count)>) -> CaseReport {
         CaseReport {
             name: name.to_owned(),
             route: "extravascular".to_owned(),
             auc_method: "linear".to_owned(),
-            parameters: vec![(
-                "cmax".to_owned(),
-                Count {
-                    validated,
-                    expected,
-                },
-            )],
+            parameters,
             errors: Vec::new(),
         }
     }
 
+    fn report(name: &str, validated: usize, expected: usize) -> CaseReport {
+        report_of(name, vec![param("cmax", validated, expected)])
+    }
+
+    /// A fresh scratch directory, removed by the caller.
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "caladrius-xtask-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     #[test]
-    fn rendered_floors_are_read_back() {
-        let text = render(&[report("a", 3, 4), report("b", 2, 2)]);
-        let floors = parse_floors(&text);
-        assert_eq!(floors.get("a"), Some(&3));
-        assert_eq!(floors.get("b"), Some(&2));
-        assert!(text.contains("**Overall: 5 of 6 values validated (83.3 %).**"));
+    fn rendered_floors_are_read_back_per_parameter() {
+        let text = render(&[
+            report_of("a", vec![param("cmax", 3, 4), param("tmax", 2, 2)]),
+            report("b", 2, 2),
+        ]);
+        let floors = parse_floors(&text).unwrap();
+        let get = |case: &str, p: &str| floors.parameters.get(&(case.to_owned(), p.to_owned()));
+        assert_eq!(
+            get("a", "cmax"),
+            Some(&Count {
+                validated: 3,
+                expected: 4
+            })
+        );
+        assert_eq!(
+            get("a", "tmax"),
+            Some(&Count {
+                validated: 2,
+                expected: 2
+            })
+        );
+        assert!(get("b", "cmax").is_some());
+        assert!(floors.legacy_totals.is_empty());
+        assert!(text.contains("<!-- floor a cmax 3 4 -->"));
+        assert!(text.contains("**Overall: 7 of 8 values validated (87.5 %).**"));
         assert!(text.contains("| `cmax` | 3 / 4 | FAILS |"));
     }
 
     #[test]
     fn floors_only_go_up() {
-        let floors = parse_floors(&render(&[report("a", 3, 4)]));
+        let floors = parse_floors(&render(&[report("a", 3, 4)])).unwrap();
         assert!(check_floors(&floors, &[report("a", 3, 4)]).is_ok());
         assert!(check_floors(&floors, &[report("a", 4, 4)]).is_ok());
         let down = check_floors(&floors, &[report("a", 2, 4)]).unwrap_err();
@@ -376,6 +548,151 @@ mod tests {
         assert!(gone.to_string().contains("no longer"), "{gone}");
         // A new case has no floor yet.
         assert!(check_floors(&floors, &[report("a", 3, 4), report("c", 0, 1)]).is_ok());
+    }
+
+    #[test]
+    fn a_lost_parameter_is_not_hidden_by_a_gain_elsewhere() {
+        let floors = parse_floors(&render(&[report_of(
+            "a",
+            vec![param("cmax", 2, 4), param("tmax", 1, 4)],
+        )]))
+        .unwrap();
+        // The case total goes up (3 -> 5) but cmax went down.
+        let now = report_of("a", vec![param("cmax", 1, 4), param("tmax", 4, 4)]);
+        let err = check_floors(&floors, &[now]).unwrap_err();
+        assert!(err.to_string().contains("cmax validates 1"), "{err}");
+        // A parameter that is no longer checked is a drop.
+        let missing = report_of("a", vec![param("tmax", 4, 4)]);
+        let err = check_floors(&floors, &[missing]).unwrap_err();
+        assert!(err.to_string().contains("cmax is no longer"), "{err}");
+    }
+
+    #[test]
+    fn new_unvalidated_or_lost_rows_fail() {
+        let floors = parse_floors(&render(&[report("a", 4, 4)])).unwrap();
+        // Two oracle rows added that are not reproduced: the validated count still meets the floor.
+        let err = check_floors(&floors, &[report("a", 4, 6)]).unwrap_err();
+        assert!(err.to_string().contains("2 unvalidated rows"), "{err}");
+        // Rows added and validated are fine.
+        assert!(check_floors(&floors, &[report("a", 6, 6)]).is_ok());
+        // Rows removed from the oracle are a drop.
+        let err = check_floors(&floors, &[report("a", 3, 3)]).unwrap_err();
+        assert!(err.to_string().contains("3 expected rows"), "{err}");
+    }
+
+    #[test]
+    fn a_malformed_floor_line_is_an_error() {
+        let good = render(&[report("a", 3, 4)]);
+        for bad in [
+            "<!-- floor a cmax 3 -->",
+            "<!-- floor a cmax x 4 -->",
+            "<!-- floor a cmax 5 4 -->",
+            "<!-- floor a cmax 3 4",
+            "<!-- floor a cmax 3 4 5 -->",
+            "<!-- floor -->",
+        ] {
+            let text = format!("{good}{bad}\n");
+            let err = parse_floors(&text).unwrap_err();
+            assert!(
+                err.to_string().contains("malformed floor line"),
+                "{bad}: {err}"
+            );
+        }
+        let twice = format!("{good}<!-- floor a cmax 3 4 -->\n");
+        assert!(parse_floors(&twice).is_err());
+    }
+
+    #[test]
+    fn a_non_empty_file_without_floors_is_an_error() {
+        let err = parse_floors("# Conformance\n\nno floors here\n").unwrap_err();
+        assert!(err.to_string().contains("holds no floor"), "{err}");
+        // No file yet, or an empty one, is a first run.
+        assert!(parse_floors("").unwrap().is_empty());
+        assert!(parse_floors("\n \n").unwrap().is_empty());
+    }
+
+    #[test]
+    fn first_format_totals_are_still_enforced() {
+        let floors = parse_floors("<!-- floor a 3 -->\n").unwrap();
+        assert_eq!(floors.legacy_totals.get("a"), Some(&3));
+        assert!(check_floors(&floors, &[report("a", 3, 4)]).is_ok());
+        assert!(check_floors(&floors, &[report("a", 2, 4)]).is_err());
+        assert!(check_floors(&floors, &[report("b", 4, 4)]).is_err());
+    }
+
+    fn profile_result() -> NcaResult {
+        let input = NcaInput {
+            time: vec![0.0, 1.0, 2.0, 4.0, 6.0, 8.0],
+            conc: vec![0.0, 8.0, 6.0, 3.0, 1.5, 0.75],
+            // A missing dose: the dose-dependent parameters are not calculated (NCA-DAT-10).
+            dose: f64::NAN,
+            route: Route::Extravascular,
+            options: NcaOptions::default(),
+        };
+        run_nca(&input).unwrap()
+    }
+
+    #[test]
+    fn not_available_matches_only_a_computed_parameter() {
+        let result = profile_result();
+        // Computed and not calculated on both sides: validated.
+        assert!(
+            result
+                .parameter("cl.obs")
+                .is_some_and(|p| p.value().is_none())
+        );
+        assert!(row_validated(None, Some(&result), "cl.obs"));
+        // The engine does not compute this name at all: never validated.
+        assert!(result.parameter("no.such.parameter").is_none());
+        assert!(!row_validated(None, Some(&result), "no.such.parameter"));
+        assert!(!row_validated(
+            Some(1.0),
+            Some(&result),
+            "no.such.parameter"
+        ));
+        // A refused subject validates nothing, not even a not-available row.
+        assert!(!row_validated(None, None, "cl.obs"));
+        // A computed value matches within tolerance only.
+        let cmax = result.get("cmax").unwrap();
+        assert!(row_validated(Some(cmax), Some(&result), "cmax"));
+        assert!(!row_validated(Some(cmax * 1.001), Some(&result), "cmax"));
+        // Expected not available but computed: not validated.
+        assert!(!row_validated(None, Some(&result), "cmax"));
+        // Expected a value but the engine says not calculated: not validated.
+        assert!(!row_validated(Some(1.0), Some(&result), "cl.obs"));
+    }
+
+    #[test]
+    fn the_file_is_written_atomically() {
+        let dir = scratch("atomic");
+        let path = dir.join("docs").join("conformance.md");
+        write_atomic(&path, "first").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "first");
+        write_atomic(&path, "second").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "second");
+        assert!(!dir.join("docs").join("conformance.md.tmp").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failing_gate_leaves_the_file_unchanged() {
+        let dir = scratch("gate");
+        let path = dir.join("conformance.md");
+        update_file(&path, &[report("a", 3, 4)]).unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        assert!(update_file(&path, &[report("a", 2, 4)]).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        // A file with its floors stripped is refused, not regenerated.
+        fs::write(&path, "# Conformance\n").unwrap();
+        assert!(update_file(&path, &[report("a", 4, 4)]).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "# Conformance\n");
+        // Going up rewrites the file, and a second run is byte-identical.
+        fs::write(&path, &before).unwrap();
+        update_file(&path, &[report("a", 4, 4)]).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        update_file(&path, &[report("a", 4, 4)]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), after);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

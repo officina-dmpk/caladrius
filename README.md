@@ -27,3 +27,7 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 ```
 
 `cargo xtask` is an alias for the `xtask` crate (see `.cargo/config.toml`). The layers and their rules are in `AGENTS.md`, section 4.
+
+## Conformance
+
+`cargo xtask conformance` runs `caladrius-nca` on every case of `oracle/expected/` and regenerates `docs/conformance.md` (never edit it by hand). A value counts as validated only if the engine computes the parameter and it is within the tolerance of the expected value. The file ends with one floor line per parameter per case (validated and expected rows). The task fails and leaves the file unchanged if a parameter validates fewer values, loses expected rows, gains unvalidated rows or disappears, if a floor line is malformed, or if a non-empty previous file holds no floor. Floors can only go up. The file is written to a temporary file then renamed.
