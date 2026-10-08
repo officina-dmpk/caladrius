@@ -6,5 +6,14 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+# The analysis options and results held by the project are the L0 types (golden rule 4).
+caladrius-nca = { path = "../caladrius-nca" }
+caladrius-models = { path = "../caladrius-models" }
+caladrius-fit = { path = "../caladrius-fit" }
+serde = { version = "1.0.229", features = ["derive"] }
+# Save and load: a project is bytes (UTF-8 JSON) in, bytes out; no file access in this layer.
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
 [lints]
 workspace = true

@@ -13,6 +13,14 @@ version = "0.1.0"
 [[package]]
 name = "caladrius-engine"
 version = "0.1.0"
+dependencies = [
+ "caladrius-fit",
+ "caladrius-models",
+ "caladrius-nca",
+ "caladrius-project",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "caladrius-fit"
@@ -50,6 +58,13 @@ dependencies = [
 [[package]]
 name = "caladrius-project"
 version = "0.1.0"
+dependencies = [
+ "caladrius-fit",
+ "caladrius-models",
+ "caladrius-nca",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "caladrius-testkit"
