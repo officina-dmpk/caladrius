@@ -371,6 +371,9 @@ struct SimulateParams {
     store: bool,
     #[serde(default)]
     name: Option<String>,
+    /// With `store`: update this simulation instead of creating another one.
+    #[serde(default)]
+    analysis: Option<AnalysisId>,
 }
 
 fn grid_times(g: &Grid) -> Result<Vec<f64>, CommandError> {
@@ -423,14 +426,21 @@ fn model_simulate(engine: &mut Engine, params: Value) -> Result<Value, CommandEr
         times: times.clone(),
     };
     let output = run::simulate(&input)?;
+    if p.analysis.is_some() && !p.store {
+        return Err(CommandError::invalid(
+            "model.simulate",
+            "`analysis` names the simulation to update, so it needs `store: true`",
+        ));
+    }
     let analysis = if p.store {
+        check_target(&engine.project, p.analysis, "simulation")?;
         let spec = AnalysisSpec::Simulation(SimulationSpec {
             input: input.clone(),
         });
         let result = run::run_spec(&engine.project, &spec)?;
         Some(store(
             &mut engine.project,
-            None,
+            p.analysis,
             p.name.as_deref(),
             spec,
             result,
@@ -450,7 +460,7 @@ fn model_simulate(engine: &mut Engine, params: Value) -> Result<Value, CommandEr
 pub(crate) const MODEL_SIMULATE: CommandDef = CommandDef {
     id: "model.simulate",
     title: "Evaluate a model on a time grid",
-    description: "Concentration and AUC of a one-compartment model at the given times (a list, or a regular grid), and its secondary parameters (half-life, clearance, AUC to infinity, MRT, predicted Cmax and Tmax...). Nothing is stored unless `store` is true, so it can be called at every change of a parameter for a live curve.",
+    description: "Concentration and AUC of a one-compartment model at the given times (a list, or a regular grid), and its secondary parameters (half-life, clearance, AUC to infinity, MRT, predicted Cmax and Tmax...). Nothing is stored unless `store` is true (with `analysis`, that simulation is updated instead of a new one being created), so it can be called at every change of a parameter for a live curve.",
     mutates: false,
     params: || {
         root(
@@ -483,6 +493,13 @@ pub(crate) const MODEL_SIMULATE: CommandDef = CommandDef {
                     ),
                     ("store", boolean()),
                     ("name", string()),
+                    (
+                        "analysis",
+                        crate::schema::described(
+                            reference("Id"),
+                            "With `store`: update and re-run this simulation instead of creating a new one.",
+                        ),
+                    ),
                 ],
                 &["model", "dose", "params"],
             ),

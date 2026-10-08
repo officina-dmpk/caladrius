@@ -11,6 +11,20 @@ use crate::fmt;
 use crate::sim::SimPage;
 
 impl UiApp {
+    /// The worksheet the person has selected: the one in view, or the one the open page reads.
+    pub(crate) fn selected_worksheet(&self) -> Option<u64> {
+        match &self.state.selection {
+            Selection::Worksheet(id) => Some(*id),
+            Selection::Analysis(_) | Selection::NewFit => self
+                .state
+                .nca
+                .as_ref()
+                .map(|p| p.worksheet)
+                .or_else(|| self.state.fit.as_ref().map(|p| p.worksheet)),
+            _ => None,
+        }
+    }
+
     /// A command that is asked at every change: its refusal is a sentence for the page.
     fn ask(&mut self, id: &str, params: Value) -> Result<Value, String> {
         self.engine
@@ -158,11 +172,18 @@ impl UiApp {
 
     // ---- simulation ------------------------------------------------------------------------
 
-    /// A new simulation page, drawn at once.
+    /// A new simulation page, drawn at once. It takes its units from the selected worksheet.
     pub(crate) fn new_simulation(&mut self) {
+        let worksheet = self.selected_worksheet();
+        if let Some(id) = worksheet {
+            self.refresh_sheet(id);
+        }
+        let mut page = SimPage::new();
+        page.worksheet =
+            worksheet.filter(|id| self.sheet.as_ref().is_some_and(|s| s.info.id == *id));
         self.state.nca = None;
         self.state.fit = None;
-        self.state.sim = Some(SimPage::new());
+        self.state.sim = Some(page);
         self.state.selection = Selection::NewSimulation;
         self.notice = None;
         self.sim_changed();
@@ -170,11 +191,16 @@ impl UiApp {
 
     /// The page of a stored simulation, drawn again from its parameters.
     pub(crate) fn open_simulation(&mut self, view: &Value) {
-        let Some(page) = SimPage::from_view(view) else {
+        let Some(mut page) = SimPage::from_view(view) else {
             self.state.sim = None;
             self.info_notice("This simulation uses a model the page does not know.");
             return;
         };
+        // The simulation uses the units of the worksheet in view, if any.
+        page.worksheet = self.selected_worksheet();
+        if let Some(id) = page.worksheet {
+            self.refresh_sheet(id);
+        }
         self.state.nca = None;
         self.state.fit = None;
         self.state.sim = Some(page);
@@ -194,9 +220,29 @@ impl UiApp {
 
     /// Stores the simulation as an analysis of the project.
     pub(crate) fn sim_save(&mut self) {
+        // A page saved before updates that analysis; one that was removed since starts over.
+        let gone = self
+            .state
+            .sim
+            .as_ref()
+            .and_then(|p| p.analysis)
+            .filter(|id| {
+                !self
+                    .engine
+                    .project()
+                    .analyses()
+                    .iter()
+                    .any(|a| a.id().0 == *id)
+            });
+        if gone.is_some() {
+            if let Some(page) = self.state.sim.as_mut() {
+                page.analysis = None;
+            }
+        }
         let Some(page) = self.state.sim.as_ref() else {
             return;
         };
+        let updating = page.analysis.is_some();
         let params = page.params(true);
         let Ok(answer) = self.call("model.simulate", params) else {
             return;
@@ -208,6 +254,10 @@ impl UiApp {
         if let Some(id) = self.state.sim.as_ref().and_then(|p| p.analysis) {
             self.state.selection = Selection::Analysis(id);
         }
-        self.info_notice("Saved as an analysis in the project tree.");
+        self.info_notice(if updating {
+            "Updated the saved simulation."
+        } else {
+            "Saved as an analysis in the project tree."
+        });
     }
 }

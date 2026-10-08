@@ -1146,16 +1146,14 @@ fn a_negative_starting_value_is_refused_with_the_parameter_named() {
     let page = app.fit_page().unwrap();
     assert_eq!(
         page.preview.error.as_deref(),
-        Some("parameter v = -1 is not a finite number > 0; correct its value")
-    );
-    app.perform(vec![Action::RunFit]);
-    let page = app.fit_page().unwrap();
-    assert_eq!(
-        page.error.as_deref(),
         Some(
             "the initial estimate of v (-1) lies outside its bounds [-0.000001, inf]; move it inside or widen the bounds"
         )
     );
+    app.perform(vec![Action::RunFit]);
+    let page = app.fit_page().unwrap();
+    // The same sentence from fit.evaluate and from fit.run.
+    assert_eq!(page.error, page.preview.error);
     assert!(page.view.is_none() && app.engine().project().analyses().is_empty());
     let mut h = harness(app);
     h.run_steps(3);
@@ -1211,4 +1209,90 @@ fn the_engines_backticks_do_not_reach_the_screen() {
     h.run_steps(3);
     h.get_by_label_contains("Model pk1.oral_1");
     assert!(h.query_by_label_contains("`").is_none());
+}
+
+// ---- T-027, item 4: the follow-ups of the simulation page ---------------------------------
+
+#[test]
+fn a_simulation_takes_its_units_from_the_selected_worksheet_or_says_there_is_none() {
+    // No worksheet: the page says so and carries no unit.
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation]);
+    assert_eq!(app.sim_page().unwrap().worksheet, None);
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.get_by_label_contains("No worksheet");
+    // With a worksheet selected: its units, the worksheet recorded as data.
+    let mut app = with_oral();
+    app.perform(vec![
+        Action::Select(Selection::Worksheet(1)),
+        Action::NewSimulation,
+    ]);
+    assert_eq!(app.sim_page().unwrap().worksheet, Some(1));
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.get_by_label_contains("Units of the worksheet oral");
+    assert!(h.query_by_label_contains("No worksheet").is_none());
+    // A worksheet that was never selected is not guessed from the project.
+    let mut app = with_oral();
+    app.perform(vec![
+        Action::Select(Selection::Welcome),
+        Action::NewSimulation,
+    ]);
+    assert_eq!(app.sim_page().unwrap().worksheet, None);
+}
+
+#[test]
+fn saving_a_simulation_again_updates_it_instead_of_adding_another() {
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulation, Action::SimSave]);
+    assert_eq!(app.engine().project().analyses().len(), 1);
+    let first = app.sim_page().unwrap().analysis.unwrap();
+    if let Some(p) = app.state.sim.as_mut() {
+        p.dose = 250.0;
+    }
+    app.perform(vec![Action::SimChanged, Action::SimSave]);
+    assert_eq!(app.engine().project().analyses().len(), 1);
+    assert_eq!(app.sim_page().unwrap().analysis, Some(first));
+    assert_eq!(app.notice_text(), Some("Updated the saved simulation."));
+    let view = app
+        .engine_mut()
+        .execute("analysis.get", serde_json::json!({ "analysis": first }))
+        .unwrap();
+    assert_eq!(view["spec"]["input"]["dose"], 250.0);
+    // If the analysis was removed meanwhile, saving starts a new one.
+    app.engine_mut()
+        .execute("analysis.remove", serde_json::json!({ "analysis": first }))
+        .unwrap();
+    app.perform(vec![Action::SimSave]);
+    assert_eq!(app.engine().project().analyses().len(), 1);
+    assert_ne!(app.sim_page().unwrap().analysis, Some(first));
+}
+
+#[test]
+fn the_duration_of_an_infusion_is_a_field_with_its_unit() {
+    // The unit is written in the field itself.
+    let mut value = 2.5_f64;
+    let mut h = Harness::builder().build_ui(move |ui| {
+        crate::widgets::unit_field(ui, &mut value, 0.0..=10.0, "h");
+    });
+    h.run();
+    h.get_by_value("2.5 h");
+    let mut value = 2.5_f64;
+    let mut h = Harness::builder().build_ui(move |ui| {
+        crate::widgets::unit_field(ui, &mut value, 0.0..=10.0, "");
+    });
+    h.run();
+    h.get_by_value("2.5");
+    // On the fit page it carries the time unit of the worksheet.
+    let mut app = with_oral();
+    app.perform(vec![Action::NewFit]);
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = crate::modelinfo::Input::Infusion;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.get_by_label_contains("Duration of the input");
+    h.get_by_value("1 h");
 }

@@ -12,13 +12,13 @@ use crate::app::Action;
 use crate::fit::defaults::PREVIEW_POINTS;
 use crate::fitplots;
 use crate::fmt;
-use crate::model::{Simulation, read};
+use crate::model::{Simulation, WorksheetInfo, read};
 use crate::modelinfo::{self, Input, ModelInfo};
 use crate::modelpick;
 use crate::plot::{self, Dot, LineSet, PointSet, Tone, Weight};
 use crate::plotdata::Pt;
 use crate::theme::Tokens;
-use crate::widgets::{error_box, section};
+use crate::widgets::{error_box, section, unit_field};
 
 /// The values a new simulation starts from (the engine's own example).
 pub mod example {
@@ -49,6 +49,9 @@ const SECONDARY: [&str; 9] = [
 pub struct SimPage {
     /// The stored analysis this page was opened from or saved as.
     pub analysis: Option<u64>,
+    /// The worksheet whose units the page uses: the one selected when the page was opened.
+    #[serde(default)]
+    pub worksheet: Option<u64>,
     pub input: Input,
     pub lag: bool,
     pub duration: f64,
@@ -73,6 +76,7 @@ impl SimPage {
     pub fn new() -> SimPage {
         SimPage {
             analysis: None,
+            worksheet: None,
             input: Input::default(),
             lag: false,
             duration: example::DURATION,
@@ -147,6 +151,10 @@ impl SimPage {
         });
         if store {
             out["store"] = json!(true);
+            // A page that came from, or was saved as, an analysis updates that analysis.
+            if let Some(id) = self.analysis {
+                out["analysis"] = json!(id);
+            }
         }
         out
     }
@@ -170,9 +178,63 @@ impl SimPage {
     }
 }
 
-/// The page body.
-pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut Vec<Action>) {
+/// The units a simulation shows: those of the selected worksheet, empty when there is none.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Units {
+    pub time: String,
+    pub conc: String,
+    pub dose: String,
+}
+
+impl Units {
+    pub fn of(info: Option<&WorksheetInfo>) -> Units {
+        let get = |role: &str| {
+            info.and_then(|i| i.unit_of(role))
+                .unwrap_or_default()
+                .to_owned()
+        };
+        Units {
+            time: get("time"),
+            conc: get("concentration"),
+            dose: get("dose"),
+        }
+    }
+
+    /// What the page says about where its units come from.
+    pub fn source(info: Option<&WorksheetInfo>) -> String {
+        match info {
+            None => "No worksheet: the units are not known, so the values carry none. Select a worksheet before opening a simulation to take its units.".to_owned(),
+            Some(i) => {
+                let u = Units::of(Some(i));
+                let part = |label: &str, unit: &str| {
+                    if unit.is_empty() {
+                        format!("{label} (no unit set)")
+                    } else {
+                        format!("{label} {unit}")
+                    }
+                };
+                format!(
+                    "Units of the worksheet {}: {}, {}, {}.",
+                    i.name,
+                    part("time", &u.time),
+                    part("concentration", &u.conc),
+                    part("dose", &u.dose)
+                )
+            }
+        }
+    }
+}
+
+/// The page body. `info` is the worksheet the page takes its units from, when there is one.
+pub fn central(
+    ui: &mut Ui,
+    tokens: &Tokens,
+    page: &mut SimPage,
+    info: Option<&WorksheetInfo>,
+    actions: &mut Vec<Action>,
+) {
     let c = &tokens.colors;
+    let units = Units::of(info);
     ui.label(
         RichText::new("Model simulation")
             .size(tokens.font.title)
@@ -184,6 +246,11 @@ pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut V
         )
         .color(c.text_muted.color()),
     );
+    ui.label(RichText::new(Units::source(info)).color(if info.is_some() {
+        c.text_muted.color()
+    } else {
+        c.warning.color()
+    }));
     let mut changed = false;
 
     section(ui, tokens, "Model", |ui| {
@@ -191,8 +258,7 @@ pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut V
         if page.input.has_duration() {
             ui.horizontal(|ui| {
                 ui.label("Duration of the input");
-                changed |= modelpick::number_field(ui, &mut page.duration, true);
-                ui.label(RichText::new("time units").color(c.text_muted.color()));
+                changed |= unit_field(ui, &mut page.duration, 1.0e-4..=1.0e6, &units.time);
             });
         }
     });
@@ -200,19 +266,17 @@ pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut V
     section(ui, tokens, "Dose and parameters", |ui| {
         ui.horizontal(|ui| {
             ui.label("Dose");
-            changed |= modelpick::number_field(ui, &mut page.dose, true);
-            ui.label(RichText::new("dose units").color(c.text_muted.color()));
+            changed |= unit_field(ui, &mut page.dose, 0.0..=1.0e12, &units.dose);
         });
         let model = page.model();
         changed |=
-            modelpick::parameter_rows(ui, tokens, "simulation", model, &mut page.params, None);
+            modelpick::parameter_rows(ui, tokens, "simulation", model, &mut page.params, info);
     });
 
     section(ui, tokens, "Time", |ui| {
         ui.horizontal(|ui| {
             ui.label("From 0 to");
-            changed |= modelpick::number_field(ui, &mut page.end, true);
-            ui.label(RichText::new("time units").color(c.text_muted.color()));
+            changed |= unit_field(ui, &mut page.end, 1.0e-6..=1.0e9, &units.time);
         });
     });
 
@@ -242,7 +306,7 @@ pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut V
         ui.add_space(tokens.spacing.medium);
         ui.horizontal(|ui| {
             let text = if page.analysis.is_some() {
-                "Save as another analysis"
+                "Update the saved analysis"
             } else {
                 "Save as analysis"
             };
@@ -263,8 +327,22 @@ pub fn central(ui: &mut Ui, tokens: &Tokens, page: &mut SimPage, actions: &mut V
 }
 
 /// The plot beside the page: the curve from the engine.
-pub fn plot_panel(ui: &mut Ui, tokens: &Tokens, page: &SimPage, log_axis: &mut bool) {
+pub fn plot_panel(
+    ui: &mut Ui,
+    tokens: &Tokens,
+    page: &SimPage,
+    info: Option<&WorksheetInfo>,
+    log_axis: &mut bool,
+) {
     let c = &tokens.colors;
+    let units = Units::of(info);
+    let axis = |name: &str, unit: &str| {
+        if unit.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{name} ({unit})")
+        }
+    };
     fitplots::scale_switch(ui, tokens, "Concentration over time", log_axis);
     let Some(result) = &page.result else {
         ui.label(RichText::new("The curve appears here.").color(c.text_muted.color()));
@@ -288,7 +366,10 @@ pub fn plot_panel(ui: &mut Ui, tokens: &Tokens, page: &SimPage, log_axis: &mut b
         ui,
         tokens,
         "simulation-plot",
-        ("Time".to_owned(), "Concentration".to_owned()),
+        (
+            axis("Time", &units.time),
+            axis("Concentration", &units.conc),
+        ),
         &[PointSet::new("Peak", peak(&curve), Tone::Fit, Dot::Large)],
         &[LineSet::new(
             "Simulated",

@@ -1,6 +1,70 @@
 //! Display formatting: numbers for the eye, names for parameters. Never rounds a stored value.
+//!
+//! How numbers are shown (significant digits, decimal mark) is a setting of the person
+//! ([`crate::settings`]); the application hands it to this module at the start of every frame
+//! ([`set_display`]) so the many call sites need not carry it. The default is four significant
+//! digits and a decimal point.
 
-/// A number with four significant digits (more for large integers in range), scientific notation
+use std::cell::Cell;
+
+/// How numbers are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Display {
+    /// Significant digits of [`number`].
+    pub digits: u8,
+    /// A decimal comma instead of a point.
+    pub comma: bool,
+}
+
+impl Default for Display {
+    fn default() -> Self {
+        Display {
+            digits: 4,
+            comma: false,
+        }
+    }
+}
+
+thread_local! {
+    static DISPLAY: Cell<Display> = const { Cell::new(Display { digits: 4, comma: false }) };
+}
+
+/// Sets how numbers are shown on this thread (the UI thread).
+pub fn set_display(display: Display) {
+    DISPLAY.with(|d| d.set(display));
+}
+
+/// How numbers are shown now.
+pub fn display() -> Display {
+    DISPLAY.with(Cell::get)
+}
+
+/// Writes the decimal mark the person chose.
+fn mark(text: String) -> String {
+    if display().comma {
+        text.replace('.', ",")
+    } else {
+        text
+    }
+}
+
+/// A number the person typed: `3,25` and `3.25` both read as 3.25, a typographic minus as a
+/// minus. `None` for text that is not a finite number.
+pub fn parse_number(text: &str) -> Option<f64> {
+    let cleaned: String = text
+        .trim()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            ',' => '.',
+            '\u{2212}' => '-',
+            other => other,
+        })
+        .collect();
+    cleaned.parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
+/// A number with the chosen number of significant digits (four by default), scientific notation
 /// outside 1e-3 to 1e5. `-` for a value that is not finite.
 pub fn number(x: f64) -> String {
     if !x.is_finite() {
@@ -9,18 +73,20 @@ pub fn number(x: f64) -> String {
     if x == 0.0 {
         return "0".to_owned();
     }
+    let digits = usize::from(display().digits.clamp(2, 10));
     let magnitude = x.abs().log10().floor();
     if !(-3.0..5.0).contains(&magnitude) {
-        return format!("{x:.3e}");
+        return mark(format!("{x:.prec$e}", prec = digits - 1));
     }
-    let decimals = (3.0 - magnitude).clamp(0.0, 6.0) as usize;
+    let decimals = ((digits as f64 - 1.0) - magnitude).clamp(0.0, 12.0) as usize;
     let text = format!("{x:.decimals$}");
     // Drop trailing zeros after a decimal point, but keep the digits that carry information.
-    if text.contains('.') {
+    let text = if text.contains('.') {
         text.trim_end_matches('0').trim_end_matches('.').to_owned()
     } else {
         text
-    }
+    };
+    mark(text)
 }
 
 /// A goodness of fit: up to five decimals, enough to tell 0.9999 from 1.
@@ -29,11 +95,17 @@ pub fn fit_quality(x: f64) -> String {
         return "-".to_owned();
     }
     let text = format!("{x:.5}");
-    text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    mark(text.trim_end_matches('0').trim_end_matches('.').to_owned())
 }
 
-/// A number the way it was typed: the shortest text that reads back as the same value.
+/// A number the way it was typed: the shortest text that reads back as the same value, with the
+/// decimal mark the person chose.
 pub fn exact(x: f64) -> String {
+    mark(format!("{x}"))
+}
+
+/// As [`exact`], always with a decimal point: for comparing with what was typed.
+pub fn exact_point(x: f64) -> String {
     format!("{x}")
 }
 

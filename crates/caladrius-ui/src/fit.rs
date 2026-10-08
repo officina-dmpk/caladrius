@@ -373,8 +373,10 @@ impl FitPage {
                 }
             }
             Err(message) => {
+                // The objective's refusal is the sentence `fit.run` gives for the same values (both
+                // come from the fit), so it wins over the one of the curve (the model's wording).
                 self.preview.wrss = None;
-                error = error.or(Some(message));
+                error = Some(message);
             }
         }
         self.preview.error = error;
@@ -521,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn the_preview_keeps_the_first_error_and_clears_the_curve() {
+    fn the_preview_shows_the_objectives_sentence_and_clears_the_curve() {
         let mut p = page();
         p.adopt_preview(
             Some(Ok(json!({ "times": [0.0, 1.0], "conc": [0.0, 2.0], "secondary": { "half_life": 6.9 } }))),
@@ -532,6 +534,9 @@ mod tests {
         assert_eq!(p.preview.error, None);
         p.adopt_preview(Some(Err("bad v".to_owned())), Err("bad too".to_owned()));
         assert!(p.preview.curve.is_empty() && p.preview.wrss.is_none());
+        // The sentence of fit.evaluate is the one fit.run gives for the same values.
+        assert_eq!(p.preview.error.as_deref(), Some("bad too"));
+        p.adopt_preview(Some(Err("bad v".to_owned())), Ok(json!({ "wrss": 1.0 })));
         assert_eq!(p.preview.error.as_deref(), Some("bad v"));
     }
 

@@ -1605,3 +1605,43 @@ fn evaluating_odd_starting_values_gives_a_readable_fit_error_not_a_panic() {
     );
     assert!(e.project().analyses().is_empty());
 }
+
+#[test]
+fn a_stored_simulation_can_be_updated_in_place() {
+    let mut e = Engine::new();
+    let first = ok(
+        &mut e,
+        "model.simulate",
+        json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": 5, "k": 0.2 },
+                "times": [0, 1, 2], "store": true }),
+    );
+    let id = first["analysis"].clone();
+    let second = ok(
+        &mut e,
+        "model.simulate",
+        json!({ "model": "pk1.iv_bolus", "dose": 20, "params": { "v": 5, "k": 0.2 },
+                "times": [0, 1, 2, 3], "store": true, "analysis": id }),
+    );
+    // Same analysis, new options: one analysis in the project, its spec is the new one.
+    assert_eq!(second["analysis"], id);
+    assert_eq!(e.project().analyses().len(), 1);
+    let view = ok(&mut e, "analysis.get", json!({ "analysis": id }));
+    assert_eq!(view["spec"]["input"]["dose"], 20.0);
+    // `analysis` without `store` is refused with a sentence; another kind is refused too.
+    let refused = err(
+        &mut e,
+        "model.simulate",
+        json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": 5, "k": 0.2 },
+                "times": [0, 1], "analysis": id }),
+    );
+    assert_eq!(refused.code, "invalid_parameters");
+    assert!(refused.message.contains("store"), "{}", refused.message);
+    let missing = err(
+        &mut e,
+        "model.simulate",
+        json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": 5, "k": 0.2 },
+                "times": [0, 1], "store": true, "analysis": 99 }),
+    );
+    assert_eq!(missing.code, "unknown_analysis");
+    assert_eq!(e.project().analyses().len(), 1);
+}

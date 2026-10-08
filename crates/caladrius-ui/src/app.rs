@@ -69,7 +69,7 @@ fn understood_note(typed: &str, answer: &Value) -> Option<String> {
     let typed = typed.trim();
     match answer.get("understood")? {
         Value::Number(n) => {
-            let shown = crate::fmt::exact(n.as_f64()?);
+            let shown = crate::fmt::exact_point(n.as_f64()?);
             (typed != shown).then(|| format!("Read `{typed}` as {shown}."))
         }
         Value::Null if !typed.is_empty() => Some(format!("Read `{typed}` as a missing value.")),
@@ -642,7 +642,12 @@ impl UiApp {
             }
             Shown::Sim => {
                 if let Some(page) = self.state.sim.as_ref() {
-                    sim::plot_panel(ui, tokens, page, &mut self.state.log_axis);
+                    let info = self
+                        .sheet
+                        .as_ref()
+                        .map(|s| &s.info)
+                        .filter(|i| Some(i.id) == page.worksheet);
+                    sim::plot_panel(ui, tokens, page, info, &mut self.state.log_axis);
                 }
             }
             Shown::Nothing => {}
@@ -802,9 +807,12 @@ impl UiApp {
                             fitform::central(ui, tokens, page, &s.info, &s.table, actions);
                         }
                     }
-                    (Shown::Sim, _) => {
+                    (Shown::Sim, sheet) => {
                         if let Some(page) = self.state.sim.as_mut() {
-                            sim::central(ui, tokens, page, actions);
+                            let info = sheet
+                                .map(|s| &s.info)
+                                .filter(|i| Some(i.id) == page.worksheet);
+                            sim::central(ui, tokens, page, info, actions);
                         }
                     }
                     _ => {

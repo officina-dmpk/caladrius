@@ -52,6 +52,26 @@ pub fn threshold(
     changed
 }
 
+/// A number field with its unit written in it (`1 h`), so a quantity is never a bare number.
+/// The value is shown as typed (exactly); an empty unit shows the number alone.
+pub fn unit_field(
+    ui: &mut Ui,
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    unit: &str,
+) -> bool {
+    let speed = (value.abs() * 0.05).max(1.0e-6);
+    let mut field = egui::DragValue::new(value)
+        .range(range)
+        .speed(speed)
+        .custom_formatter(|n, _| crate::fmt::exact(n))
+        .custom_parser(crate::fmt::parse_number);
+    if !unit.is_empty() {
+        field = field.suffix(format!(" {unit}"));
+    }
+    ui.add(field).changed()
+}
+
 pub fn section(ui: &mut Ui, tokens: &Tokens, title: &str, body: impl FnOnce(&mut Ui)) {
     ui.add_space(tokens.spacing.medium);
     ui.label(

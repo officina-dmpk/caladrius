@@ -13,7 +13,7 @@ use crate::model::{Table, WorksheetInfo};
 use crate::modelpick;
 use crate::nca::unit_notes;
 use crate::theme::Tokens;
-use crate::widgets::{combo, error_box, section, stale_banner, threshold, units_line};
+use crate::widgets::{combo, error_box, section, stale_banner, threshold, unit_field, units_line};
 
 fn exact_field(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclusive<f64>) -> bool {
     let speed = (value.abs() * 0.05).max(1.0e-6);
@@ -88,11 +88,10 @@ pub fn central(
         if page.input.has_duration() {
             ui.horizontal(|ui| {
                 ui.label("Duration of the input (fixed, not fitted)");
-                let time = info.unit_of("time").unwrap_or("time units");
-                if exact_field(ui, &mut page.duration, 1.0e-4..=1.0e6) {
+                let time = info.unit_of("time").unwrap_or("");
+                if unit_field(ui, &mut page.duration, 1.0e-4..=1.0e6, time) {
                     regenerate = true;
                 }
-                ui.label(RichText::new(time).color(c.text_muted.color()));
             });
         }
         ui.add_space(tokens.spacing.small);
