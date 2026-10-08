@@ -45,13 +45,25 @@ impl ProfilePoint {
         self.origin != PointOrigin::InsertedStart
     }
 
-    /// True when the point is a quantified concentration: a sample with C > 0 that was not BLQ.
+    /// True when the point is a measured, quantified concentration: a sample with C > 0 whose value
+    /// was neither missing nor BLQ before cleaning. Tfirst, Tlast and Clast use these points only
+    /// (PKNCA reads them from the data before replacement, T-012).
     pub fn is_quantifiable(&self) -> bool {
-        self.conc > 0.0
-            && !matches!(
-                self.origin,
-                PointOrigin::BlqSet | PointOrigin::InsertedStart
-            )
+        self.conc > 0.0 && self.origin != PointOrigin::InsertedStart && !self.is_replaced()
+    }
+
+    /// True for a sample whose value is a number given by a policy for a missing or BLQ value.
+    pub fn is_replaced(&self) -> bool {
+        matches!(
+            self.origin,
+            PointOrigin::BlqSet | PointOrigin::MissingReplaced
+        )
+    }
+
+    /// True for a sample with C > 0 after cleaning, replaced values included: the points that end
+    /// AUClast and may enter the terminal phase (T-012, open item O-07).
+    pub fn is_positive_sample(&self) -> bool {
+        self.conc > 0.0 && self.is_sample()
     }
 }
 
@@ -83,6 +95,8 @@ pub struct RemovedPoint {
 pub(crate) struct Cleaned {
     pub points: Vec<ProfilePoint>,
     pub removed: Vec<RemovedPoint>,
+    /// The samples after the missing and negative rules, before the BLQ policy (for Tlag).
+    pub before_blq: Vec<ProfilePoint>,
 }
 
 /// Applies NCA-DAT-01, 03, 04, 06 in that order. The input must have passed validation.
@@ -120,6 +134,7 @@ pub(crate) fn clean(input: &NcaInput) -> Cleaned {
             origin,
         });
     }
+    out.before_blq = out.points.clone();
     apply_blq(options.blq, out)
 }
 
@@ -128,6 +143,7 @@ fn apply_blq(policy: BlqPolicy, cleaned: Cleaned) -> Cleaned {
     let Cleaned {
         points,
         mut removed,
+        before_blq,
     } = cleaned;
     let first_q = points.iter().find(|p| p.conc > 0.0).map(|p| p.time);
     let last_q = points.iter().rev().find(|p| p.conc > 0.0).map(|p| p.time);
@@ -189,5 +205,6 @@ fn apply_blq(policy: BlqPolicy, cleaned: Cleaned) -> Cleaned {
     Cleaned {
         points: kept,
         removed,
+        before_blq,
     }
 }

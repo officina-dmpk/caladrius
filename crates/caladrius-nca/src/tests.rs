@@ -197,7 +197,7 @@ fn tmax_tie_rule_is_an_option() {
 #[test]
 fn unknown_parameter_names_are_absent() {
     let r = ev(&T, &C, NcaOptions::default());
-    for name in ["tlag", "aucivpbextinf.obs", "no.such.parameter"] {
+    for name in ["no.such.parameter", "cl.last", "AUCLAST"] {
         assert_eq!(r.get(name), None, "{name}");
         assert_eq!(r.parameter(name), None, "{name}");
     }
@@ -334,8 +334,9 @@ fn blq_policy_by_tmax() {
 }
 
 #[test]
-fn blq_values_set_to_a_number_are_never_tlast() {
-    // NCA-DAT-06 `set`, NCA-DAT-07: Tlast and Clast depend only on quantified values.
+fn blq_values_set_to_a_number_are_integrated_but_never_tlast() {
+    // NCA-DAT-06 `set`; T-012 (PKNCA): Tlast and Clast come from the data before replacement, but
+    // AUClast runs to the last positive point after it.
     let half = NcaOptions {
         blq: BlqPolicy::all(BlqAction::Set(0.5)),
         ..with_method(AucMethod::Linear)
@@ -344,8 +345,8 @@ fn blq_values_set_to_a_number_are_never_tlast() {
     assert_close(&r, "tlast", 4.0);
     assert_close(&r, "clast.obs", 2.0);
     assert_close(&r, "tfirst", 1.0);
-    // [0,1]: 2.75; [1,2]: 2.75; [2,3]: 2.25; [3,4]: 3. AUCall adds 1*(2 + 0.5)/2 = 1.25.
-    assert_close(&r, "auclast", 10.75);
+    // [0,1]: 2.75; [1,2]: 2.75; [2,3]: 2.25; [3,4]: 3; [4,5]: 1*(2 + 0.5)/2 = 1.25. Nothing after.
+    assert_close(&r, "auclast", 12.0);
     assert_close(&r, "aucall", 12.0);
     assert_eq!(
         r.profile().last().map(|p| p.origin),

@@ -28,6 +28,8 @@ pub enum NcReason {
     NonPositiveArea,
     /// Not defined for this fit: adjusted R² of a 2-point fit, R² of a flat ln C.
     Undefined,
+    /// The concentration never rises from one sample to the next (Tlag, NCA-OBS-04).
+    NoRise,
     /// The dose is missing (NCA-DAT-10).
     DoseMissing,
     /// The dose is not a finite number > 0 (NCA-DAT-10, DAT-11).
@@ -49,6 +51,7 @@ impl std::fmt::Display for NcReason {
             Self::NoValidFit => "no terminal phase decreases (the fitted slope is not negative); choose other points or report the terminal phase as not estimable",
             Self::NonPositiveArea => "the area is zero or negative, so the ratio is undefined",
             Self::Undefined => "not defined for this fit: adjusted R² needs at least 3 points and R² needs concentrations that change",
+            Self::NoRise => "the concentration never rises from one sample to the next, so there is no lag time",
             Self::DoseMissing => "the dose is missing; give the dose to compute clearance, volumes and dose-normalised values",
             Self::InvalidDose => "the dose is not a positive number; give a dose greater than 0 to compute clearance, volumes and dose-normalised values",
         })

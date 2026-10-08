@@ -113,34 +113,44 @@ pub(crate) fn terminal(
     tmax: Option<f64>,
 ) -> Result<Terminal, NcaError> {
     match &options.lambda_z_selection.manual {
-        Some(manual) => manual_fit(points, manual),
+        Some(manual) => manual_fit(points, manual, options.lambda_z_selection.exclude_replaced),
         None => Ok(automatic(points, route, options, tmax)),
     }
 }
 
 /// NCA-LZ-08: the user's points, no selection.
-fn manual_fit(points: &[ProfilePoint], manual: &LambdaZManual) -> Result<Terminal, NcaError> {
+/// A point that may enter a regression: C > 0 after cleaning (NCA-LZ-02 rule 1), and not a
+/// replaced value when `exclude_replaced` is set (the NCA-LZ-02b reading).
+fn usable(p: &ProfilePoint, exclude_replaced: bool) -> bool {
+    p.is_positive_sample() && !(exclude_replaced && p.is_replaced())
+}
+
+fn manual_fit(
+    points: &[ProfilePoint],
+    manual: &LambdaZManual,
+    exclude_replaced: bool,
+) -> Result<Terminal, NcaError> {
+    let usable = |p: &ProfilePoint| usable(p, exclude_replaced);
     let chosen: Vec<&ProfilePoint> = match manual {
         LambdaZManual::Times(times) => {
             for &t in times {
-                let usable = points.iter().any(|p| p.time == t && p.is_quantifiable());
-                if !usable {
+                if !points.iter().any(|p| p.time == t && usable(p)) {
                     return Err(NcaError::InvalidOption {
                         option: "lambda_z_selection.manual".to_string(),
                         reason: format!(
-                            "the sample at time {t} has no quantified concentration (missing, below the limit of quantification, or removed by cleaning); leave it out of the terminal phase"
+                            "the sample at time {t} has no usable concentration (not above zero, removed by cleaning, or a replaced value excluded by `exclude_replaced`); leave it out of the terminal phase"
                         ),
                     });
                 }
             }
             points
                 .iter()
-                .filter(|p| p.is_quantifiable() && times.contains(&p.time))
+                .filter(|p| usable(p) && times.contains(&p.time))
                 .collect()
         }
         LambdaZManual::Range { start, end } => points
             .iter()
-            .filter(|p| p.is_quantifiable() && p.time >= *start && p.time <= *end)
+            .filter(|p| usable(p) && p.time >= *start && p.time <= *end)
             .collect(),
     };
     if chosen.len() < 2 {
@@ -187,7 +197,7 @@ fn automatic(
     let eligible: Vec<&ProfilePoint> = points
         .iter()
         .filter(|p| {
-            p.is_quantifiable()
+            usable(p, selection.exclude_replaced)
                 && p.time > dose_end
                 && after_tmax(p.time)
                 && !selection.exclude.contains(&p.time)

@@ -37,6 +37,7 @@ pub(crate) struct Inputs {
     pub auclast: ParamValue,
     pub aucall: ParamValue,
     pub aumclast: ParamValue,
+    pub aumcall: ParamValue,
     pub aucinf_obs: ParamValue,
     pub aucinf_pred: ParamValue,
     pub aumcinf_obs: ParamValue,
@@ -89,6 +90,14 @@ pub(crate) fn derived(route: Route, x: &Inputs) -> Vec<(&'static str, ParamValue
         ("vz.pred", vz(cl_pred)),
         ("vss.iv.obs", iv_only(vss(cl_obs, mrt_iv_obs))),
         ("vss.iv.pred", iv_only(vss(cl_pred, mrt_iv_pred))),
+        // NCA-EXT-07, PKNCA plain form: CL times the uncorrected MRT, every route (T-012).
+        ("vss.obs", vss(cl_obs, mrt(x.aumcinf_obs, x.aucinf_obs))),
+        ("vss.pred", vss(cl_pred, mrt(x.aumcinf_pred, x.aucinf_pred))),
+        // To Tlast: D/AUClast times the IV MRT to Tlast.
+        (
+            "vss.iv.last",
+            iv_only(vss(cl(x.auclast), mrt_iv(x.aumclast, x.auclast))),
+        ),
         ("cmax.dn", dn(x.cmax)),
         ("clast.obs.dn", dn(x.clast)),
         ("auclast.dn", dn(x.auclast)),
@@ -96,6 +105,7 @@ pub(crate) fn derived(route: Route, x: &Inputs) -> Vec<(&'static str, ParamValue
         ("aucinf.obs.dn", dn(x.aucinf_obs)),
         ("aucinf.pred.dn", dn(x.aucinf_pred)),
         ("aumclast.dn", dn(x.aumclast)),
+        ("aumcall.dn", dn(x.aumcall)),
         ("aumcinf.obs.dn", dn(x.aumcinf_obs)),
         ("aumcinf.pred.dn", dn(x.aumcinf_pred)),
     ]

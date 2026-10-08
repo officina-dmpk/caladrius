@@ -232,4 +232,7 @@ pub struct LambdaZSelection {
     pub exclude: Vec<f64>,
     /// User-chosen points; when set, no automatic selection happens (NCA-LZ-08).
     pub manual: Option<LambdaZManual>,
+    /// Keep BLQ or missing values that a policy replaced by a number out of the terminal phase
+    /// (the earlier NCA-LZ-02b reading). `false` (PKNCA, T-012): they are ordinary points.
+    pub exclude_replaced: bool,
 }

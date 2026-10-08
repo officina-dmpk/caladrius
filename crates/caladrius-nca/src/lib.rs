@@ -10,13 +10,14 @@
 //! Behaviour: `specs/nca.md`. Rule ids (`NCA-DAT-02`...) are cited in the code and the tests.
 //! Parameters are looked up by their PKNCA names with [`NcaResult::get`].
 //!
-//! Implemented: input validation, data cleaning, C0, Cmax, Tmax, Tfirst, Tlast, Clast, AUClast,
+//! Implemented: input validation, data cleaning, C0, Cmax, Tmax, Tlag, Tfirst, Tlast, Clast, AUClast,
 //! AUCall, AUMClast, AUMCall, the terminal phase (λz, R², t½, Clast,pred, span ratio) and the
 //! extrapolation to infinity (AUCinf, AUMCinf, % extrapolated), MRT, CL, Vz, Vss and
-//! dose-normalised values. A missing or invalid dose only makes the dose-dependent parameters
-//! not calculated (NCA-DAT-10).
+//! dose-normalised values, plain Vss and PKNCA's IV bolus areas (`auciv*`, `aucivpbext*`). A
+//! missing or invalid dose only makes the dose-dependent parameters not calculated (NCA-DAT-10).
 
 mod auc;
+mod auciv;
 mod clean;
 mod derived;
 mod error;
@@ -30,6 +31,8 @@ mod validate;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_edge;
 #[cfg(test)]
 mod tests_lambda_z;
 
@@ -113,7 +116,6 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         options.auc_method,
         start_missing,
         obs.tmax.value(),
-        obs.tlast.value(),
     );
 
     // Section 6: the terminal phase, then section 7: extrapolation to infinity.
@@ -155,7 +157,7 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         areas.aumclast,
         obs.clast,
         clast_pred,
-        obs.tlast,
+        areas.end_time,
     );
 
     // NCA-EXT-04 to 07, NCA-OBS-05, with the dose of NCA-DAT-10.
@@ -169,12 +171,27 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
             auclast: areas.auclast,
             aucall: areas.aucall,
             aumclast: areas.aumclast,
+            aumcall: areas.aumcall,
             aucinf_obs: ext.aucinf_obs,
             aucinf_pred: ext.aucinf_pred,
             aumcinf_obs: ext.aumcinf_obs,
             aumcinf_pred: ext.aumcinf_pred,
         },
     );
+
+    // NCA-IV-02, IV-03: PKNCA's IV bolus areas and percent back-extrapolated.
+    let iv_areas = auciv::iv_areas(
+        input.route,
+        &profile,
+        c0,
+        &auciv::Areas {
+            auclast: areas.auclast,
+            aucall: areas.aucall,
+            aucinf_obs: ext.aucinf_obs,
+            aucinf_pred: ext.aucinf_pred,
+        },
+    );
+    let tlag = observed::tlag(input.route, &cleaned.before_blq);
 
     // NCA-IV-01: C0 is reported for an IV bolus only.
     let c0_reported = match input.route {
@@ -188,6 +205,7 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         ("cmax", obs.cmax),
         ("tmax", obs.tmax),
         ("tfirst", obs.tfirst),
+        ("tlag", tlag),
         ("tlast", obs.tlast),
         ("clast.obs", obs.clast),
         ("auclast", areas.auclast),
@@ -217,6 +235,7 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
     ]
     .into_iter()
     .chain(derived)
+    .chain(iv_areas)
     .map(|(name, value)| Parameter {
         name: name.to_string(),
         value,

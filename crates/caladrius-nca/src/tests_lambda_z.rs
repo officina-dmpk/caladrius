@@ -249,15 +249,21 @@ fn points_during_an_infusion_are_not_eligible() {
 }
 
 #[test]
-fn blq_values_set_to_a_number_never_enter_the_regression() {
-    // NCA-LZ-02b.
+fn blq_values_set_to_a_number_enter_the_regression_unless_excluded() {
+    // T-012 (PKNCA, open item O-07): a replaced value is an ordinary terminal-phase point; the
+    // `exclude_replaced` option restores the NCA-LZ-02b reading.
     let t = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let c = [0.0, 5.0, 4.0, 3.0, 2.0, 0.0, 0.0];
     let options = NcaOptions {
         blq: BlqPolicy::all(BlqAction::Set(0.5)),
         ..NcaOptions::default()
     };
-    let r = ev(&t, &c, options);
+    let r = ev(&t, &c, options.clone());
+    assert_close(&r, "lambda.z.time.last", 6.0);
+    assert_close(&r, "tlast", 4.0);
+    let mut excluded = options;
+    excluded.lambda_z_selection.exclude_replaced = true;
+    let r = ev(&t, &c, excluded);
     assert_close(&r, "lambda.z.time.last", 4.0);
 }
 
@@ -414,6 +420,7 @@ fn lambda_z_selection_and_candidates_round_trip_through_json() {
             start: 3.0,
             end: 30.0,
         }),
+        exclude_replaced: true,
     };
     let text = serde_json::to_string(&selection).unwrap();
     assert_eq!(

@@ -43,6 +43,7 @@ pub(crate) fn extrapolate(
     aumclast: ParamValue,
     clast_obs: ParamValue,
     clast_pred: ParamValue,
+    // Start of the AUMC tail: where AUClast ends (Tlast unless a replaced value follows it).
     tlast: ParamValue,
 ) -> Extrapolated {
     let aucinf = |clast: ParamValue| {

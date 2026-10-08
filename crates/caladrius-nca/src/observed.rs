@@ -75,3 +75,22 @@ pub(crate) fn c0(route: Route, points: &[ProfilePoint]) -> ParamValue {
     }
     ParamValue::of(first.conc)
 }
+
+/// Tlag (NCA-OBS-04, extravascular only): the time of the sample just before the first sample whose
+/// concentration exceeds the one before it. Read on the samples before the BLQ policy, so a dropped
+/// leading zero still marks the lag (T-012: PKNCA does the same).
+pub(crate) fn tlag(route: Route, before_blq: &[ProfilePoint]) -> ParamValue {
+    match route {
+        Route::Extravascular => {}
+        Route::IvBolus | Route::IvInfusion { .. } => {
+            return ParamValue::nc(NcReason::NotApplicableToRoute);
+        }
+    }
+    before_blq
+        .windows(2)
+        .find_map(|pair| match pair {
+            [a, b] if b.conc > a.conc => Some(a.time),
+            _ => None,
+        })
+        .map_or(ParamValue::nc(NcReason::NoRise), ParamValue::of)
+}
