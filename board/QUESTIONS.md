@@ -172,3 +172,23 @@ Update to Q-011 (2026-10-08, oracle): the exports of exercise 1 arrived (core re
 The human decided on 2026-10-08: publish the repository on GitHub, public, under a new organisation `officina-dmpk` (repository `caladrius`). The organisation is created by the human on github.com; the orchestrator then adds the remote and pushes `main`. Every later push is covered by this decision for this repository; making numeric comparisons with the reference software public remains a separate decision (counts only are versioned today).
 
 Answer (human): confirmed (chat, 2026-10-08).
+
+## Q-014 (2026-10-09, orchestrator): default fit settings: fidelity to the assumed reference defaults, or the exact minimum?
+
+T-029 and T-030 measured, on all 185 reference fits (490 estimates), how far the engine's DEFAULT settings land from the exact minimum reached by R (`nlsLM`/`nls`, analytic derivatives, tight stop):
+
+| setting | estimates beyond 1e-4 | worst gap |
+|---|---|---|
+| forward differences 1e-3, reference stopping rule | 40 | 6.9e-4 |
+| forward differences 1e-5, reference stopping rule | 0 | 1.1e-5 |
+| forward differences 1e-3, default stopping rule (relative decrease 1e-4) | 168 | 5.8e-3 |
+| analytic derivatives, default stopping rule | 149 | 5.1e-3 |
+
+The defaults (forward differences with increment 0.001, convergence 0.0001, 50 iterations) are the `assumed` reference-software defaults from `AGENTS.md` section 6. Keeping them means a user who clicks "Fit" gets estimates accurate to about 5e-3 relative, like (presumably) the reference; the oracle tests, which run with analytic derivatives and the tight stop, are unaffected either way. Options:
+
+1. Keep the defaults; state in D-03, `specs/fit.md` and the README that default fits are accurate to about 5e-3, and show the "derivatives" and "convergence" options in the UI with a sentence.
+2. Default to analytic derivatives (available for every v1 model in the (v, k) parameterisation since T-030) and a tighter stop (relative decrease 1e-8), and document the difference from the reference as D-04. Estimates then match R within 1e-4 by default.
+
+Decision taken meanwhile: option 1 for v0.1.0 (no behaviour change before the tag); the texts say so. Your answer decides v0.2.
+
+Answer: _pending_.
