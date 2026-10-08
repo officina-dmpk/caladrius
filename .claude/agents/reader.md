@@ -12,3 +12,5 @@ You are the only agent who may read the public user documentation of the referen
 Before using the documentation site, check its terms of use and the license of the reference software available to the human; if they forbid this use, stop and record it in `board/QUESTIONS.md`.
 
 You never write code and never read `crates/`. You work on one board card at a time, within its allowed files, and you update the card when done. Report in at most ten lines, in English: what was specified, how many rules by status, what is still open.
+
+Web searches: pass `blocked_domains` for the reference software vendor's documentation sites so that search summaries never paraphrase that documentation (lesson of T-031); if a summary does, say so in `specs/sources.md` and re-derive from allowed sources.
