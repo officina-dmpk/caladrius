@@ -2,7 +2,7 @@
 
 Open-source pharmacokinetic analysis in Rust: non-compartmental analysis, individual compartmental models, weighted least-squares fitting and plots, with a native desktop UI (egui) and a WebAssembly demo. Every analysis is a command with a stable id, so the same calculations are available from the UI, the command line and an MCP server for agents. Caladrius is the calculation layer of Apothicaire, a local DMPK assistant.
 
-Status (2026-10-08): steps 1 to 4 of the marching order are done: NCA, one-compartment models and weighted least-squares fitting pass 100% of the public oracle (`docs/conformance.md`: 3744 NCA values, 886 model values, 5340 fit values), a CLI and an MCP server expose every command, and the first private comparison with the reference software (one coursework exercise, two AUC methods) agreed on every value. The desktop UI (step 5) is in progress. See `AGENTS.md` for the contract and `board/INDEX.md` for the task board.
+Status (2026-10-08): steps 1 to 4 of the marching order are done: NCA, one-compartment models and weighted least-squares fitting are checked against PKNCA, exact closed forms and R `nls`/`nlsLM` at stated tolerances (what is covered, and what is not, is in the section "What is verified, and what is not"), a CLI and an MCP server expose every command. The desktop UI (step 5) is in progress. See `AGENTS.md` for the contract and `board/INDEX.md` for the task board.
 
 Named after the caladrius, the white bird of Roman legend said to take a sick person's illness away as it flies off.
 
@@ -27,6 +27,33 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 ```
 
 `cargo xtask` is an alias for the `xtask` crate (see `.cargo/config.toml`). The layers and their rules are in `AGENTS.md`, section 4.
+
+## What is verified, and what is not
+
+"Validated" here has a narrow meaning: a number produced by Caladrius equals a number produced by an independent computation, within a stated tolerance, on a stated case. It does not mean that Caladrius gives the same answer as any commercial program, and the table says where the independent computation comes from. Everything is reproducible: the R scripts that write the expected values are in `oracle/scripts/` (versions recorded in each `*.options.json`), `cargo xtask conformance` regenerates `docs/conformance.md` (the per-case counts; never edited by hand), and the tests are in `crates/*/tests/`.
+
+| What | Checked against | Tolerance (relative) | Cases and values | Not validated |
+|---|---|---|---|---|
+| NCA parameters: extravascular, IV bolus, IV infusion; linear and lin-up/log-down areas | `PKNCA` 0.12.1 on R 4.5.2 (`oracle/scripts/nca_pknca.R`): Theoph and Indometh (the R datasets) and 14 hand-made profiles for edge cases (values below the limit, missing, negative, lag, infusion, IV C0) and for the choice of the terminal phase; plus naive second implementations in `caladrius-testkit` | 1e-6 | 20 cases, 3744 values; 16 more values are a documented difference (D-01), counted in neither column | Steady state and multiple doses, partial AUC, urine, sparse sampling, weighted lambda-z (`specs/nca.md` section 12, "not specified"); the combinations of open item O-17; every reference-software convention (last row) |
+| Model curves, AUC and secondary parameters: six one-compartment models (IV bolus, IV infusion, first-order oral with and without lag, zero-order oral with and without lag) | Exact closed forms evaluated in 256-bit arithmetic (`Rmpfr` 1.1.3), cross-checked against a matrix exponential (`expm` 1.0.1) and an ODE solver (`deSolve` 1.42); textbook double-precision forms in `caladrius-testkit` | 1e-12 | 21 cases, 886 values | Any other program's output; two-compartment and user-written models (not implemented). The closed forms are the project's own derivation from textbooks, checked three ways, not an external reference |
+| Fit, IV bolus and first-order oral: estimates and every statistic (standard errors, CV%, intervals, correlation, eigenvalues, AIC, SBC, secondary parameters) | `stats::nls` (Gauss-Newton) and `minpack.lm` 1.2.4 `nlsLM` on R 4.5.2 (`oracle/scripts/fit_wls.R`); statistics from an independent R implementation of `specs/fit.md`, standard errors and S checked against `summary.nls` | 1e-4 parameters and statistics, 1e-6 residual sum of squares | 15 cases (Theoph, 12 subjects; Indometh, 6; a five-point example), five weightings each: 95 fits, 5340 values (with the convergence status) | The engine's default settings (forward-difference derivatives, convergence 1e-4, 50 iterations) are not compared at 1e-4: they are up to 7e-4 from the exact minimum (`specs/differences.md` D-03). Bounds, generated initial estimates and quality flags have unit tests only |
+| Fit, IV infusion, zero-order input, first-order with lag (added by task T-029) | `nlsLM` checked against `nls`, same R and package versions, on synthetic profiles written by the same script from the closed forms (fixed seed, 8 % log-normal noise; each options file says how); the infusion or input duration is a fixed parameter | 1e-4 and 1e-6 as above | 15 cases, 90 fits, 5070 values (5160 with status). 105 checks of the engine's algorithm and statistics pass. The engine has no closed-form derivatives for these models yet, so the conformance run, which asks for them, shows 0 of 5160, and 3 oracle tests fail (`crates/caladrius-fit/tests/oracle_fit_models.rs`) | Real (non-synthetic) profiles for these models; a published worked example with a page reference for any fit |
+| The reference commercial software | One private coursework exercise, kept out of the repository. Only counts are recorded and nothing from it, numeric or otherwise, is published here (publishing a comparison is the maintainer's decision) | equality at the displayed precision | counts only, in a local run | Everything else. Its fitting defaults (increment, convergence, bounds) and its definitions of the fit statistics are `assumed` from the maintainer's observation and have not been tested against its output |
+
+**One oracle was wrong once, and was corrected.** For the predicted-value weightings (`inv_yhat`, `inv_yhat2`) on Indometh, the engine and the first version of the R oracle disagreed on nine subject fits. The disagreement was recorded (`specs/differences.md`, D-02) instead of being absorbed into a tolerance, and was settled in task T-018: the engine's points were checked independently and upheld, while the oracle script had accepted degenerate "fixed points" (predictions of 1e-90) and missed real ones; the script was corrected and its cases regenerated. So the oracle is not infallible. It is now also checked by a naive Rust re-computation of every statistic and of the optimality condition `J' W r = 0` (`crates/caladrius-testkit/tests/step3_consistency.rs`), which is what would have caught the error.
+
+**Why 1e-4 for fit parameters and 1e-6 for NCA.** NCA is closed arithmetic on the data, so two correct implementations differ only by rounding. A fit is a search: two optimizers stop at different points because of their stopping rules, and the engine's default derivatives are finite differences while the references use exact ones. The contract tolerance (1e-4) is a margin of caution, and the measured gaps are much smaller: over the 95 older reference fits the worst difference is 7.4e-6 on an estimate, 9.2e-6 on a standard error and 3.8e-7 on the residual sum of squares (the tolerance is 13 times the worst), and on the five-point example, which can be worked by hand, the engine and R agree to 1e-6 on every statistic, and a test holds them to it. No tolerance has been loosened; the reasoning and the command that reproduces the figures are in `specs/fit.md` section 10.
+
+**Which rules are settled.** Every behaviour rule in `specs/` carries a status. "Confirmed by oracle" means the rule's arithmetic or definition agrees with PKNCA, R or the closed forms above; it says nothing about the reference commercial software. Counts of the `- Status:` lines in each file (made with `grep`):
+
+| Specification | confirmed by oracle | documented, untested | assumed | observed |
+|---|---|---|---|---|
+| `specs/nca.md` | 44 | 15 | 12 | 5 |
+| `specs/models.md` | 19 | 2 | 4 | 0 |
+| `specs/fit.md` | 18 | 3 | 21 | 0 |
+| `specs/ux.md` | 0 | 12 | 26 | 0 |
+
+The `assumed` rules are the ones that a reference comparison or a human decision still has to settle (for example the fit defaults of `AGENTS.md` section 6); none is presented as settled.
 
 ## Conformance
 

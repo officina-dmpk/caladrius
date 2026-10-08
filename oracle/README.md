@@ -12,7 +12,7 @@ Private references (coursework exports, reference software outputs) never go her
 
 - `data/*.csv`, `expected/*.csv` and `expected/*.options.json` at the top level: the NCA cases (PKNCA), read by `cargo xtask conformance`.
 - `expected/models/`: exact closed-form values of the six one-compartment models (step 3), from `scripts/models_closed_form.R` (256-bit arithmetic with Rmpfr, cross-checked against a matrix exponential and an ODE solver). One case per model and parameter set: `model_<case>.csv` (`subject,parameter,value`, the subject being `t=<time>` or `scalar`) and `.options.json`.
-- `expected/fit/` and `data/fit/`: reference weighted least-squares fits (step 3), from `scripts/fit_wls.R` (`stats::nls` and `minpack.lm::nlsLM`, statistics from the formulas of `specs/fit.md`). One case per dataset and weighting: `fit_<dataset>_<weighting>.csv` and `.options.json`.
+- `expected/fit/` and `data/fit/`: reference weighted least-squares fits (step 3), from `scripts/fit_wls.R` (`stats::nls` and `minpack.lm::nlsLM`, statistics from the formulas of `specs/fit.md`). One case per dataset and weighting: `fit_<dataset>_<weighting>.csv` and `.options.json`. Datasets: `theoph`, `indometh`, `spec` (the five-point example), and, since task T-029, the synthetic `infusion`, `zero_order` and `lag` profiles of `data/fit/synthetic_*.csv` (written by the same script, fixed seed, for `pk1.iv_infusion`, `pk1.oral_0` and `pk1.oral_1_lag`; the options file has the fixed parameters in `fixed` and the generation in `generated_data`).
 - Regenerate: `Rscript oracle/scripts/nca_pknca.R`, `Rscript oracle/scripts/models_closed_form.R`, `Rscript oracle/scripts/fit_wls.R`; all three are deterministic and rewrite the files byte for byte.
 
 ## Private oracle
