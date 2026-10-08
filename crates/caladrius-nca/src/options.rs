@@ -184,4 +184,51 @@ pub struct NcaOptions {
     pub start: StartPolicy,
     /// Tmax when the maximum is not unique.
     pub tmax_tie: TmaxTie,
+    /// How the terminal phase is chosen among the candidate point sets, or given by the user.
+    pub lambda_z_selection: LambdaZSelection,
+}
+
+/// How the best candidate terminal phase is chosen (NCA-LZ-05, LZ-06; open item O-01).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaZTieRule {
+    /// Among the fits whose adjusted R² is within `adj_r_squared_factor` of the best, the one with
+    /// the most points (NCA-LZ-05, the primary reading).
+    #[default]
+    Tolerance,
+    /// The fit with the largest adjusted R² + `adj_r_squared_factor` × number of points, ties to the
+    /// most points (NCA-LZ-06).
+    Bonus,
+}
+
+/// Terminal-phase points chosen by the user (NCA-LZ-08). Times are sample times of the input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum LambdaZManual {
+    /// Exactly these samples; each must have a quantified concentration (> 0, not BLQ).
+    Times(Vec<f64>),
+    /// Every quantified sample with `start <= t <= end`.
+    Range {
+        /// First time of the range, included.
+        start: f64,
+        /// Last time of the range, included.
+        end: f64,
+    },
+}
+
+/// Further options of the terminal phase. They live here, not in [`LambdaZOptions`], whose three
+/// fields are fixed by the oracle tests.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LambdaZSelection {
+    /// Tie rule of the automatic selection.
+    pub tie_rule: LambdaZTieRule,
+    /// Open item O-02 (NCA-LZ-07). `false` (PKNCA): the best adjusted R² is taken over every
+    /// candidate, and fits with λz <= 0 are discarded afterwards, so λz can be not calculated even
+    /// when a decreasing fit exists. `true`: only fits with λz > 0 compete.
+    pub positive_filter_first: bool,
+    /// Sample times left out of the automatic selection (NCA-LZ-09).
+    pub exclude: Vec<f64>,
+    /// User-chosen points; when set, no automatic selection happens (NCA-LZ-08).
+    pub manual: Option<LambdaZManual>,
 }

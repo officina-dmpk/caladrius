@@ -2,7 +2,8 @@
 //! before any computation; the first problem found is returned.
 
 use crate::{
-    BlqAction, BlqPolicy, MissingPolicy, NcaError, NcaInput, NcaOptions, NegativePolicy, Route,
+    BlqAction, BlqPolicy, LambdaZManual, LambdaZSelection, MissingPolicy, NcaError, NcaInput,
+    NcaOptions, NegativePolicy, Route,
 };
 
 /// Checks `input`; `Ok` means every later step may assume: equal non-zero lengths, finite strictly
@@ -28,7 +29,8 @@ pub(crate) fn validate(input: &NcaInput) -> Result<(), NcaError> {
             return Err(NcaError::InvalidInfusionDuration { value: duration });
         }
     }
-    validate_options(&input.options)
+    validate_options(&input.options)?;
+    validate_selection(&input.time, &input.options.lambda_z_selection)
 }
 
 fn validate_times(time: &[f64]) -> Result<(), NcaError> {
@@ -123,11 +125,11 @@ fn validate_options(options: &NcaOptions) -> Result<(), NcaError> {
         }
     }
     let lz = &options.lambda_z;
-    if lz.min_points < 2 {
+    if lz.min_points < 3 {
         return Err(invalid(
             "lambda_z.min_points",
             format!(
-                "{} is too few; a terminal-phase regression needs at least 2 points (3 is usual)",
+                "{} is too few; automatic selection compares adjusted R², which needs at least 3 points (choose the points manually to use 2)",
                 lz.min_points
             ),
         ));
@@ -142,4 +144,43 @@ fn validate_options(options: &NcaOptions) -> Result<(), NcaError> {
         ));
     }
     Ok(())
+}
+
+/// Every time named by a λz option must be one of the sample times (NCA-LZ-08, LZ-09).
+fn check_sample_time(option: &str, time: &[f64], t: f64) -> Result<(), NcaError> {
+    if time.contains(&t) {
+        Ok(())
+    } else {
+        Err(invalid(
+            option,
+            format!("{t} is not a sample time of the profile; name the time of an existing sample"),
+        ))
+    }
+}
+
+fn validate_selection(time: &[f64], selection: &LambdaZSelection) -> Result<(), NcaError> {
+    for &t in &selection.exclude {
+        check_sample_time("lambda_z_selection.exclude", time, t)?;
+    }
+    match &selection.manual {
+        None => Ok(()),
+        Some(LambdaZManual::Times(times)) => {
+            for &t in times {
+                check_sample_time("lambda_z_selection.manual", time, t)?;
+            }
+            Ok(())
+        }
+        Some(LambdaZManual::Range { start, end }) => {
+            if start.is_finite() && end.is_finite() && start <= end {
+                Ok(())
+            } else {
+                Err(invalid(
+                    "lambda_z_selection.manual",
+                    format!(
+                        "the range from {start} to {end} is not valid; give two finite times with start <= end"
+                    ),
+                ))
+            }
+        }
+    }
 }

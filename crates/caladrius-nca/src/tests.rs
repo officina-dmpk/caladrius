@@ -195,9 +195,10 @@ fn tmax_tie_rule_is_an_option() {
 }
 
 #[test]
-fn terminal_phase_parameters_are_not_computed_yet() {
+fn derived_parameters_are_not_computed_yet() {
+    // CL, Vz, MRT and Vss come with task T-004c.
     let r = ev(&T, &C, NcaOptions::default());
-    for name in ["lambda.z", "half.life", "aucinf.obs", "cl.obs", "mrt.obs"] {
+    for name in ["cl.obs", "vz.obs", "mrt.obs", "mrt.iv.obs", "vss.iv.obs"] {
         assert_eq!(r.get(name), None, "{name}");
         assert_eq!(r.parameter(name), None, "{name}");
     }

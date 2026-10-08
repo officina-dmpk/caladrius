@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::clean::{ProfilePoint, RemovedPoint};
+use crate::lambda_z::LambdaZCandidate;
 
 /// Why a parameter has no value (NCA-OUT-02). Never NaN, infinity or a stand-in zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,8 +20,30 @@ pub enum NcReason {
     NoPositiveConcentration,
     /// The parameter does not exist for this route (for example C0 outside IV bolus).
     NotApplicableToRoute,
+    /// Fewer eligible points than the terminal phase needs (NCA-LZ-03, LZ-08).
+    TooFewPoints,
+    /// No candidate terminal phase decreases: every admissible fit has λz <= 0 (NCA-LZ-04 to 07).
+    NoValidFit,
+    /// A ratio whose area is zero or negative (NCA-EXT-02, EXT-08).
+    NonPositiveArea,
     /// The computation overflowed or was undefined.
     NonFinite,
+}
+
+impl std::fmt::Display for NcReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NoDataAfterCleaning => "no point is left after cleaning; check for missing values and the BLQ policy",
+            Self::SinglePoint => "only one sample is left; an area needs at least two",
+            Self::NoStartConcentration => "there is no concentration at the dose time; add a sample at time 0 or choose a start policy",
+            Self::NoPositiveConcentration => "no concentration is above zero",
+            Self::NotApplicableToRoute => "not defined for this route of administration",
+            Self::NonFinite => "the computation overflowed; check the magnitude of times and concentrations",
+            Self::TooFewPoints => "too few positive points after Tmax for the terminal phase; lower the minimum number of points, allow the Tmax point, or choose the points manually",
+            Self::NoValidFit => "no terminal phase decreases (the fitted slope is not negative); choose other points or report the terminal phase as not estimable",
+            Self::NonPositiveArea => "the area is zero or negative, so the ratio is undefined",
+        })
+    }
 }
 
 /// A parameter value, or the reason why it has none.
@@ -48,6 +71,22 @@ impl ParamValue {
         Self::NotCalculated(reason)
     }
 
+    /// The reason, if not calculated.
+    pub fn reason(&self) -> Option<NcReason> {
+        match self {
+            Self::Value(_) => None,
+            Self::NotCalculated(reason) => Some(*reason),
+        }
+    }
+
+    /// `f(a, b)` when both are values, otherwise the first reason.
+    pub(crate) fn zip(self, other: Self, f: impl FnOnce(f64, f64) -> Self) -> Self {
+        match (self, other) {
+            (Self::Value(a), Self::Value(b)) => f(a, b),
+            (Self::NotCalculated(r), _) | (_, Self::NotCalculated(r)) => Self::NotCalculated(r),
+        }
+    }
+
     /// The number, if any.
     pub fn value(&self) -> Option<f64> {
         match self {
@@ -72,6 +111,7 @@ pub struct NcaResult {
     parameters: Vec<Parameter>,
     profile: Vec<ProfilePoint>,
     removed: Vec<RemovedPoint>,
+    lambda_z_candidates: Vec<LambdaZCandidate>,
 }
 
 impl NcaResult {
@@ -79,11 +119,13 @@ impl NcaResult {
         parameters: Vec<Parameter>,
         profile: Vec<ProfilePoint>,
         removed: Vec<RemovedPoint>,
+        lambda_z_candidates: Vec<LambdaZCandidate>,
     ) -> Self {
         Self {
             parameters,
             profile,
             removed,
+            lambda_z_candidates,
         }
     }
 
@@ -115,5 +157,11 @@ impl NcaResult {
     /// The input points left out, with the reason.
     pub fn removed(&self) -> &[RemovedPoint] {
         &self.removed
+    }
+
+    /// Every candidate terminal phase of the automatic selection (or the manual fit), with the
+    /// selected one marked (NCA-OUT-01).
+    pub fn lambda_z_candidates(&self) -> &[LambdaZCandidate] {
+        &self.lambda_z_candidates
     }
 }

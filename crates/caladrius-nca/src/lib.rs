@@ -11,13 +11,16 @@
 //! Parameters are looked up by their PKNCA names with [`NcaResult::get`].
 //!
 //! Implemented: input validation, data cleaning, C0, Cmax, Tmax, Tfirst, Tlast, Clast, AUClast,
-//! AUCall, AUMClast, AUMCall. The terminal phase (λz) and everything derived from it come later;
+//! AUCall, AUMClast, AUMCall, the terminal phase (λz, R², t½, Clast,pred, span ratio) and the
+//! extrapolation to infinity (AUCinf, AUMCinf, % extrapolated). CL, Vz, MRT and Vss come later;
 //! until then `get` returns `None` for those names.
 
 mod auc;
 mod clean;
 mod error;
+mod extrapolation;
 mod float;
+mod lambda_z;
 mod observed;
 mod options;
 mod result;
@@ -25,14 +28,17 @@ mod validate;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_lambda_z;
 
 use serde::{Deserialize, Serialize};
 
 pub use clean::{PointOrigin, ProfilePoint, RemovalReason, RemovedPoint};
 pub use error::NcaError;
+pub use lambda_z::LambdaZCandidate;
 pub use options::{
-    AucMethod, BlqAction, BlqPolicy, LambdaZOptions, MissingPolicy, NcaOptions, NegativePolicy,
-    Route, StartPolicy, TmaxTie,
+    AucMethod, BlqAction, BlqPolicy, LambdaZManual, LambdaZOptions, LambdaZSelection,
+    LambdaZTieRule, MissingPolicy, NcaOptions, NegativePolicy, Route, StartPolicy, TmaxTie,
 };
 pub use result::{NcReason, NcaResult, ParamValue, Parameter};
 
@@ -107,6 +113,43 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         obs.tlast.value(),
     );
 
+    // Section 6: the terminal phase, then section 7: extrapolation to infinity.
+    let terminal = lambda_z::terminal(&profile, input.route, options, obs.tmax.value())?;
+    let fit = |f: fn(&LambdaZCandidate) -> f64| match &terminal.selected {
+        Ok(c) => ParamValue::of(f(c)),
+        Err(reason) => ParamValue::nc(*reason),
+    };
+    let lambda_z = fit(|c| c.lambda_z);
+    let half_life = fit(LambdaZCandidate::half_life);
+    let span = fit(|c| c.time_last - c.time_first);
+    let adj_r_squared = match &terminal.selected {
+        Ok(c) => c
+            .adj_r_squared
+            .map_or(ParamValue::nc(NcReason::TooFewPoints), ParamValue::of),
+        Err(reason) => ParamValue::nc(*reason),
+    };
+    let r_squared = match &terminal.selected {
+        Ok(c) => c
+            .r_squared
+            .map_or(ParamValue::nc(NcReason::NonFinite), ParamValue::of),
+        Err(reason) => ParamValue::nc(*reason),
+    };
+    // NCA-LZ-01: Clast,pred = exp(a − λz·Tlast), at the observed Tlast.
+    let clast_pred = match &terminal.selected {
+        Ok(c) => obs.tlast.zip(lambda_z, |t, lz| {
+            ParamValue::of((c.intercept - lz * t).exp())
+        }),
+        Err(reason) => ParamValue::nc(*reason),
+    };
+    let ext = extrapolation::extrapolate(
+        lambda_z,
+        areas.auclast,
+        areas.aumclast,
+        obs.clast,
+        clast_pred,
+        obs.tlast,
+    );
+
     // NCA-IV-01: C0 is reported for an IV bolus only.
     let c0_reported = match input.route {
         Route::IvBolus => c0,
@@ -125,6 +168,26 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         ("aucall", areas.aucall),
         ("aumclast", areas.aumclast),
         ("aumcall", areas.aumcall),
+        ("lambda.z", lambda_z),
+        ("r.squared", r_squared),
+        ("adj.r.squared", adj_r_squared),
+        ("lambda.z.time.first", fit(|c| c.time_first)),
+        ("lambda.z.time.last", fit(|c| c.time_last)),
+        ("lambda.z.n.points", fit(|c| c.n_points as f64)),
+        ("clast.pred", clast_pred),
+        ("half.life", half_life),
+        (
+            "span.ratio",
+            span.zip(half_life, |s, h| ParamValue::of(s / h)),
+        ),
+        ("aucinf.obs", ext.aucinf_obs),
+        ("aucinf.pred", ext.aucinf_pred),
+        ("aumcinf.obs", ext.aumcinf_obs),
+        ("aumcinf.pred", ext.aumcinf_pred),
+        ("aucpext.obs", ext.aucpext_obs),
+        ("aucpext.pred", ext.aucpext_pred),
+        ("aumcpext.obs", ext.aumcpext_obs),
+        ("aumcpext.pred", ext.aumcpext_pred),
     ]
     .into_iter()
     .map(|(name, value)| Parameter {
@@ -132,5 +195,10 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         value,
     })
     .collect();
-    Ok(NcaResult::new(parameters, profile, cleaned.removed))
+    Ok(NcaResult::new(
+        parameters,
+        profile,
+        cleaned.removed,
+        terminal.candidates,
+    ))
 }

@@ -4,8 +4,8 @@
 //! panic and never a number.
 
 use caladrius_nca::{
-    BlqAction, BlqPolicy, LambdaZOptions, MissingPolicy, NcaError, NcaInput, NcaOptions,
-    NegativePolicy, Route, run,
+    BlqAction, BlqPolicy, LambdaZManual, LambdaZOptions, MissingPolicy, NcaError, NcaInput,
+    NcaOptions, NegativePolicy, Route, run,
 };
 
 fn valid() -> NcaInput {
@@ -247,7 +247,7 @@ fn invalid_substituted_concentrations() {
 
 #[test]
 fn invalid_lambda_z_options() {
-    for min_points in [0, 1] {
+    for min_points in [0, 1, 2] {
         assert_invalid_option(
             NcaOptions {
                 lambda_z: LambdaZOptions {
@@ -309,5 +309,40 @@ fn every_error_message_names_a_fix() {
         );
         let source: &dyn std::error::Error = &e;
         assert!(source.source().is_none());
+    }
+}
+
+#[test]
+fn lambda_z_times_must_be_sample_times() {
+    // NCA-LZ-08, LZ-09: a time that is not a sample is a typo, not a silent no-op.
+    let mut options = NcaOptions::default();
+    options.lambda_z_selection.exclude = vec![3.0];
+    assert_invalid_option(options, "lambda_z_selection.exclude");
+    let mut options = NcaOptions::default();
+    options.lambda_z_selection.manual = Some(LambdaZManual::Times(vec![2.0, 4.5]));
+    assert_invalid_option(options, "lambda_z_selection.manual");
+}
+
+#[test]
+fn lambda_z_manual_range_must_be_ordered_and_finite() {
+    for (start, end) in [(4.0, 2.0), (f64::NAN, 8.0), (2.0, f64::INFINITY)] {
+        let mut options = NcaOptions::default();
+        options.lambda_z_selection.manual = Some(LambdaZManual::Range { start, end });
+        assert_invalid_option(options, "lambda_z_selection.manual");
+    }
+}
+
+#[test]
+fn lambda_z_manual_point_without_a_quantified_value() {
+    // NCA-LZ-08: zero (BLQ) points cannot be used; the message says which one.
+    let mut i = valid();
+    i.conc = vec![0.0, 6.0, 5.0, 0.0, 1.0];
+    i.options.lambda_z_selection.manual = Some(LambdaZManual::Times(vec![2.0, 4.0, 8.0]));
+    match run(&i) {
+        Err(NcaError::InvalidOption { option, reason }) => {
+            assert_eq!(option, "lambda_z_selection.manual");
+            assert!(reason.contains("time 4"), "{reason}");
+        }
+        other => panic!("expected InvalidOption, got {other:?}"),
     }
 }
