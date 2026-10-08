@@ -140,7 +140,11 @@ fn validate_options(options: &NcaOptions) -> Result<(), NcaError> {
             ),
         ));
     }
-    validate_quality(&options.quality)
+    validate_quality(&options.quality)?;
+    if let Some(units) = &options.units {
+        crate::units::check(units)?;
+    }
+    Ok(())
 }
 
 /// Quality thresholds (NCA-LZ-12b): a given threshold must be a finite number >= 0.

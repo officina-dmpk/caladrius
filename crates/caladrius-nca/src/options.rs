@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::Units;
+
 /// Route of administration of the single dose given at time 0.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -188,6 +190,9 @@ pub struct NcaOptions {
     pub lambda_z_selection: LambdaZSelection,
     /// Thresholds of the quality flags (NCA-LZ-12b). Flags never change a number.
     pub quality: QualityThresholds,
+    /// Units of time, concentration and dose (NCA-UNIT-01, 02). `None`: a unitless analysis, as
+    /// before, reported with `units_missing`.
+    pub units: Option<Units>,
 }
 
 /// How the best candidate terminal phase is chosen (NCA-LZ-05, LZ-06; open item O-01).

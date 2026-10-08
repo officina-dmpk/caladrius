@@ -209,7 +209,7 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                         "lambda_z",
                         object(
                             vec![
-                                ("min_points", json!({ "type": "integer", "minimum": 2 })),
+                                ("min_points", json!({ "type": "integer", "minimum": 3 })),
                                 ("allow_tmax", boolean()),
                                 (
                                     "adj_r_squared_factor",
@@ -269,6 +269,20 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                             ],
                             &[],
                         ),
+                    ),
+                    (
+                        "units",
+                        nullable(described(
+                            object(
+                                vec![
+                                    ("time", one_of_strings(&["s", "min", "h", "d"])),
+                                    ("concentration", string()),
+                                    ("dose", string()),
+                                ],
+                                &["time", "concentration", "dose"],
+                            ),
+                            "Units of time, concentration (mass/volume: ng, µg (ug, mcg), mg, g per mL or L) and dose (a mass). Results then carry a unit each; CL and volumes are in L. Absent: unitless results, flagged units_missing.",
+                        )),
                     ),
                 ],
                 &[],
@@ -365,10 +379,12 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                                 json!({ "type": "object", "minProperties": 1, "maxProperties": 1,
                                         "properties": { "value": number(), "not_calculated": string() } }),
                             ),
+                            ("unit", string()),
                         ],
                         &["name", "value"],
                     )),
                 ),
+                ("units_missing", boolean()),
                 ("profile", array_of(json!({ "type": "object" }))),
                 ("removed", array_of(json!({ "type": "object" }))),
                 ("lambda_z_candidates", array_of(json!({ "type": "object" }))),

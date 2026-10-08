@@ -28,6 +28,7 @@ mod lambda_z;
 mod observed;
 mod options;
 mod result;
+mod units;
 mod validate;
 
 #[cfg(test)]
@@ -49,6 +50,7 @@ pub use options::{
     StartPolicy, TmaxTie,
 };
 pub use result::{NcReason, NcaResult, ParamValue, Parameter};
+pub use units::Units;
 
 use clean::DOSE_TIME;
 
@@ -240,8 +242,26 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
     .map(|(name, value)| Parameter {
         name: name.to_string(),
         value,
+        unit: None,
     })
-    .collect();
+    .collect::<Vec<_>>();
+    // NCA-UNIT-01: units of the results; CL and volumes converted to litres (validated above).
+    let checked = options.units.as_ref().and_then(|u| units::check(u).ok());
+    let parameters = match &checked {
+        None => parameters,
+        Some(units) => parameters
+            .into_iter()
+            .map(|mut p| {
+                if units::VOLUME_PARAMETERS.contains(&p.name.as_str()) {
+                    if let ParamValue::Value(x) = p.value {
+                        p.value = ParamValue::of(x * units.volume_factor);
+                    }
+                }
+                p.unit = units.unit_of(&p.name);
+                p
+            })
+            .collect(),
+    };
     // NCA-LZ-12b: flags, computed from the final numbers and never changing them.
     let flags = flags::flags(
         &options.quality,
@@ -261,5 +281,6 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         cleaned.removed,
         terminal.candidates,
         flags,
+        checked.is_none(),
     ))
 }

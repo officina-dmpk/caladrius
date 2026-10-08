@@ -89,6 +89,15 @@ pub enum NcaError {
         )]
         value: f64,
     },
+    /// A unit is unknown or inconsistent with its role (NCA-UNIT-02).
+    InvalidUnits {
+        /// `time`, `concentration` or `dose`.
+        which: String,
+        /// The unit given.
+        value: String,
+        /// What is wrong and what is allowed.
+        reason: String,
+    },
     /// An option has a value outside its domain.
     InvalidOption {
         /// Name of the option, as in [`crate::NcaOptions`].
@@ -142,6 +151,11 @@ impl fmt::Display for NcaError {
                 f,
                 "the infusion duration {value} is not a positive number; give the duration of the infusion, greater than 0"
             ),
+            Self::InvalidUnits {
+                which,
+                value,
+                reason,
+            } => write!(f, "{which} unit `{value}`: {reason}"),
             Self::InvalidOption { option, reason } => {
                 write!(f, "option `{option}`: {reason}")
             }

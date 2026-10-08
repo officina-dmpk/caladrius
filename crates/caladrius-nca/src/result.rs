@@ -116,6 +116,9 @@ pub struct Parameter {
     pub name: String,
     /// Value or reason.
     pub value: ParamValue,
+    /// Unit (NCA-UNIT-01) when the input has units; `""` for a dimensionless value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 /// Result of [`crate::run`].
@@ -127,6 +130,9 @@ pub struct NcaResult {
     lambda_z_candidates: Vec<LambdaZCandidate>,
     #[serde(default)]
     flags: Vec<QualityFlag>,
+    /// The input has no units: the values are in the units of the data, none is converted.
+    #[serde(default)]
+    units_missing: bool,
 }
 
 impl NcaResult {
@@ -136,8 +142,10 @@ impl NcaResult {
         removed: Vec<RemovedPoint>,
         lambda_z_candidates: Vec<LambdaZCandidate>,
         flags: Vec<QualityFlag>,
+        units_missing: bool,
     ) -> Self {
         Self {
+            units_missing,
             parameters,
             profile,
             removed,
@@ -148,6 +156,19 @@ impl NcaResult {
 
     /// The value of the parameter called `name` (PKNCA spelling); `None` when it is not calculated
     /// or not computed by this version.
+    /// The unit of the parameter called `name` (NCA-UNIT-01), when the input has units.
+    pub fn unit(&self, name: &str) -> Option<&str> {
+        self.parameters
+            .iter()
+            .find(|p| p.name == name)
+            .and_then(|p| p.unit.as_deref())
+    }
+
+    /// True when the input had no units (the values are then in the units of the data).
+    pub fn units_missing(&self) -> bool {
+        self.units_missing
+    }
+
     pub fn get(&self, name: &str) -> Option<f64> {
         self.parameter(name).and_then(|v| v.value())
     }

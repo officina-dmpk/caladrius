@@ -27,6 +27,8 @@ mod schema;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_units;
 
 pub use caladrius_project::{self as project, Project};
 pub use error::CommandError;
