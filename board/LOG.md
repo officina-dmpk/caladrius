@@ -8,3 +8,4 @@
 - 2026-10-08 T-005 (oracle): synthetic_lz profiles (D1, D2, searched subjects) settle O-01 (tolerance reading, strict >, most points) and O-02 (positive-slope filter after selection); 2 new oracle cases x 116 values, 16 oracle_synthetic tests, 6 testkit discrimination tests.
 - 2026-10-08 T-004b (engine): lambda_z.rs and extrapolation.rs; terminal_phase and extrapolation green on 6 oracle cases (17/21 public, 14/16 synthetic); new NcaOptions::lambda_z_selection; commit 48feaed; review approved.
 - 2026-10-08 T-004c (engine): derived parameters (MRT, CL/F, Vz/F, Vss, .dn), NCA-DAT-10, T-004b follow-ups, `cargo xtask conformance` (docs/conformance.md); 21/21 + 16/16 oracle tests, 1312/1312 values (100%); commit b76dc8b; review approved. STEP 2 REACHED.
+- 2026-10-08 T-006 (interface): conformance gate hardened (per-parameter floors, parse errors, computed-presence rule, atomic write, 41 xtask tests); commit 1d82059.

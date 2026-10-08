@@ -13,7 +13,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-004b | caladrius-nca: λz selection, t½, AUC/AUMC extrapolation, %extrapolated | engine | done | T-004a |
 | T-004c | caladrius-nca: C0 back-extrapolation, AUMC, MRT, CL/F, Vz/F, Vss; 100% public oracle; conformance table | engine | done | T-004b |
 | T-005 | Synthetic oracle profiles to settle λz open items O-01 and O-02 (PKNCA runs) | oracle | done | T-003 |
-| T-006 | xtask conformance hardening: per-parameter floors, parse errors, computed-presence check, atomic write | interface | in progress | T-004c |
+| T-006 | xtask conformance hardening: per-parameter floors, parse errors, computed-presence check, atomic write | interface | done | T-004c |
 | T-007 | specs/nca.md sync: oracle-confirmed tags (O-01, O-02, LZ-05 strict >, LZ-07), dose NC instead of error (DAT-11, 2.4, section 9) | reader | in progress | T-004c, T-005 |
 | T-008 | specs/models.md and specs/fit.md | reader | todo | T-007 |
 | T-009 | Oracle for models (closed-form grids) and fitting (R nls / nlsLM references) | oracle | todo | T-008 |
