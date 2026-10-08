@@ -17,8 +17,10 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-007 | specs/nca.md sync: oracle-confirmed tags (O-01, O-02, LZ-05 strict >, LZ-07), dose NC instead of error (DAT-11, 2.4, section 9) | reader | done | T-004c, T-005 |
 | T-008 | specs/models.md and specs/fit.md | reader | done | T-007 |
 | T-009 | Oracle for models (closed-form grids) and fitting (R nls / nlsLM references) | oracle | done | T-008 |
-| T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | in progress | T-008, T-009 |
-| T-011 | caladrius-fit: weighted least squares, Gauss-Newton Levenberg-Hartley, full output set (to split) | engine | todo | T-010 |
+| T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | to review | T-008, T-009 |
+| T-011 | caladrius-fit (umbrella, split into T-011a/b) | engine | split | T-010 |
+| T-011a | caladrius-fit core: WLS, Gauss-Newton Levenberg-Hartley, estimates, SE, CV%, WRSS, AIC/SBC | engine | in progress | T-010 |
+| T-011b | caladrius-fit outputs: CI, matrices, condition numbers, trace, initial estimates, bounds | engine | todo | T-011a |
 | T-012 | Oracle edge cases without public coverage (interior zeros, missing values, IV infusion, Tlag, dose-normalised, AUMC %%extrap) via synthetic PKNCA runs | oracle | done | T-007 |
 | T-013 | caladrius-nca: edge parameters (tlag, vss, auciv*, aumcall.dn), PKNCA profile for replaced values | engine | done | T-012 |
 | T-014 | Documented-difference marker in oracle/testkit/conformance; D-01 negative concentrations | oracle | done | T-012 |
