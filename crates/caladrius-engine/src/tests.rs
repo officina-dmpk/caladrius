@@ -60,6 +60,7 @@ fn the_commands_are_the_documented_ones() {
             "nca.run",
             "analysis.get",
             "fit.initial_estimates",
+            "fit.evaluate",
             "fit.run",
             "model.simulate",
             "analysis.run",
@@ -1518,4 +1519,51 @@ fn a_number_that_could_have_a_thousands_separator_is_refused_not_guessed() {
         failure.message.contains("more than one decimal mark"),
         "{failure}"
     );
+}
+
+#[test]
+fn the_objective_at_the_starting_values_is_the_first_row_of_a_fit() {
+    let mut e = engine_with_two_subjects();
+    let init = ok(
+        &mut e,
+        "fit.initial_estimates",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1" }),
+    );
+    let eval = ok(
+        &mut e,
+        "fit.evaluate",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1", "initial": init["initial"] }),
+    );
+    let fit = ok(
+        &mut e,
+        "fit.run",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1", "initial": init["initial"] }),
+    );
+    let first = &fit["result"]["outcome"]["ok"]["trace"][0];
+    assert_eq!(eval["wrss"], first["wrss"]);
+    assert_eq!(eval["n_observations"], 9);
+    // A worse start has a larger objective, and nothing was stored by evaluating it.
+    let worse = ok(
+        &mut e,
+        "fit.evaluate",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1",
+                "initial": { "v": 200, "k": 0.5, "ka": 5 } }),
+    );
+    assert!(worse["wrss"].as_f64().unwrap() > eval["wrss"].as_f64().unwrap());
+    assert_eq!(e.project().analyses().len(), 1);
+    assert!(fit["result"]["status_message"].as_str().is_some());
+    // Without starting values the generated ones are used and returned.
+    let none = ok(
+        &mut e,
+        "fit.evaluate",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1" }),
+    );
+    assert!(none["starting_values"]["ka"].as_f64().unwrap() > 0.0);
+    // A start the model refuses says what to fix.
+    let bad = err(
+        &mut e,
+        "fit.evaluate",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1", "initial": { "v": -1, "k": 0.1, "ka": 1 } }),
+    );
+    assert_eq!(bad.code, "fit_error");
 }

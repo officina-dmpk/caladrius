@@ -2,10 +2,7 @@
 //! profile plot always visible beside it. Every control changes the parameters of `nca.run` and the
 //! page asks the engine again at once; nothing is computed here.
 
-use egui::{Color32, RichText, Ui};
-use egui_plot::{
-    HLine, Legend, Line, MarkerShape, Plot, PlotBounds, PlotPoint, PlotPoints, Points, VLine,
-};
+use egui::{RichText, Ui};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -14,6 +11,7 @@ use crate::fmt;
 use crate::model::{
     Candidate, NcaOk, NcaView, Outcome, Status, SubjectResult, Table, WorksheetInfo,
 };
+use crate::plot::{self, Dot, LineSet, PointSet, Tone, Weight};
 use crate::plotdata::{self, Pt};
 use crate::theme::Tokens;
 
@@ -936,21 +934,6 @@ fn profile_points(ok: &NcaOk) -> Vec<Pt> {
         .collect()
 }
 
-fn marker_points<'a>(
-    name: &str,
-    points: impl Iterator<Item = [f64; 2]>,
-    shape: MarkerShape,
-    radius: f32,
-    color: Color32,
-    filled: bool,
-) -> Points<'a> {
-    Points::new(name, PlotPoints::from(points.collect::<Vec<[f64; 2]>>()))
-        .shape(shape)
-        .radius(radius)
-        .color(color)
-        .filled(filled)
-}
-
 /// The plot panel: the profile (linear or semi-log), the terminal-phase line, the points used,
 /// the note about points a log axis cannot show, and the candidate fits. Always visible.
 pub fn plot_panel(
@@ -995,237 +978,80 @@ pub fn plot_panel(
     };
     let points = profile_points(&ok);
     let used = page.used_times();
-    let time_label = format!("Time ({})", info.unit_of("time").unwrap_or("time units"));
-    let conc_label = format!(
-        "Concentration ({})",
-        info.unit_of("concentration")
-            .unwrap_or("concentration units")
+    let labels = (
+        format!("Time ({})", info.unit_of("time").unwrap_or("time units")),
+        format!(
+            "Concentration ({})",
+            info.unit_of("concentration")
+                .unwrap_or("concentration units")
+        ),
     );
-    let log = *log_axis;
-    let view = plotdata::log_view(&points);
-    if log {
-        if let Some(note) = plotdata::hidden_note(view.hidden.len(), points.len()) {
-            egui::CollapsingHeader::new(RichText::new(note).color(c.warning.color()))
-                .id_salt("hidden-points")
-                .default_open(false)
-                .show(ui, |ui| {
-                    for p in &view.hidden {
-                        ui.label(format!("time {}, concentration {}", fmt::exact(p.time), fmt::exact(p.conc)));
-                    }
-                    ui.label(
-                        RichText::new("Nothing was changed in the data; these points are only left out of the log view.")
-                            .color(c.text_muted.color()),
-                    );
-                    if ui.button("Switch to the linear axis").clicked() {
-                        *log_axis = false;
-                    }
-                });
-        }
-        if view.visible.is_empty() {
-            ui.add_space(tokens.spacing.large);
-            ui.label(
-                RichText::new("No point can be shown on a log axis: every concentration is zero or negative. Switch to the linear axis.")
-                    .color(c.warning.color()),
-            );
-            return;
-        }
+    if *log_axis && !plot::log_note(ui, tokens, "profile", &points, log_axis) {
+        return;
     }
-    let shown: &[Pt] = if log { &view.visible } else { &points };
-    let y = move |conc: f64| if log { conc.log10() } else { conc };
-    let (x_range, y_range) = {
-        let (xr, lin) = plotdata::linear_ranges(&points);
-        let xr = if log {
-            plotdata::time_range(&points)
-        } else {
-            xr
-        };
-        let yr = match (log, view.decades) {
-            (true, Some((lo, hi))) => (lo, hi),
-            _ => lin,
-        };
-        (xr, yr)
-    };
-    let selected_color = c.series_selected.color();
-    let grid_color = c.plot_grid.color();
-    let x_ticks = plotdata::nice_ticks(x_range.0, x_range.1, 6);
-    let step_of = |ticks: &[f64]| match ticks {
-        [a, b, ..] => (b - a).abs(),
-        _ => 1.0,
-    };
-    let x_step = step_of(&x_ticks);
-    let y_marks: Vec<(f64, bool)> = if log {
-        plotdata::log_ticks(y_range.0, y_range.1)
-    } else {
-        plotdata::nice_ticks(y_range.0, y_range.1, 6)
-            .into_iter()
-            .map(|v| (v, true))
+    let log = *log_axis;
+    let as_pairs = |keep: &dyn Fn(&Pt) -> bool| -> Vec<[f64; 2]> {
+        points
+            .iter()
+            .filter(|p| keep(p))
+            .map(|p| [p.time, p.conc])
             .collect()
     };
-    // A decade is one unit on the log axis; on the linear axis the step between marks.
-    let y_step = if log {
-        1.0
-    } else {
-        step_of(&y_marks.iter().map(|m| m.0).collect::<Vec<f64>>())
-    };
-    let fit = ok
-        .selected()
-        .map(|s| (s.intercept, s.lambda_z, s.time_first));
-    let tlast = points.iter().map(|p| p.time).fold(0.0_f64, f64::max);
-    let mut clicked_time: Option<f64> = None;
-    let colors = (
-        c.series_observed.color(),
-        c.series_other.color(),
-        c.series_replaced.color(),
-        c.series_fit.color(),
-    );
-    let plot_height =
-        (ui.available_height() - tokens.size.plot_reserved_height).max(tokens.size.plot_min_height);
-    let plot = Plot::new("profile-plot")
-        .height(plot_height)
-        .legend(Legend::default())
-        .x_axis_label(time_label)
-        .y_axis_label(conc_label)
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .allow_boxed_zoom(false)
-        .allow_double_click_reset(false)
-        .show_grid(false)
-        .x_grid_spacer({
-            let ticks = x_ticks.clone();
-            move |_| {
-                ticks
-                    .iter()
-                    .map(|v| egui_plot::GridMark {
-                        value: *v,
-                        step_size: x_step,
-                    })
-                    .collect()
-            }
-        })
-        .y_grid_spacer({
-            let marks = y_marks.clone();
-            move |_| {
-                marks
-                    .iter()
-                    .map(|(v, major)| egui_plot::GridMark {
-                        value: *v,
-                        step_size: if *major { y_step } else { y_step * 0.2 },
-                    })
-                    .collect()
-            }
-        })
-        .y_axis_formatter(move |mark, _| {
-            if log {
-                if (mark.value - mark.value.round()).abs() < 1e-9 {
-                    plotdata::log_label(mark.value.round())
-                } else {
-                    String::new()
-                }
-            } else {
-                fmt::number(mark.value)
-            }
-        })
-        .label_formatter(move |_, v| {
-            let conc = if log { 10f64.powf(v.y) } else { v.y };
-            format!("t = {}\nC = {}", fmt::number(v.x), fmt::number(conc))
-        });
-    plot.show(ui, |plot_ui| {
-        plot_ui.set_plot_bounds(PlotBounds::from_min_max(
-            [x_range.0, y_range.0],
-            [x_range.1, y_range.1],
-        ));
-        for v in &x_ticks {
-            plot_ui.vline(
-                VLine::new("", *v)
-                    .color(grid_color)
-                    .width(tokens.stroke.thin),
-            );
-        }
-        for (v, major) in &y_marks {
-            let color = if *major {
-                grid_color
-            } else {
-                grid_color.gamma_multiply(0.5)
-            };
-            plot_ui.hline(HLine::new("", *v).color(color).width(tokens.stroke.thin));
-        }
-        let line: Vec<[f64; 2]> = shown.iter().map(|p| [p.time, y(p.conc)]).collect();
-        plot_ui.line(
-            Line::new("Profile", PlotPoints::from(line))
-                .color(colors.1)
-                .width(tokens.stroke.medium),
-        );
-        if let Some((a, lambda, from)) = fit {
-            let steps = 60;
-            let span = (tlast - from).max(f64::MIN_POSITIVE);
-            let curve: Vec<[f64; 2]> = (0..=steps)
-                .map(|i| {
-                    let t = from + span * f64::from(i) / f64::from(steps);
-                    [t, y((a - lambda * t).exp())]
-                })
-                .collect();
-            plot_ui.line(
-                Line::new("λz fit", PlotPoints::from(curve))
-                    .color(colors.3)
-                    .width(tokens.stroke.thick),
-            );
-        }
-        let is_used = |p: &Pt| used.contains(&p.time);
-        plot_ui.points(marker_points(
+    let point_sets = vec![
+        PointSet::new(
             "Observed",
-            shown
-                .iter()
-                .filter(|p| !p.replaced && !is_used(p))
-                .map(|p| [p.time, y(p.conc)]),
-            MarkerShape::Circle,
-            tokens.size.marker_small,
-            colors.0,
-            true,
-        ));
-        plot_ui.points(marker_points(
+            as_pairs(&|p| !p.replaced && !used.contains(&p.time)),
+            Tone::Observed,
+            Dot::Small,
+        ),
+        PointSet::new(
             "Replaced value",
-            shown
-                .iter()
-                .filter(|p| p.replaced)
-                .map(|p| [p.time, y(p.conc)]),
-            MarkerShape::Diamond,
-            tokens.size.marker_medium,
-            colors.2,
-            true,
-        ));
-        plot_ui.points(marker_points(
+            as_pairs(&|p| p.replaced),
+            Tone::Replaced,
+            Dot::Medium,
+        )
+        .shaped(egui_plot::MarkerShape::Diamond),
+        PointSet::new(
             "Used for λz",
-            shown
-                .iter()
-                .filter(|p| is_used(p))
-                .map(|p| [p.time, y(p.conc)]),
-            MarkerShape::Circle,
-            tokens.size.marker_large,
-            selected_color,
-            true,
-        ));
-        // A click selects the nearest point (the point of the data, not the cursor).
-        let response = plot_ui.response().clone();
-        if response.clicked() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let screen: Vec<(f64, f64)> = shown
-                    .iter()
-                    .map(|p| {
-                        let s = plot_ui.screen_from_plot(PlotPoint::new(p.time, y(p.conc)));
-                        (f64::from(s.x), f64::from(s.y))
-                    })
-                    .collect();
-                if let Some(i) = plotdata::nearest(
-                    &screen,
-                    (f64::from(pos.x), f64::from(pos.y)),
-                    f64::from(tokens.size.hit_radius),
-                ) {
-                    clicked_time = shown.get(i).map(|p| p.time);
-                }
-            }
-        }
-    });
+            as_pairs(&|p| used.contains(&p.time)),
+            Tone::Selected,
+            Dot::Large,
+        ),
+    ];
+    let mut line_sets = vec![LineSet::new(
+        "Profile",
+        as_pairs(&|_| true),
+        Tone::Other,
+        Weight::Medium,
+    )];
+    // The terminal-phase line: the engine's intercept and λz, drawn from the first point of the
+    // phase to the last time (a rendering of two engine values).
+    if let Some(sel) = ok.selected() {
+        let tlast = points.iter().map(|p| p.time).fold(0.0_f64, f64::max);
+        let span = (tlast - sel.time_first).max(f64::MIN_POSITIVE);
+        let steps = 60;
+        let curve: Vec<[f64; 2]> = (0..=steps)
+            .map(|i| {
+                let t = sel.time_first + span * f64::from(i) / f64::from(steps);
+                [t, (sel.intercept - sel.lambda_z * t).exp()]
+            })
+            .collect();
+        line_sets.push(LineSet::new("λz fit", curve, Tone::Fit, Weight::Thick));
+    }
+    let height =
+        (ui.available_height() - tokens.size.plot_reserved_height).max(tokens.size.plot_min_height);
+    let clicked = plot::profile(
+        ui,
+        tokens,
+        "profile-plot",
+        labels,
+        &point_sets,
+        &line_sets,
+        log,
+        &[0, 1, 2],
+        height,
+    );
+    let clicked_time = clicked.map(|c| c.point[0]);
     ui.label(
         RichText::new("Click a point to add it to the terminal phase or take it out.")
             .small()

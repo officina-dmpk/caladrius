@@ -125,6 +125,15 @@ pub struct Sizes {
     pub marker_large: f32,
     /// How near a click must be to a point to select it.
     pub hit_radius: f32,
+    pub diagram_width: f32,
+    pub diagram_height: f32,
+    pub diagram_box_width: f32,
+    pub diagram_box_height: f32,
+    pub diagram_arrow: f32,
+    /// The longer arrow between the depot and the central compartment.
+    pub diagram_gap: f32,
+    pub residual_plot_height: f32,
+    pub small_plot_height: f32,
 }
 
 /// Line widths.

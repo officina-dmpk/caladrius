@@ -490,6 +490,7 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                         ("n_observations", integer()),
                         ("n_missing", integer()),
                         ("flag_messages", array_of(string())),
+                        ("status_message", string()),
                         ("outcome", outcome(reference("FitResult"))),
                     ],
                     &["kind", "subject", "n_observations", "n_missing", "outcome"],

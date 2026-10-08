@@ -63,6 +63,7 @@ fn add_flag_messages(result: Option<&AnalysisResult>, view: &mut Value) {
                 let messages: Vec<String> = ok.flags().iter().map(ToString::to_string).collect();
                 if let Some(slot) = view.pointer_mut("/result") {
                     slot["flag_messages"] = json!(messages);
+                    slot["status_message"] = json!(ok.status().message());
                 }
             }
         }
@@ -687,4 +688,113 @@ pub(crate) const ANALYSIS_REMOVE: CommandDef = CommandDef {
     },
     example: || json!({ "analysis": 3 }),
     run: analysis_remove,
+};
+
+// ---- fit.evaluate ------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvaluateParams {
+    worksheet: WorksheetId,
+    #[serde(default, deserialize_with = "super::label")]
+    subject: Option<String>,
+    model: ModelId,
+    #[serde(default)]
+    dose: Option<f64>,
+    #[serde(default)]
+    weighting: caladrius_fit::Weighting,
+    #[serde(default)]
+    initial: BTreeMap<String, f64>,
+    #[serde(default)]
+    options: caladrius_fit::FitOptions,
+}
+
+fn fit_evaluate(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
+    let p: EvaluateParams = parse("fit.evaluate", params)?;
+    let ws = engine.project.worksheet(p.worksheet)?;
+    let data = run::fit_data(ws, p.subject.as_deref(), p.dose)?;
+    // The weighted sum of squares at the starting values is the first row of the trace of a fit
+    // that is allowed one iteration (the fit crate computes it; nothing is computed here).
+    let mut options = p.options;
+    options.max_iterations = 1;
+    options.n_curve = 0;
+    let input = caladrius_fit::FitInput {
+        model: p.model,
+        dose: data.dose,
+        time: data.time.clone(),
+        conc: data.conc.clone(),
+        weighting: p.weighting,
+        initial: p.initial,
+        options,
+    };
+    let result =
+        caladrius_fit::run(&input).map_err(|e| CommandError::new("fit_error", e.to_string()))?;
+    let Some(start) = result.trace().first() else {
+        return Err(CommandError::new(
+            "fit_error",
+            "the fit gave no trace, so the objective at the starting values is not known",
+        ));
+    };
+    let starting: BTreeMap<&String, f64> = result
+        .parameters()
+        .iter()
+        .zip(start.estimates.iter().copied())
+        .collect();
+    respond(&json!({
+        "subject": data.subject,
+        "dose": data.dose,
+        "n_observations": data.time.len(),
+        "wrss": start.wrss,
+        "starting_values": starting,
+    }))
+}
+
+pub(crate) const FIT_EVALUATE: CommandDef = CommandDef {
+    id: "fit.evaluate",
+    title: "Objective at the starting values",
+    description: "The weighted sum of squares of one subject's observations for the given starting values (or the generated ones when none are given), as the first row of a fit's trace. Reads only: nothing is stored. A page uses it to show how far the starting curve is from the data while the person edits the estimates.",
+    mutates: false,
+    params: || {
+        root(
+            "fit.evaluate parameters",
+            object(
+                vec![
+                    ("worksheet", reference("Id")),
+                    ("subject", crate::schema::subject()),
+                    ("model", reference("ModelId")),
+                    ("dose", nullable(number())),
+                    ("weighting", reference("Weighting")),
+                    initial_property(),
+                    ("options", reference("FitOptions")),
+                ],
+                &["worksheet", "model"],
+            ),
+        )
+    },
+    result: || {
+        root(
+            "fit.evaluate result",
+            object(
+                vec![
+                    ("subject", string()),
+                    ("dose", number()),
+                    ("n_observations", integer()),
+                    ("wrss", number()),
+                    (
+                        "starting_values",
+                        json!({ "type": "object", "additionalProperties": number() }),
+                    ),
+                ],
+                &[
+                    "subject",
+                    "dose",
+                    "n_observations",
+                    "wrss",
+                    "starting_values",
+                ],
+            ),
+        )
+    },
+    example: || json!({ "worksheet": 1, "model": "pk1.oral_1", "initial": { "v": 20, "k": 0.1, "ka": 1.2 } }),
+    run: fit_evaluate,
 };

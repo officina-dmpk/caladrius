@@ -39,6 +39,7 @@ pub(crate) const COMMANDS: &[CommandDef] = &[
     analysis::NCA_RUN,
     analysis::ANALYSIS_GET,
     analysis::FIT_INITIAL_ESTIMATES,
+    analysis::FIT_EVALUATE,
     analysis::FIT_RUN,
     analysis::MODEL_SIMULATE,
     analysis::ANALYSIS_RUN,
