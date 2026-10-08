@@ -5,6 +5,26 @@
     clippy::todo,
     clippy::unreachable
 )]
-//! App layer: the command-line application, the UI's commands without a window (empty placeholder until step 4).
+//! The `caladrius-cli` binary: arguments in, answer on standard output, `error: ...` on standard
+//! error and exit code 1 on any failure. See the library for what it does.
 
-fn main() {}
+use std::io::{Write, stderr, stdin, stdout};
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match caladrius_cli::run(&args, &mut stdin()) {
+        Ok(output) => {
+            for note in &output.notes {
+                let _ = writeln!(stderr(), "{note}");
+            }
+            // A closed pipe (`| head`) is not a failure of the command.
+            let _ = stdout().write_all(output.stdout.as_bytes());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            let _ = writeln!(stderr(), "error: {e}");
+            ExitCode::from(1)
+        }
+    }
+}

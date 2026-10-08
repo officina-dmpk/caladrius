@@ -66,6 +66,8 @@ fn the_commands_are_the_documented_ones() {
             "project.describe",
             "project.save",
             "history.list",
+            "analysis.remove",
+            "data.remove",
             "project.new",
             "project.load",
         ]
@@ -800,8 +802,147 @@ fn a_project_survives_save_and_load_with_its_staleness() {
         json!({ "project": saved["project"] }),
     );
     assert_eq!(third.project(), e.project());
-    // Saving is deterministic.
-    assert_eq!(e.save_bytes().unwrap(), bytes);
+}
+
+#[test]
+fn the_saved_project_carries_its_history() {
+    let mut e = engine_with_two_subjects();
+    ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular" }),
+    );
+    let _ = e.execute("nca.run", json!({ "worksheet": 9 }));
+    let bytes = e.save_bytes().unwrap();
+    // The document is the project plus its history, the save included, deterministic.
+    let doc: Value = serde_json::from_slice(&bytes).unwrap();
+    let saved = doc["history"].as_array().unwrap();
+    assert_eq!(saved.len(), 4);
+    assert_eq!(saved[3]["command"], "project.save");
+    assert_eq!(saved[2]["ok"], false);
+
+    // A fresh session adopts it and carries on from it.
+    let mut fresh = Engine::new();
+    let r = fresh.load_bytes(&bytes).unwrap();
+    assert_eq!(r["history_restored"], true);
+    assert_eq!(fresh.history().len(), 5);
+    assert_eq!(fresh.history().entries()[..4], e.history().entries()[..4]);
+    assert_eq!(fresh.history().entries()[4].command, "project.load");
+    assert_eq!(fresh.project(), e.project());
+    ok(&mut fresh, "project.describe", Value::Null);
+    assert_eq!(fresh.history().entries().last().map(|h| h.seq), Some(6));
+
+    // A session that already has a history keeps it.
+    let mut busy = Engine::new();
+    ok(&mut busy, "project.describe", Value::Null);
+    let r = busy.load_bytes(&bytes).unwrap();
+    assert_eq!(r["history_restored"], false);
+    assert_eq!(busy.history().len(), 2);
+    assert_eq!(busy.project(), e.project());
+
+    // A damaged history refuses the whole file.
+    let mut damaged = doc.clone();
+    damaged["history"][2]["seq"] = json!(9);
+    let mut target = Engine::new();
+    let before = target.project().clone();
+    let failure = err(&mut target, "project.load", json!({ "project": damaged }));
+    assert_eq!(failure.code, "load_failed");
+    assert_eq!(target.project(), &before);
+    // A file without history (older, or written by hand) loads with an empty one.
+    let mut plain = doc;
+    plain.as_object_mut().unwrap().remove("history");
+    let mut other = Engine::new();
+    let r = ok(&mut other, "project.load", json!({ "project": plain }));
+    assert_eq!(r["history_restored"], true);
+    assert_eq!(other.history().len(), 1);
+}
+
+#[test]
+fn large_parameters_are_kept_as_a_digest() {
+    let mut e = Engine::new();
+    let small = json!({ "name": "small", "csv": "time,conc\n0,1\n1,2\n" });
+    ok(&mut e, "data.import", small.clone());
+    assert_eq!(e.history().entries()[0].params, small);
+
+    let mut csv = String::from("time,conc\n");
+    let mut i = 0;
+    while csv.len() <= MAX_RECORDED_PARAMS_BYTES {
+        csv.push_str(&format!("{i},{}\n", 1 + i % 7));
+        i += 1;
+    }
+    ok(&mut e, "data.import", json!({ "name": "big", "csv": csv }));
+    let kept = e.history().entries()[1].params.clone();
+    assert_eq!(kept["omitted"], true);
+    assert!(kept["bytes"].as_u64().unwrap() > MAX_RECORDED_PARAMS_BYTES as u64);
+    let digest = kept["digest"].as_str().unwrap();
+    assert!(digest.starts_with("fnv1a64:") && digest.len() == "fnv1a64:".len() + 16);
+    // The same input gives the same digest, another input another one.
+    ok(&mut e, "data.import", json!({ "name": "big", "csv": csv }));
+    assert_eq!(e.history().entries()[2].params, kept);
+    let other = format!("{csv}0,0\n");
+    ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "big", "csv": other }),
+    );
+    assert_ne!(e.history().entries()[3].params["digest"], kept["digest"]);
+    // The history still lists it, and the entry is small.
+    let listed = ok(&mut e, "history.list", json!({ "from": 2, "limit": 1 }));
+    assert!(listed.to_string().len() < 1000);
+}
+
+#[test]
+fn worksheets_and_analyses_can_be_removed() {
+    let mut e = engine_with_two_subjects();
+    ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular" }),
+    );
+    ok(
+        &mut e,
+        "fit.run",
+        json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1" }),
+    );
+    // A worksheet that analyses read is refused, naming them, and nothing changes.
+    let before = e.project().clone();
+    let refused = err(&mut e, "data.remove", json!({ "worksheet": 1 }));
+    assert_eq!(refused.code, "worksheet_in_use");
+    assert!(refused.message.contains("NCA of study"), "{refused}");
+    assert_eq!(e.project(), &before);
+    // An analysis goes alone.
+    let r = ok(&mut e, "analysis.remove", json!({ "analysis": 3 }));
+    assert_eq!(r["removed"], json!({ "analyses": [3] }));
+    assert_eq!(r["analyses"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        err(&mut e, "analysis.get", json!({ "analysis": 3 })).code,
+        "unknown_analysis"
+    );
+    assert_eq!(
+        err(&mut e, "analysis.remove", json!({ "analysis": 3 })).code,
+        "unknown_analysis"
+    );
+    // With `remove_analyses` the worksheet goes with the analyses that read it.
+    let r = ok(
+        &mut e,
+        "data.remove",
+        json!({ "worksheet": 1, "remove_analyses": true }),
+    );
+    assert_eq!(r["removed"], json!({ "worksheet": 1, "analyses": [2] }));
+    assert!(e.project().worksheets().is_empty() && e.project().analyses().is_empty());
+    assert_eq!(
+        err(&mut e, "data.remove", json!({ "worksheet": 1 })).code,
+        "unknown_worksheet"
+    );
+    // An unused worksheet goes without the flag.
+    let second = ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "w", "csv": "time,conc\n0,1\n" }),
+    );
+    let id = second["worksheet"]["id"].clone();
+    let r = ok(&mut e, "data.remove", json!({ "worksheet": id }));
+    assert_eq!(r["removed"]["analyses"], json!([]));
 }
 
 #[test]
@@ -933,4 +1074,32 @@ fn csv_cells_are_quoted_when_needed() {
         t["csv"],
         "id,time,conc\n\"a,b\",0,1\n\"say \"\"hi\"\"\",1,2\n"
     );
+}
+
+#[test]
+fn a_subject_can_be_given_as_a_number() {
+    let mut e = Engine::new();
+    ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "n", "csv": "id,time,conc,dose\n1,0,0,10\n1,1,5,10\n1,2,3,10\n1,4,1,10\n2,0,0,10\n2,1,4,10\n2,2,2,10\n2,4,1,10\n" }),
+    );
+    let r = ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular", "subject": 2 }),
+    );
+    assert_eq!(r["result"]["subjects"][0]["subject"], "2");
+    let r = ok(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular", "subject": "1" }),
+    );
+    assert_eq!(r["result"]["subjects"][0]["subject"], "1");
+    let bad = err(
+        &mut e,
+        "nca.run",
+        json!({ "worksheet": 1, "route": "extravascular", "subject": [1] }),
+    );
+    assert_eq!(bad.code, "invalid_parameters");
 }

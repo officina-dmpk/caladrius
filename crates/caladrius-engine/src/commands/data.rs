@@ -495,3 +495,88 @@ pub(crate) const SET_CELL: CommandDef = CommandDef {
     example: || json!({ "worksheet": 1, "column": "Conc", "row": 3, "value": 3.3 }),
     run: set_cell,
 };
+
+// ---- data.remove -------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RemoveParams {
+    worksheet: WorksheetId,
+    #[serde(default)]
+    remove_analyses: bool,
+}
+
+fn remove(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
+    let p: RemoveParams = parse("data.remove", params)?;
+    // Work on a copy: a refusal halfway leaves the project as it was.
+    let mut project = engine.project.clone();
+    let readers: Vec<_> = project
+        .analyses()
+        .iter()
+        .filter(|a| a.spec().worksheet() == Some(p.worksheet))
+        .map(|a| a.id())
+        .collect();
+    if p.remove_analyses {
+        for id in &readers {
+            project.remove_analysis(*id)?;
+        }
+    }
+    project.remove_worksheet(p.worksheet)?;
+    engine.project = project;
+    let mut out = super::project::overview(engine)?;
+    if let Some(map) = out.as_object_mut() {
+        map.insert(
+            "removed".to_owned(),
+            json!({
+                "worksheet": p.worksheet,
+                "analyses": if p.remove_analyses { readers } else { Vec::new() },
+            }),
+        );
+    }
+    Ok(out)
+}
+
+pub(crate) const REMOVE: CommandDef = CommandDef {
+    id: "data.remove",
+    title: "Remove a worksheet",
+    description: "Removes a worksheet. It is refused while analyses read it, and the error names them; with `remove_analyses` those analyses are removed too. Returns the project overview and what was removed.",
+    mutates: true,
+    params: || {
+        root(
+            "data.remove parameters",
+            object(
+                vec![
+                    ("worksheet", reference("Id")),
+                    ("remove_analyses", boolean()),
+                ],
+                &["worksheet"],
+            ),
+        )
+    },
+    result: || {
+        let mut schema = super::project::overview_schema();
+        removed_schema(&mut schema, true);
+        root("data.remove result", schema)
+    },
+    example: || json!({ "worksheet": 1, "remove_analyses": true }),
+    run: remove,
+};
+
+/// Adds the `removed` property to an overview schema.
+pub(crate) fn removed_schema(schema: &mut Value, with_worksheet: bool) {
+    let mut props = vec![("analyses", array_of(reference("Id")))];
+    let mut required = vec!["analyses"];
+    if with_worksheet {
+        props.insert(0, ("worksheet", reference("Id")));
+        required.insert(0, "worksheet");
+    }
+    let removed = object(props, &required);
+    if let Some(map) = schema.as_object_mut() {
+        if let Some(Value::Object(p)) = map.get_mut("properties") {
+            p.insert("removed".to_owned(), removed);
+        }
+        if let Some(Value::Array(r)) = map.get_mut("required") {
+            r.push(json!("removed"));
+        }
+    }
+}

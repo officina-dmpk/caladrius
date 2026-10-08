@@ -35,6 +35,11 @@ pub(crate) fn nullable(inner: Value) -> Value {
     json!({ "anyOf": [inner, { "type": "null" }] })
 }
 
+/// A subject label: text or a number, or null for none.
+pub(crate) fn subject() -> Value {
+    json!({ "anyOf": [{ "type": "string" }, { "type": "integer" }, { "type": "number" }, { "type": "null" }] })
+}
+
 pub(crate) fn array_of(items: Value) -> Value {
     json!({ "type": "array", "items": items })
 }

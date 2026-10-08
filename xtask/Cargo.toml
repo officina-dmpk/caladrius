@@ -11,6 +11,8 @@ publish = false
 # `conformance` runs the engine on the oracle cases through the test kit.
 caladrius-nca = { path = "../crates/caladrius-nca" }
 caladrius-testkit = { path = "../crates/caladrius-testkit" }
+caladrius-models = { path = "../crates/caladrius-models" }
+caladrius-fit = { path = "../crates/caladrius-fit" }
 toml = { version = "1.1.7", default-features = false, features = ["std", "serde", "parse"] }
 
 [lints]

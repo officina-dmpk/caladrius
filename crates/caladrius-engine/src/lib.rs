@@ -30,7 +30,7 @@ mod tests;
 
 pub use caladrius_project::{self as project, Project};
 pub use error::CommandError;
-pub use history::{History, HistoryEntry};
+pub use history::{History, HistoryEntry, MAX_RECORDED_PARAMS_BYTES};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -168,7 +168,10 @@ impl Engine {
     /// `project.save`, as the bytes to write to a file.
     pub fn save_bytes(&mut self) -> Result<Vec<u8>, CommandError> {
         self.execute("project.save", Value::Null)?;
-        Ok(self.project.to_bytes()?)
+        let document = commands::document(self)?;
+        serde_json::to_vec_pretty(&document).map_err(|e| {
+            CommandError::new("save_failed", format!("the project cannot be saved: {e}"))
+        })
     }
 
     /// `project.load` from the bytes of a saved file.

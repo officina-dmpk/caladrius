@@ -5,6 +5,8 @@ mod analysis;
 mod data;
 mod project;
 
+pub(crate) use project::document;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -43,6 +45,8 @@ pub(crate) const COMMANDS: &[CommandDef] = &[
     project::DESCRIBE,
     project::SAVE,
     project::HISTORY_LIST,
+    analysis::ANALYSIS_REMOVE,
+    data::REMOVE,
     project::NEW,
     project::LOAD,
 ];
@@ -80,4 +84,19 @@ where
     T: serde::Deserialize<'de>,
 {
     Ok(Some(Option::deserialize(deserializer)?))
+}
+
+/// A subject label given as a string or as a number (`subject: 1` and `subject: "1"` name the
+/// same subject); absent or null means no subject.
+pub(crate) fn label<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s)),
+        Some(Value::Number(n)) => Ok(Some(n.to_string())),
+        Some(_) => Err(D::Error::custom("a subject is a string or a number")),
+    }
 }

@@ -91,8 +91,8 @@ fn spec_properties() -> Vec<(&'static str, Value)> {
         (
             "subject",
             crate::schema::described(
-                nullable(string()),
-                "One subject; omitted or null: every subject (NCA) or the only subject (fit).",
+                crate::schema::subject(),
+                "One subject, a label as text or number; omitted or null: every subject (NCA) or the only subject (fit).",
             ),
         ),
     ]
@@ -112,7 +112,7 @@ struct NcaRunParams {
     #[serde(default)]
     name: Option<String>,
     worksheet: WorksheetId,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::label")]
     subject: Option<String>,
     #[serde(default)]
     route: Option<Route>,
@@ -172,7 +172,7 @@ struct FitRunParams {
     #[serde(default)]
     name: Option<String>,
     worksheet: WorksheetId,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::label")]
     subject: Option<String>,
     model: ModelId,
     #[serde(default)]
@@ -245,7 +245,7 @@ pub(crate) const FIT_RUN: CommandDef = CommandDef {
 #[serde(deny_unknown_fields)]
 struct InitialParams {
     worksheet: WorksheetId,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::label")]
     subject: Option<String>,
     model: ModelId,
     #[serde(default)]
@@ -278,7 +278,7 @@ pub(crate) const FIT_INITIAL_ESTIMATES: CommandDef = CommandDef {
             object(
                 vec![
                     ("worksheet", reference("Id")),
-                    ("subject", nullable(string())),
+                    ("subject", crate::schema::subject()),
                     ("model", reference("ModelId")),
                     ("dose", nullable(number())),
                     (
@@ -620,4 +620,36 @@ pub(crate) const EXPORT_TABLE: CommandDef = CommandDef {
     },
     example: || json!({ "table": "nca.parameters", "analysis": 2 }),
     run: export_table,
+};
+
+// ---- analysis.remove ---------------------------------------------------------------------
+
+fn analysis_remove(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
+    let p: AnalysisParams = parse("analysis.remove", params)?;
+    engine.project.remove_analysis(p.analysis)?;
+    let mut out = super::project::overview(engine)?;
+    if let Some(map) = out.as_object_mut() {
+        map.insert("removed".to_owned(), json!({ "analyses": [p.analysis] }));
+    }
+    Ok(out)
+}
+
+pub(crate) const ANALYSIS_REMOVE: CommandDef = CommandDef {
+    id: "analysis.remove",
+    title: "Remove an analysis",
+    description: "Removes an analysis object with its options and result. Returns the project overview and what was removed.",
+    mutates: true,
+    params: || {
+        root(
+            "analysis.remove parameters",
+            object(vec![("analysis", reference("Id"))], &["analysis"]),
+        )
+    },
+    result: || {
+        let mut schema = super::project::overview_schema();
+        super::data::removed_schema(&mut schema, false);
+        root("analysis.remove result", schema)
+    },
+    example: || json!({ "analysis": 3 }),
+    run: analysis_remove,
 };

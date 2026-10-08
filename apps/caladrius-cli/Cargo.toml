@@ -1,10 +1,22 @@
 [package]
 name = "caladrius-cli"
-description = "App layer: the command-line application, the UI's commands without a window (empty placeholder until step 4)."
+description = "App layer: the command-line application, the engine's commands without a window."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[[bin]]
+name = "caladrius-cli"
+path = "src/main.rs"
+
+[dependencies]
+caladrius-engine = { path = "../../crates/caladrius-engine" }
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+# The integration test checks the binary's output against the public oracle.
+caladrius-testkit = { path = "../../crates/caladrius-testkit" }
 
 [lints]
 workspace = true

@@ -8,9 +8,10 @@ use super::{CommandDef, parse, respond};
 use crate::Engine;
 use crate::error::CommandError;
 use crate::export::slug;
+use crate::history::HistoryEntry;
 use crate::schema::{array_of, integer, nullable, object, one_of_strings, reference, root, string};
 
-fn overview(engine: &Engine) -> Result<Value, CommandError> {
+pub(super) fn overview(engine: &Engine) -> Result<Value, CommandError> {
     let project = &engine.project;
     let worksheets: Vec<Value> = project
         .worksheets()
@@ -43,7 +44,7 @@ fn overview(engine: &Engine) -> Result<Value, CommandError> {
     }))
 }
 
-fn overview_schema() -> Value {
+pub(super) fn overview_schema() -> Value {
     object(
         vec![
             ("name", string()),
@@ -99,21 +100,30 @@ struct Empty {}
 
 // ---- save and load -----------------------------------------------------------------------
 
-fn save(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
-    let _: Empty = parse("project.save", params)?;
-    let project: Value = serde_json::from_slice(&engine.project.to_bytes()?).map_err(|e| {
+/// The saved document: the project as the project layer writes it, with the history of the
+/// commands executed so far under `history`.
+pub(crate) fn document(engine: &Engine) -> Result<Value, CommandError> {
+    let mut doc: Value = serde_json::from_slice(&engine.project.to_bytes()?).map_err(|e| {
         CommandError::new("save_failed", format!("the project cannot be saved: {e}"))
     })?;
+    if let Some(map) = doc.as_object_mut() {
+        map.insert("history".to_owned(), respond(&engine.history.entries())?);
+    }
+    Ok(doc)
+}
+
+fn save(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
+    let _: Empty = parse("project.save", params)?;
     respond(&json!({
         "file_name": format!("{}.caladrius.json", slug(engine.project.name())),
-        "project": project,
+        "project": document(engine)?,
     }))
 }
 
 pub(crate) const SAVE: CommandDef = CommandDef {
     id: "project.save",
     title: "Save the project",
-    description: "The whole project (worksheets, analyses with options and results) as a JSON document and a suggested file name; the caller writes the file. `Engine::save_bytes` gives the same document as bytes. Stale results are saved as such.",
+    description: "The whole project (worksheets, analyses with options and results) and the history of the commands executed so far (under `history`, without this save) as a JSON document, and a suggested file name; the caller writes the file. `Engine::save_bytes` gives the same document as bytes, including the save in the history. Stale results are saved as such.",
     mutates: false,
     params: || root("project.save parameters", object(vec![], &[])),
     result: || {
@@ -143,11 +153,14 @@ struct LoadParams {
 
 fn load(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
     let p: LoadParams = parse("project.load", params)?;
-    let bytes = match (p.project, p.text) {
-        (Some(v), None) => serde_json::to_vec(&v).map_err(|e| {
-            CommandError::invalid("project.load", format!("`project` cannot be read: {e}"))
+    let mut doc: Value = match (p.project, p.text) {
+        (Some(v), None) => v,
+        (None, Some(t)) => serde_json::from_str(&t).map_err(|e| {
+            CommandError::new(
+                "load_failed",
+                format!("this is not a readable Caladrius project: {e}"),
+            )
         })?,
-        (None, Some(t)) => t.into_bytes(),
         _ => {
             return Err(CommandError::invalid(
                 "project.load",
@@ -155,14 +168,34 @@ fn load(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
             ));
         }
     };
-    engine.project = Project::from_bytes(&bytes)?;
-    overview(engine)
+    let saved_history = doc.as_object_mut().and_then(|m| m.remove("history"));
+    let entries: Vec<HistoryEntry> = match saved_history {
+        Some(h) => serde_json::from_value(h).map_err(|e| {
+            CommandError::new(
+                "load_failed",
+                format!("the history of the project is not readable: {e}"),
+            )
+        })?,
+        None => Vec::new(),
+    };
+    let bytes = serde_json::to_vec(&doc).map_err(|e| {
+        CommandError::new("load_failed", format!("the project cannot be read: {e}"))
+    })?;
+    let project = Project::from_bytes(&bytes)?;
+    // Everything is checked: from here on nothing fails, so a refused file changes nothing.
+    let restored = engine.history.adopt(entries)?;
+    engine.project = project;
+    let mut out = overview(engine)?;
+    if let Some(map) = out.as_object_mut() {
+        map.insert("history_restored".to_owned(), json!(restored));
+    }
+    Ok(out)
 }
 
 pub(crate) const LOAD: CommandDef = CommandDef {
     id: "project.load",
     title: "Load a project",
-    description: "Replaces the current project by a saved one, given as the document (`project`) or its JSON text (`text`). The file is checked first; a refused file changes nothing. The history is not replaced: loading is one more entry.",
+    description: "Replaces the current project by a saved one, given as the document (`project`) or its JSON text (`text`). The file is checked first; a refused file changes nothing. The history saved with the project is adopted when this session has none yet (`history_restored`), so a project keeps its provenance across sessions; a session that already has a history keeps it, and loading is one more entry.",
     mutates: true,
     params: || {
         let mut schema = object(
@@ -177,7 +210,18 @@ pub(crate) const LOAD: CommandDef = CommandDef {
         }
         root("project.load parameters", schema)
     },
-    result: || root("project.load result", overview_schema()),
+    result: || {
+        let mut schema = overview_schema();
+        if let Some(map) = schema.as_object_mut() {
+            if let Some(Value::Object(props)) = map.get_mut("properties") {
+                props.insert("history_restored".to_owned(), crate::schema::boolean());
+            }
+            if let Some(Value::Array(req)) = map.get_mut("required") {
+                req.push(json!("history_restored"));
+            }
+        }
+        root("project.load result", schema)
+    },
     example: || {
         json!({ "project": {
             "format": "caladrius-project",

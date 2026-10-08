@@ -1,0 +1,389 @@
+use std::fs;
+use std::path::PathBuf;
+
+use serde_json::{Value, json};
+
+use super::*;
+
+fn args(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| (*s).to_owned()).collect()
+}
+
+fn run_args(list: &[&str]) -> Result<Output, CliError> {
+    run(&args(list), &mut std::io::empty())
+}
+
+fn failure(list: &[&str]) -> String {
+    match run_args(list) {
+        Ok(o) => panic!("should have failed, printed {}", o.stdout),
+        Err(e) => e.0,
+    }
+}
+
+fn scratch(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "caladrius-cli-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+const CSV: &str = "Subject,Time (h),Conc (mg/L),Dose (mg)\n\
+A,0,0,100\nA,0.5,2.195,100\nA,1,3.293,100\nA,2,3.971,100\nA,4,3.611,100\nA,6,2.989,100\nA,8,2.451,100\nA,12,1.643,100\nA,24,0.495,100\n";
+
+fn csv_file(dir: &std::path::Path) -> String {
+    let path = dir.join("study.csv");
+    fs::write(&path, CSV).unwrap();
+    path.to_str().unwrap().to_owned()
+}
+
+fn json_out(o: &Output) -> Value {
+    serde_json::from_str(&o.stdout).unwrap()
+}
+
+#[test]
+fn arguments_are_parsed_in_both_flag_styles() {
+    assert_eq!(parse_args(&args(&["help"])).unwrap(), Action::Help);
+    assert_eq!(parse_args(&args(&["--help"])).unwrap(), Action::Help);
+    assert_eq!(
+        parse_args(&args(&["commands", "--format=json"])).unwrap(),
+        Action::Commands(Some(Format::Json))
+    );
+    let Action::Run(r) = parse_args(&args(&[
+        "nca.run",
+        "--param",
+        "route=extravascular",
+        "--csv=a.csv",
+        "--format",
+        "csv",
+        "--param=dose=100",
+    ]))
+    .unwrap() else {
+        panic!("expected a run");
+    };
+    assert_eq!(r.command, "nca.run");
+    assert_eq!(r.params, ["route=extravascular", "dose=100"]);
+    assert_eq!(r.csv, Some(PathBuf::from("a.csv")));
+    assert_eq!(r.format, Some(Format::Csv));
+}
+
+#[test]
+fn bad_arguments_say_what_to_fix() {
+    for (list, text) in [
+        (vec![], "missing command"),
+        (vec!["nca.run", "--bogus"], "unknown option `--bogus`"),
+        (vec!["nca.run", "--param"], "needs a value"),
+        (vec!["nca.run", "extra"], "unexpected argument"),
+        (vec!["nca.run", "--format", "xml"], "unknown format"),
+        (vec!["commands", "--csv", "x"], "unknown option"),
+        (vec!["nca.run", "--param", "novalue"], "KEY=VALUE"),
+        (vec!["nca.run", "--param", "=1"], "empty parameter name"),
+        (vec!["nca.run", "--param", "a..b=1"], "empty parameter name"),
+    ] {
+        assert!(failure(&list).contains(text), "{list:?}");
+    }
+}
+
+#[test]
+fn parameters_are_json_when_they_parse_and_nest_by_dots() {
+    let mut map = Map::new();
+    for p in [
+        "worksheet=1",
+        "route=extravascular",
+        "options.auc_method=linear",
+        "options.lambda_z.min_points=4",
+        "flag=true",
+        "list=[1,2]",
+        "quoted=\"7\"",
+    ] {
+        let (path, value) = parse_param(p, &read_text).unwrap();
+        set_path(&mut map, &path, value).unwrap();
+    }
+    assert_eq!(
+        Value::Object(map.clone()),
+        json!({ "worksheet": 1, "route": "extravascular", "flag": true, "list": [1, 2],
+                "quoted": "7",
+                "options": { "auc_method": "linear", "lambda_z": { "min_points": 4 } } })
+    );
+    // A scalar cannot also be an object.
+    let (path, value) = parse_param("route.x=1", &read_text).unwrap();
+    assert!(set_path(&mut map, &path, value).is_err());
+}
+
+#[test]
+fn a_parameter_can_come_from_a_file() {
+    let dir = scratch("file-param");
+    let path = dir.join("data.csv");
+    fs::write(&path, "time,conc\n0,1\n").unwrap();
+    let (_, value) = parse_param(&format!("csv=@{}", path.display()), &read_text).unwrap();
+    assert_eq!(value, json!("time,conc\n0,1\n"));
+    assert!(parse_param("csv=@/no/such/file.csv", &read_text).is_err());
+}
+
+#[test]
+fn commands_are_listed_as_text_and_as_json_with_schemas() {
+    let text = run_args(&["commands"]).unwrap().stdout;
+    assert_eq!(text.lines().count(), commands().len());
+    assert!(text.lines().any(|l| l.starts_with("nca.run ")));
+    let full = json_out(&run_args(&["commands", "--format", "json"]).unwrap());
+    let list = full.as_array().unwrap();
+    assert_eq!(list.len(), commands().len());
+    for c in list {
+        assert!(c["params_schema"]["$schema"].is_string());
+        assert!(c["result_schema"]["$schema"].is_string());
+    }
+    assert!(run_args(&["commands", "--format", "csv"]).is_err());
+}
+
+#[test]
+fn an_unknown_command_lists_the_known_ones() {
+    let m = failure(&["nca.runn"]);
+    assert!(
+        m.contains("unknown_command") && m.contains("nca.run"),
+        "{m}"
+    );
+}
+
+#[test]
+fn nca_from_a_csv_prints_json_or_a_table() {
+    let dir = scratch("nca");
+    let file = csv_file(&dir);
+    let out = run_args(&["nca.run", "--csv", &file, "--param", "route=extravascular"]).unwrap();
+    let v = json_out(&out);
+    assert_eq!(v["kind"], "nca");
+    assert_eq!(v["status"], json!({ "state": "fresh" }));
+    // The import notes go to the notes, not to the output.
+    assert!(
+        out.notes.iter().any(|n| n.contains("unit `mg/L`")),
+        "{:?}",
+        out.notes
+    );
+
+    let csv = run_args(&[
+        "nca.run",
+        "--csv",
+        &file,
+        "--param",
+        "route=extravascular",
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    assert!(csv.starts_with("subject,parameter,value,not_calculated_reason\nA,"));
+    assert!(csv.lines().any(|l| l.starts_with("A,cmax,3.971,")), "{csv}");
+
+    let table = run_args(&[
+        "nca.run",
+        "--csv",
+        &file,
+        "--param",
+        "route=extravascular",
+        "--format",
+        "csv",
+        "--table",
+        "nca.parameters",
+    ])
+    .unwrap()
+    .stdout;
+    assert_eq!(table, csv);
+    assert!(
+        failure(&[
+            "nca.run",
+            "--csv",
+            &file,
+            "--param",
+            "route=extravascular",
+            "--table",
+            "nca.parameters"
+        ])
+        .contains("--table needs --format csv")
+    );
+}
+
+#[test]
+fn fit_and_simulation_have_csv_forms() {
+    let dir = scratch("fit");
+    let file = csv_file(&dir);
+    let fit = run_args(&[
+        "fit.run",
+        "--csv",
+        &file,
+        "--param",
+        "model=pk1.oral_1",
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    assert!(
+        fit.starts_with("parameter,estimate,se,cv_percent,ci_lo,ci_hi\n"),
+        "{fit}"
+    );
+    assert_eq!(fit.lines().count(), 4);
+    let curve = run_args(&[
+        "fit.run",
+        "--csv",
+        &file,
+        "--param",
+        "model=pk1.oral_1",
+        "--format",
+        "csv",
+        "--table",
+        "fit.curve",
+    ])
+    .unwrap()
+    .stdout;
+    assert_eq!(curve.lines().next(), Some("time,conc"));
+    let sim = run_args(&[
+        "model.simulate",
+        "--param",
+        "model=pk1.iv_bolus",
+        "--param",
+        "dose=10",
+        "--param",
+        "params.v=5",
+        "--param",
+        "params.k=0.2",
+        "--param",
+        "times=[0,1,2]",
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    assert_eq!(sim.lines().next(), Some("time,conc,auc"));
+    assert_eq!(sim.lines().count(), 4);
+    assert!(sim.contains("\n0,2,0\n"), "{sim}");
+}
+
+#[test]
+fn json_parameters_come_from_a_file_or_standard_input_and_params_override_them() {
+    let dir = scratch("json");
+    let params = dir.join("p.json");
+    fs::write(
+        &params,
+        json!({ "model": "pk1.iv_bolus", "dose": 10, "params": { "v": 5, "k": 0.2 }, "times": [1] })
+            .to_string(),
+    )
+    .unwrap();
+    let path = params.to_str().unwrap();
+    let a = json_out(&run_args(&["model.simulate", "--json", path]).unwrap());
+    let b = json_out(&run_args(&["model.simulate", "--json", path, "--param", "dose=20"]).unwrap());
+    let (ca, cb) = (
+        a["conc"][0].as_f64().unwrap(),
+        b["conc"][0].as_f64().unwrap(),
+    );
+    assert!((cb - 2.0 * ca).abs() < 1e-12);
+    let mut input: &[u8] =
+        br#"{"model":"pk1.iv_bolus","dose":10,"params":{"v":5,"k":0.2},"times":[1]}"#;
+    let c = run(&args(&["model.simulate", "--json", "-"]), &mut input).unwrap();
+    assert_eq!(json_out(&c)["conc"], a["conc"]);
+
+    fs::write(&params, "[1]").unwrap();
+    assert!(failure(&["model.simulate", "--json", path]).contains("JSON object"));
+    fs::write(&params, "{").unwrap();
+    assert!(failure(&["model.simulate", "--json", path]).contains("not valid JSON"));
+    assert!(failure(&["model.simulate", "--json", "/no/such/p.json"]).contains("cannot read"));
+}
+
+#[test]
+fn engine_errors_are_one_line_with_a_code() {
+    let m = failure(&["model.simulate", "--param", "model=pk1.iv_bolus"]);
+    assert!(m.starts_with("invalid_parameters: "), "{m}");
+    let dir = scratch("err");
+    let file = csv_file(&dir);
+    let m = failure(&["nca.run", "--csv", &file, "--param", "route=sideways"]);
+    assert!(m.starts_with("invalid_parameters: "), "{m}");
+    let m = failure(&["nca.run", "--csv", "/no/such.csv"]);
+    assert!(m.contains("cannot read"), "{m}");
+    let m = failure(&["data.describe", "--param", "worksheet=4"]);
+    assert!(m.starts_with("unknown_worksheet: "), "{m}");
+    assert!(!m.contains('\n'));
+}
+
+#[test]
+fn a_project_file_carries_state_between_invocations() {
+    let dir = scratch("project");
+    let file = csv_file(&dir);
+    let project = dir.join("study.caladrius.json");
+    let project = project.to_str().unwrap();
+    // First call: import and run; the project is written.
+    run_args(&[
+        "nca.run",
+        "--csv",
+        &file,
+        "--project",
+        project,
+        "--param",
+        "route=extravascular",
+    ])
+    .unwrap();
+    assert!(fs::metadata(project).unwrap().len() > 100);
+    // Second call: the worksheet and the analysis are there.
+    let v = json_out(&run_args(&["project.describe", "--project", project]).unwrap());
+    assert_eq!(v["worksheets"].as_array().unwrap().len(), 1);
+    assert_eq!(v["analyses"][0]["status"], json!({ "state": "fresh" }));
+    // An edit is written back and makes the analysis stale for the next call.
+    let before = fs::read(project).unwrap();
+    run_args(&["project.describe", "--project", project]).unwrap();
+    assert_eq!(
+        fs::read(project).unwrap(),
+        before,
+        "a read-only command leaves the file alone"
+    );
+    run_args(&[
+        "data.set_cell",
+        "--project",
+        project,
+        "--param",
+        "column=Conc",
+        "--param",
+        "row=3",
+        "--param",
+        "value=4.5",
+    ])
+    .unwrap();
+    let a = json_out(
+        &run_args(&[
+            "analysis.get",
+            "--project",
+            project,
+            "--param",
+            "analysis=2",
+        ])
+        .unwrap(),
+    );
+    assert_eq!(a["status"]["state"], "stale");
+    // Run again, export the table, the history shows the earlier invocations.
+    let table = run_args(&[
+        "analysis.run",
+        "--project",
+        project,
+        "--param",
+        "analysis=2",
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    assert!(table.contains("A,cmax,4.5,"), "{table}");
+    let h = json_out(&run_args(&["history.list", "--project", project]).unwrap());
+    let commands: Vec<&str> = h["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["command"].as_str().unwrap())
+        .collect();
+    assert!(
+        commands.starts_with(&["data.import", "nca.run", "project.save"]),
+        "{commands:?}"
+    );
+    // A damaged project is refused without being overwritten.
+    fs::write(project, "{}").unwrap();
+    assert!(failure(&["project.describe", "--project", project]).contains("load_failed"));
+    assert_eq!(fs::read_to_string(project).unwrap(), "{}");
+}
