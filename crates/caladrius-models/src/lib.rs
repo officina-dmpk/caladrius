@@ -12,6 +12,7 @@
 
 mod curves;
 mod error;
+mod float;
 mod jacobian;
 mod model;
 mod params;
@@ -61,7 +62,8 @@ impl ModelOutput {
     }
 
     /// Secondary parameter by name (MOD-SEC-02, MOD-VOC-01): `v`, `k`, `cl`, `half_life`,
-    /// `auc_inf`, `mrt_system` (1/k), `mrt` (profile MRT), `vss`, and the input parameters
+    /// `auc_inf`, `mrt_system` (1/k, the disposition MRT), `mrt` (profile MRT, MOD-SEC-02), `vss`
+    /// (= V for one compartment, MOD-IVB-02), and the input parameters
     /// (`ka`, `dur`, `tlag`, `rate`); bolus: `c0`; models with a peak: `tmax_pred`, `cmax_pred`.
     /// `None` when the model has no such quantity.
     pub fn get(&self, name: &str) -> Option<f64> {
@@ -86,7 +88,7 @@ pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
         return Err(ModelError::NonFiniteTime { index });
     }
     let kind = input.model.input();
-    let (conc, auc) = input
+    let (conc, auc): (Vec<f64>, Vec<f64>) = input
         .times
         .iter()
         .map(|&t| curves::at(kind, dose, &p, t))
@@ -129,6 +131,19 @@ pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
             put("cmax_pred", dose / p.v * (-p.k * peak).exp());
             put("mrt", 1.0 / p.k + 1.0 / p.ka + p.tlag);
         }
+    }
+    // Golden rule 6: valid parameters whose results overflow are an error, never inf or NaN.
+    let overflow = |what: String| Err(ModelError::Overflow { what });
+    for (t, (c, a)) in input.times.iter().zip(conc.iter().zip(&auc)) {
+        if !c.is_finite() {
+            return overflow(format!("the concentration at time {t}"));
+        }
+        if !a.is_finite() {
+            return overflow(format!("the AUC at time {t}"));
+        }
+    }
+    if let Some((name, _)) = secondary.iter().find(|(_, v)| !v.is_finite()) {
+        return overflow(format!("the secondary parameter `{name}`"));
     }
     Ok(ModelOutput {
         conc,

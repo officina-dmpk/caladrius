@@ -19,6 +19,10 @@ pub enum Derivatives {
     /// [f(θ + Δ·e_j) − f(θ)]/Δ with Δ = increment·|θ_j|, or the increment itself when θ_j = 0.
     ForwardDifference {
         /// Relative increment, finite and > 0.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         increment: f64,
     },
     /// Closed form where `specs/fit.md` gives it (IV bolus), else forward differences with
@@ -61,9 +65,22 @@ fn forward(input: &ModelInput, base: &[f64], h: f64) -> Result<Jacobian, ModelEr
     let mut columns = Vec::new();
     for (name, &theta) in &input.params {
         let step = if theta == 0.0 { h } else { h * theta.abs() };
+        if !(theta + step).is_finite() {
+            return Err(ModelError::Overflow {
+                what: format!(
+                    "the forward-difference step of parameter `{name}` ({theta} + {step})"
+                ),
+            });
+        }
         let mut moved = input.clone();
         moved.params.insert(name.clone(), theta + step);
-        let shifted = run(&moved)?;
+        // The base point is valid, so a failure here comes from the step itself.
+        let shifted = run(&moved).map_err(|e| ModelError::Overflow {
+            what: format!(
+                "the forward-difference step of parameter `{name}` (to {}: {e})",
+                theta + step
+            ),
+        })?;
         columns.push(
             shifted
                 .conc()

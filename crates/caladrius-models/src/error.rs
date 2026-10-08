@@ -36,6 +36,10 @@ pub enum ModelError {
         /// The parameter.
         name: String,
         /// The value given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         value: f64,
         /// The domain, e.g. `a finite number > 0`.
         domain: String,
@@ -43,12 +47,21 @@ pub enum ModelError {
     /// The dose is negative or not finite.
     InvalidDose {
         /// The dose given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
         value: f64,
     },
     /// A time is NaN or infinite.
     NonFiniteTime {
         /// Position in `times`.
         index: usize,
+    },
+    /// Valid parameters whose result does not fit in a double (e.g. V or CL near 1e-300).
+    Overflow {
+        /// What could not be represented.
+        what: String,
     },
 }
 
@@ -89,6 +102,10 @@ impl fmt::Display for ModelError {
                 f,
                 "time {} is missing or not a finite number; give finite times",
                 index + 1
+            ),
+            Self::Overflow { what } => write!(
+                f,
+                "{what} is too large or undefined in double precision; rescale V, CL or the dose (for example change the units)"
             ),
         }
     }

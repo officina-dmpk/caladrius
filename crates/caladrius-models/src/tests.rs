@@ -262,3 +262,99 @@ fn forward_differences_use_a_relative_increment() {
     );
     assert!(jacobian(&oral, Derivatives::ForwardDifference { increment: 0.0 }).is_err());
 }
+
+// ---- T-010 review fixes ----
+
+#[test]
+fn huge_times_and_rates_give_zero_not_nan() {
+    // MOD-NUM-01: k·s overflowing with e^−as = 0 must not give inf·0.
+    for (p, t) in [
+        (vec![("v", 10.0), ("k", 1.0), ("ka", 2.0)], 1e308),
+        (vec![("v", 10.0), ("k", 1e10), ("ka", 2e10)], 1e300),
+        (vec![("v", 10.0), ("k", 2e10), ("ka", 1e10)], 1e300),
+    ] {
+        for model in [ModelId::Oral1, ModelId::Oral1Lag] {
+            let mut p = p.clone();
+            if model == ModelId::Oral1Lag {
+                p.push(("tlag", 0.5));
+            }
+            let r = out(model, &p, &[t]);
+            assert_eq!(r.conc()[0], 0.0, "{model:?} {p:?}");
+            printed(r.auc()[0], 100.0 / (10.0 * p[1].1));
+        }
+    }
+}
+
+#[test]
+fn overflowing_results_are_an_error() {
+    for (dose, p) in [
+        (1e10, vec![("v", 1e-300), ("k", 1.0)]),
+        (100.0, vec![("v", 10.0), ("cl", 1e-320)]),
+    ] {
+        let e = run(&input(ModelId::IvBolus, dose, &p, &[0.0, 1.0])).unwrap_err();
+        assert!(matches!(e, ModelError::Overflow { .. }), "{e:?}");
+        assert!(e.to_string().contains("rescale"), "{e}");
+    }
+    // A forward-difference step that overflows names the parameter (k + 0.5 makes CL = V·k inf).
+    let i = input(
+        ModelId::IvBolus,
+        1.0,
+        &[("v", f64::MAX), ("k", 1.0)],
+        &[1.0],
+    );
+    let e = jacobian(&i, Derivatives::ForwardDifference { increment: 0.5 }).unwrap_err();
+    assert!(
+        e.to_string()
+            .contains("forward-difference step of parameter `k`"),
+        "{e}"
+    );
+}
+
+#[test]
+fn peak_time_when_ka_is_much_smaller_than_k() {
+    // Tmax = ln(ka/k)/(ka − k): ln(1e10)/(1 − 1e-10) and ln(1e17)/1.
+    let tmax = |ka: f64| {
+        out(ModelId::Oral1, &[("v", 10.0), ("k", 1.0), ("ka", ka)], &[])
+            .get("tmax_pred")
+            .unwrap()
+    };
+    let t10 = 23.025850929940457 / (1.0 - 1e-10);
+    assert!(
+        Tolerance::MODEL_VALUES.accepts(tmax(1e-10), t10),
+        "{}",
+        tmax(1e-10)
+    );
+    let t17 = 17.0 * std::f64::consts::LN_10;
+    assert!(
+        Tolerance::MODEL_VALUES.accepts(tmax(1e-17), t17),
+        "{}",
+        tmax(1e-17)
+    );
+}
+
+#[test]
+fn non_finite_values_in_errors_and_options_round_trip() {
+    let e = ModelError::ParameterOutOfDomain {
+        name: "v".to_string(),
+        value: f64::NAN,
+        domain: "a finite number > 0".to_string(),
+    };
+    let text = serde_json::to_string(&e).unwrap();
+    assert!(text.contains(r#""value":"NaN""#), "{text}");
+    match serde_json::from_str::<ModelError>(&text).unwrap() {
+        ModelError::ParameterOutOfDomain { value, .. } => assert!(value.is_nan()),
+        other => panic!("{other:?}"),
+    }
+    let d = Derivatives::ForwardDifference {
+        increment: f64::INFINITY,
+    };
+    let back: Derivatives = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+    assert_eq!(back, d);
+    let e = ModelError::InvalidDose {
+        value: f64::NEG_INFINITY,
+    };
+    assert_eq!(
+        serde_json::from_str::<ModelError>(&serde_json::to_string(&e).unwrap()).unwrap(),
+        e
+    );
+}

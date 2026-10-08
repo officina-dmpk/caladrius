@@ -28,6 +28,9 @@ fn one_minus_g(z: f64) -> f64 {
 
 /// q(y) = 1 − e^−y·(1 + y) for y ≥ 0 = Σ_{n≥2} (−1)^n (n − 1) yⁿ/n!, without cancellation.
 fn q(y: f64) -> f64 {
+    if y.is_infinite() {
+        return 1.0;
+    }
     if y < 0.1 {
         let (mut sum, mut power) = (0.0, y * y / 2.0);
         for n in 2..=22 {
@@ -97,18 +100,29 @@ fn first_order(dose: f64, p: &Params, s: f64) -> (f64, f64) {
     let delta = (p.ka - p.k).abs();
     let (y, z) = (a * s, delta * s);
     let decay = (-y).exp();
+    // s·e^−as and as·e^−as first, and 0 once the exponential has underflowed: s or as may be huge
+    // (or infinite) when e^−as is 0, and their product must not become inf·0 (MOD-NUM-01).
+    let (s_decay, y_decay) = if decay == 0.0 {
+        (0.0, 0.0)
+    } else {
+        (s * decay, y * decay)
+    };
     (
-        dose / p.v * p.ka * s * decay * g(z),
-        dose / p.cl * (q(y) + y * decay * one_minus_g(z)),
+        dose / p.v * p.ka * s_decay * g(z),
+        dose / p.cl * (q(y) + y_decay * one_minus_g(z)),
     )
 }
 
 /// Time of the peak after the start of first-order absorption (MOD-AB1-04):
-/// ln(ka/k)/(ka − k) written as ln_1p(r)/(ka − k) with r = (ka − k)/k; 1/k when ka = k.
+/// ln(ka/k)/(ka − k), with ln(ka/k) as ln_1p((ka − k)/k) near ka = k (where ka/k loses digits)
+/// and as ln(ka/k) when ka ≪ k (where ln_1p of a number near −1 loses them); 1/k when ka = k.
 pub(crate) fn first_order_peak_time(p: &Params) -> f64 {
     let d = p.ka - p.k;
+    let ratio = p.ka / p.k;
     if d == 0.0 {
         1.0 / p.k
+    } else if ratio < 0.5 {
+        ratio.ln() / d
     } else {
         (d / p.k).ln_1p() / d
     }
