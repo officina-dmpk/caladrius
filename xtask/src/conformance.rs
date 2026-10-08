@@ -9,6 +9,11 @@
 //! rows, gains unvalidated rows, or has disappeared; when a floor line is malformed; or when a
 //! non-empty previous file holds no floor at all. So floors only go up (golden rule 2). The file
 //! is written to a temporary file then renamed.
+//!
+//! A value covered by a documented difference (`documented_differences` in the case's options file,
+//! `specs/differences.md`) is neither validated nor a failure: it is counted in its own column and
+//! left out of the validated and expected totals. A difference cannot hide a regression: moving a
+//! row from validated to documented lowers the validated floor and fails the run.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -28,16 +33,19 @@ use crate::workspace;
 /// Output file, relative to the workspace root.
 const OUTPUT: &str = "docs/conformance.md";
 /// Marker of a floor line in the output file:
-/// `<!-- floor <case> <parameter> <validated> <expected> -->`.
+/// `<!-- floor <case> <parameter> <validated> <expected> <documented> -->` (the documented count is
+/// optional when reading, for files written before documented differences existed).
 const FLOOR_MARK: &str = "<!-- floor ";
 /// Closing of a floor line.
 const FLOOR_END: &str = "-->";
 
-/// Validated and expected counts of one parameter.
+/// Validated, expected and documented counts of one parameter. `expected` leaves out the rows
+/// covered by a documented difference, which are counted in `documented` instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Count {
     validated: usize,
     expected: usize,
+    documented: usize,
 }
 
 /// The outcome of one oracle case.
@@ -59,6 +67,7 @@ impl CaseReport {
             .fold(Count::default(), |acc, (_, c)| Count {
                 validated: acc.validated + c.validated,
                 expected: acc.expected + c.expected,
+                documented: acc.documented + c.documented,
             })
     }
 }
@@ -213,8 +222,17 @@ fn evaluate(case: &OracleCase) -> Result<CaseReport> {
     }
     let mut counts: BTreeMap<&str, Count> = BTreeMap::new();
     for (subject, name, expected) in case.expected.iter() {
-        let ok = row_validated(expected, results.get(subject), name);
         let count = counts.entry(name).or_default();
+        if case
+            .options
+            .documented_differences
+            .iter()
+            .any(|d| d.covers(subject, name))
+        {
+            count.documented += 1;
+            continue;
+        }
+        let ok = row_validated(expected, results.get(subject), name);
         count.expected += 1;
         count.validated += usize::from(ok);
     }
@@ -268,7 +286,7 @@ fn parse_floors(text: &str) -> Result<Floors> {
         let bad = |why: &str| {
             XtaskError::new(format!(
                 "{OUTPUT} line {}: malformed floor line ({why}): {line:?}; expected \
-`{FLOOR_MARK}<case> <parameter> <validated> <expected> {FLOOR_END}`. Fix or restore the file \
+`{FLOOR_MARK}<case> <parameter> <validated> <expected> <documented> {FLOOR_END}`. Fix or restore the file \
 from version control; floors are not dropped silently",
                 index + 1
             ))
@@ -283,10 +301,14 @@ from version control; floors are not dropped silently",
                 .map_err(|_| bad("count is not a whole number"))
         };
         match words.as_slice() {
-            [case, parameter, validated, expected] => {
+            [case, parameter, validated, expected] | [case, parameter, validated, expected, _] => {
                 let count = Count {
                     validated: number(validated)?,
                     expected: number(expected)?,
+                    documented: match words.get(4) {
+                        Some(word) => number(word)?,
+                        None => 0,
+                    },
                 };
                 if count.validated > count.expected {
                     return Err(bad("validated is larger than expected"));
@@ -338,10 +360,12 @@ fn check_floors(floors: &Floors, reports: &[CaseReport]) -> Result<()> {
                 count.validated, floor.validated
             ));
         }
-        if count.expected < floor.expected {
+        // Rows documented as differences are still rows of the oracle.
+        if count.expected + count.documented < floor.expected + floor.documented {
             drops.push(format!(
                 "{case}: {parameter} has {} expected rows, floor is {}",
-                count.expected, floor.expected
+                count.expected + count.documented,
+                floor.expected + floor.documented
             ));
         }
         let unvalidated = count.expected.saturating_sub(count.validated);
@@ -385,24 +409,32 @@ fn render(reports: &[CaseReport]) -> String {
         Count {
             validated: acc.validated + t.validated,
             expected: acc.expected + t.expected,
+            documented: acc.documented + t.documented,
         }
     });
     out.push_str("# Conformance\n\n");
     out.push_str(
         "Generated by `cargo xtask conformance`; never edit by hand. Each value of `oracle/expected/` is \
 compared with `caladrius-nca`, within a relative error of 1e-6 (`Tolerance::NCA_VS_PKNCA`); a value \
-expected as not available must be not available. The floors (last lines: validated and expected rows per parameter per case) can only go up.\n\n",
+expected as not available must be not available. A value covered by a documented difference (`specs/differences.md`) is neither validated nor a failure: it has its own column and is left out of the totals. The floors (last lines: validated, expected and documented rows per parameter per case) can only go up.\n\n",
     );
     out.push_str(&format!(
-        "**Overall: {} of {} values validated ({:.1} %).**\n\n",
+        "**Overall: {} of {} values validated ({:.1} %).**",
         all.validated,
         all.expected,
         percent(all)
     ));
+    if all.documented > 0 {
+        out.push_str(&format!(
+            " {} further values are documented differences, neither validated nor failures.",
+            all.documented
+        ));
+    }
+    out.push_str("\n\n");
     out.push_str(
-        "| case | route | AUC method | parameters fully validated | values validated | % |\n",
+        "| case | route | AUC method | parameters fully validated | values validated | % | documented differences |\n",
     );
-    out.push_str("|---|---|---|---|---|---|\n");
+    out.push_str("|---|---|---|---|---|---|---|\n");
     for r in reports {
         let t = r.total();
         let full = r
@@ -411,7 +443,7 @@ expected as not available must be not available. The floors (last lines: validat
             .filter(|(_, c)| c.validated == c.expected)
             .count();
         out.push_str(&format!(
-            "| {} | {} | {} | {} / {} | {} / {} | {:.1} |\n",
+            "| {} | {} | {} | {} / {} | {} / {} | {:.1} | {} |\n",
             r.name,
             r.route,
             r.auc_method,
@@ -419,7 +451,8 @@ expected as not available must be not available. The floors (last lines: validat
             r.parameters.len(),
             t.validated,
             t.expected,
-            percent(t)
+            percent(t),
+            t.documented
         ));
     }
     for r in reports {
@@ -430,7 +463,9 @@ expected as not available must be not available. The floors (last lines: validat
         if !r.errors.is_empty() {
             out.push('\n');
         }
-        out.push_str("| parameter | validated | status |\n|---|---|---|\n");
+        out.push_str(
+            "| parameter | validated | documented differences | status |\n|---|---|---|---|\n",
+        );
         for (name, c) in &r.parameters {
             let status = if c.validated == c.expected {
                 "ok"
@@ -438,8 +473,8 @@ expected as not available must be not available. The floors (last lines: validat
                 "FAILS"
             };
             out.push_str(&format!(
-                "| `{name}` | {} / {} | {status} |\n",
-                c.validated, c.expected
+                "| `{name}` | {} / {} | {} | {status} |\n",
+                c.validated, c.expected, c.documented
             ));
         }
     }
@@ -447,8 +482,8 @@ expected as not available must be not available. The floors (last lines: validat
     for r in reports {
         for (name, c) in &r.parameters {
             out.push_str(&format!(
-                "{FLOOR_MARK}{} {name} {} {} {FLOOR_END}\n",
-                r.name, c.validated, c.expected
+                "{FLOOR_MARK}{} {name} {} {} {} {FLOOR_END}\n",
+                r.name, c.validated, c.expected, c.documented
             ));
         }
     }
@@ -466,8 +501,13 @@ pub fn run() -> Result<()> {
     update_file(&root.join(OUTPUT), &reports)?;
     for r in &reports {
         let t = r.total();
+        let documented = if t.documented > 0 {
+            format!(", {} documented differences", t.documented)
+        } else {
+            String::new()
+        };
         console::out(&format!(
-            "{:<20} {:>4} / {:<4} values validated ({:.1} %)",
+            "{:<20} {:>4} / {:<4} values validated ({:.1} %){documented}",
             r.name,
             t.validated,
             t.expected,
@@ -521,6 +561,7 @@ mod tests {
             Count {
                 validated,
                 expected,
+                documented: 0,
             },
         )
     }
@@ -563,21 +604,88 @@ mod tests {
             get("a", "cmax"),
             Some(&Count {
                 validated: 3,
-                expected: 4
+                expected: 4,
+                documented: 0
             })
         );
         assert_eq!(
             get("a", "tmax"),
             Some(&Count {
                 validated: 2,
-                expected: 2
+                expected: 2,
+                documented: 0
             })
         );
         assert!(get("b", "cmax").is_some());
         assert!(floors.legacy_totals.is_empty());
-        assert!(text.contains("<!-- floor a cmax 3 4 -->"));
+        assert!(text.contains("<!-- floor a cmax 3 4 0 -->"));
         assert!(text.contains("**Overall: 7 of 8 values validated (87.5 %).**"));
-        assert!(text.contains("| `cmax` | 3 / 4 | FAILS |"));
+        assert!(text.contains("| `cmax` | 3 / 4 | 0 | FAILS |"));
+    }
+
+    fn with_documented(
+        name: &str,
+        validated: usize,
+        expected: usize,
+        documented: usize,
+    ) -> CaseReport {
+        report_of(
+            name,
+            vec![(
+                "cmax".to_owned(),
+                Count {
+                    validated,
+                    expected,
+                    documented,
+                },
+            )],
+        )
+    }
+
+    #[test]
+    fn documented_differences_have_their_own_column_and_are_not_counted_elsewhere() {
+        let text = render(&[with_documented("a", 3, 3, 2), report("b", 2, 2)]);
+        // Neither validated nor expected: 5 of 5 values validated, 2 further documented.
+        assert!(
+            text.contains("**Overall: 5 of 5 values validated (100.0 %).** 2 further values"),
+            "{text}"
+        );
+        assert!(text.contains("| documented differences |"), "{text}");
+        assert!(text.contains("| 1 / 1 | 3 / 3 | 100.0 | 2 |"), "{text}");
+        assert!(text.contains("| `cmax` | 3 / 3 | 2 | ok |"), "{text}");
+        assert!(text.contains("<!-- floor a cmax 3 3 2 -->"), "{text}");
+        let floors = parse_floors(&text).unwrap();
+        let floor = floors
+            .parameters
+            .get(&("a".to_owned(), "cmax".to_owned()))
+            .unwrap();
+        assert_eq!(
+            (floor.validated, floor.expected, floor.documented),
+            (3, 3, 2)
+        );
+    }
+
+    #[test]
+    fn a_documented_difference_cannot_hide_a_regression_or_a_lost_row() {
+        // Before: 4 of 5 validated, one failure. Documenting the failure is allowed.
+        let floors = parse_floors(&render(&[report("a", 4, 5)])).unwrap();
+        assert!(check_floors(&floors, &[with_documented("a", 4, 4, 1)]).is_ok());
+        // Documenting a validated row lowers the validated count: refused.
+        let err = check_floors(&floors, &[with_documented("a", 3, 3, 2)]).unwrap_err();
+        assert!(
+            err.to_string().contains("validates 3 values, floor is 4"),
+            "{err}"
+        );
+        // Dropping rows from the oracle is still refused, documented or not.
+        let err = check_floors(&floors, &[with_documented("a", 4, 4, 0)]).unwrap_err();
+        assert!(
+            err.to_string().contains("4 expected rows, floor is 5"),
+            "{err}"
+        );
+        // A floor written before the column existed (four fields) still reads.
+        let old = "<!-- floor a cmax 4 5 -->\n";
+        let floors = parse_floors(old).unwrap();
+        assert!(check_floors(&floors, &[with_documented("a", 4, 4, 1)]).is_ok());
     }
 
     #[test]
@@ -631,7 +739,8 @@ mod tests {
             "<!-- floor a cmax x 4 -->",
             "<!-- floor a cmax 5 4 -->",
             "<!-- floor a cmax 3 4",
-            "<!-- floor a cmax 3 4 5 -->",
+            "<!-- floor a cmax 3 4 5 6 -->",
+            "<!-- floor a cmax 3 4 x -->",
             "<!-- floor -->",
         ] {
             let text = format!("{good}{bad}\n");

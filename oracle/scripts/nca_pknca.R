@@ -271,7 +271,16 @@ edge_cases <- list(
        route = "extravascular", auc_method = "linear", params = param_edge_negative,
        dose_note = edge_note, options = list(), direct = TRUE,
        engine = list(start = "none", negative = "allow"),
-       case_note = "negative concentrations kept (PKNCA only warns); linear rule, because lin up/log down gives NaN areas on a negative value"),
+       case_note = "negative concentrations kept (PKNCA only warns); linear rule, because lin up/log down gives NaN areas on a negative value",
+       # D-01 (specs/differences.md): PKNCA takes the trailing negative value of subject 2 as Tlast
+       # and Clast, Caladrius never does (NCA-DAT-04). The values below follow from that choice.
+       documented_differences = list(list(
+         id = "D-01", subjects = I("2"),
+         parameters = I(c("tlast", "clast.obs", "clast.pred", "auclast", "aumclast",
+                          "aucinf.obs", "aucinf.pred", "aumcinf.obs", "aumcinf.pred",
+                          "aucpext.obs", "aucpext.pred", "aumcpext.obs", "aumcpext.pred",
+                          "cl.obs", "mrt.obs", "vz.obs")),
+         note = "PKNCA takes the trailing negative concentration as Tlast and Clast; Caladrius never does"))),
   list(name = "edge_oral", dataset = "edge_oral", profile = edge_oral, route = "extravascular",
        auc_method = "lin up/log down", params = param_edge_oral,
        dose_note = "dose per subject, 20 to 250 mg (test constants)", options = list(),
@@ -404,6 +413,7 @@ for (cs in cases) {
     meta$case_note <- cs$case_note
     if (duration > 0) meta$infusion_duration <- duration
     meta$engine <- cs$engine
+    if (!is.null(cs$documented_differences)) meta$documented_differences <- cs$documented_differences
     if (any(derived_aumcpext %in% cs$params)) {
       meta$derived_parameters <- list(
         "aumcpext.obs" = "100 * (1 - aumclast / aumcinf.obs), computed by the script: PKNCA has no such parameter",

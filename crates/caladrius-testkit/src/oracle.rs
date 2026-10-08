@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::compare::Table;
+use crate::compare::{DocumentedDifference, Table};
 
 /// Error while locating, reading or interpreting an oracle file. Always carries the file.
 #[derive(Debug, Clone, PartialEq)]
@@ -218,6 +218,9 @@ pub struct CaseOptions {
     /// Engine settings with no PKNCA counterpart (edge cases, task T-012).
     #[serde(default)]
     pub engine: EngineHints,
+    /// Expected values that Caladrius knowingly does not reproduce (`specs/differences.md`).
+    #[serde(default)]
+    pub documented_differences: Vec<DocumentedDifference>,
     pub units: Units,
     pub versions: Versions,
     pub pknca_options: PknaOptions,
@@ -406,6 +409,51 @@ pub fn list_cases() -> Result<Vec<String>, OracleError> {
     Ok(names)
 }
 
+/// Checks the documented differences of a case: well-formed identifiers, and every subject and
+/// parameter they name exists, so a typo cannot silently exempt nothing (or the wrong value).
+fn validate_differences(
+    path: &str,
+    differences: &[DocumentedDifference],
+    subjects: &[String],
+    parameters: &[String],
+) -> Result<(), OracleError> {
+    let bad = |message: String| OracleError::Inconsistent {
+        path: path.to_string(),
+        message,
+    };
+    for d in differences {
+        if !d.has_valid_id() {
+            return Err(bad(format!(
+                "documented difference id {:?} is not of the form D-<number>",
+                d.id
+            )));
+        }
+        if d.parameters.is_empty() {
+            return Err(bad(format!(
+                "documented difference {} names no parameter",
+                d.id
+            )));
+        }
+        for parameter in &d.parameters {
+            if !parameters.contains(parameter) {
+                return Err(bad(format!(
+                    "documented difference {} names parameter {parameter}, which the case does not have",
+                    d.id
+                )));
+            }
+        }
+        for subject in d.subjects.iter().flatten() {
+            if !subjects.contains(subject) {
+                return Err(bad(format!(
+                    "documented difference {} names subject {subject}, which the dataset does not have",
+                    d.id
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Loads one case: options, the dataset it names, and the expected values. Checks that the three
 /// agree (subject counts, number of values, parameter list).
 pub fn load_case(name: &str) -> Result<OracleCase, OracleError> {
@@ -462,6 +510,17 @@ pub fn load_case(name: &str) -> Result<OracleCase, OracleError> {
             }
         }
     }
+    let subjects: Vec<String> = dataset
+        .profiles
+        .iter()
+        .map(|p| p.subject.to_string())
+        .collect();
+    validate_differences(
+        &here,
+        &options.documented_differences,
+        &subjects,
+        &options.parameters,
+    )?;
     let na = expected.iter().filter(|(_, _, v)| v.is_none()).count();
     if na != options.n_na {
         return Err(inconsistent(format!(
@@ -578,6 +637,47 @@ mod tests {
                 assert!(p.dose > 0.0);
             }
         }
+    }
+
+    fn difference(
+        id: &str,
+        subjects: Option<&[&str]>,
+        parameters: &[&str],
+    ) -> DocumentedDifference {
+        DocumentedDifference {
+            id: id.to_string(),
+            subjects: subjects.map(|s| s.iter().map(|x| x.to_string()).collect()),
+            parameters: parameters.iter().map(|x| x.to_string()).collect(),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn documented_differences_are_validated_against_the_case() {
+        let subjects = vec!["1".to_string(), "2".to_string()];
+        let parameters = vec!["tlast".to_string(), "auclast".to_string()];
+        let check =
+            |d: DocumentedDifference| validate_differences("x", &[d], &subjects, &parameters);
+        assert!(check(difference("D-01", Some(&["2"]), &["tlast"])).is_ok());
+        assert!(check(difference("D-01", None, &["tlast", "auclast"])).is_ok());
+        for bad in [
+            difference("D1", None, &["tlast"]),
+            difference("D-01", None, &[]),
+            difference("D-01", None, &["tlsat"]),
+            difference("D-01", Some(&["3"]), &["tlast"]),
+        ] {
+            let message = check(bad).unwrap_err().to_string();
+            assert!(message.contains("x"), "{message}");
+        }
+    }
+
+    #[test]
+    fn options_files_parse_the_documented_differences_and_reject_unknown_fields() {
+        let json = r#"{"id":"D-01","subjects":["2"],"parameters":["tlast"],"note":"n"}"#;
+        let d: DocumentedDifference = serde_json::from_str(json).unwrap();
+        assert!(d.covers("2", "tlast") && !d.covers("1", "tlast"));
+        let typo = r#"{"id":"D-01","subject":["2"],"parameters":["tlast"]}"#;
+        assert!(serde_json::from_str::<DocumentedDifference>(typo).is_err());
     }
 
     #[test]

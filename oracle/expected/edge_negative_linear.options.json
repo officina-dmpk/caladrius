@@ -58,6 +58,14 @@
     "start": "none",
     "negative": "allow"
   },
+  "documented_differences": [
+    {
+      "id": "D-01",
+      "subjects": ["2"],
+      "parameters": ["tlast", "clast.obs", "clast.pred", "auclast", "aumclast", "aucinf.obs", "aucinf.pred", "aumcinf.obs", "aumcinf.pred", "aucpext.obs", "aucpext.pred", "aumcpext.obs", "aumcpext.pred", "cl.obs", "mrt.obs", "vz.obs"],
+      "note": "PKNCA takes the trailing negative concentration as Tlast and Clast; Caladrius never does"
+    }
+  ],
   "derived_parameters": {
     "aumcpext.obs": "100 * (1 - aumclast / aumcinf.obs), computed by the script: PKNCA has no such parameter",
     "aumcpext.pred": "100 * (1 - aumclast / aumcinf.pred), computed by the script: PKNCA has no such parameter"

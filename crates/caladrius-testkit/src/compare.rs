@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use serde::Deserialize;
+
 use crate::tolerance::Tolerance;
 
 /// Values indexed by `(group, name)`, for example `("3", "auclast")` for subject 3. A value of
@@ -79,14 +81,65 @@ pub struct Mismatch {
     pub kind: MismatchKind,
 }
 
+/// A documented difference (`specs/differences.md`): expected values that Caladrius knowingly does
+/// not reproduce, listed in the `documented_differences` array of a case's options file. They are
+/// neither validated nor failures: the comparison skips them and reports them separately.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentedDifference {
+    /// Identifier in `specs/differences.md`, `D-` and a number (for example `D-01`).
+    pub id: String,
+    /// Subjects concerned; absent means every subject of the case.
+    #[serde(default)]
+    pub subjects: Option<Vec<String>>,
+    /// Parameters concerned (PKNCA spelling).
+    pub parameters: Vec<String>,
+    /// One line saying what differs, for the reader of the options file.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+impl DocumentedDifference {
+    /// True when the expected value of `parameter` for `subject` is covered by this difference.
+    pub fn covers(&self, subject: &str, parameter: &str) -> bool {
+        self.parameters.iter().any(|p| p == parameter)
+            && self
+                .subjects
+                .as_ref()
+                .is_none_or(|list| list.iter().any(|s| s == subject))
+    }
+
+    /// True when the identifier has the form `D-` followed by digits.
+    pub fn has_valid_id(&self) -> bool {
+        self.id
+            .strip_prefix("D-")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    }
+}
+
+/// An expected value left out of the comparison because a documented difference covers it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Skipped {
+    pub group: String,
+    pub name: String,
+    /// The identifier of the documented difference.
+    pub id: String,
+    pub expected: Option<f64>,
+    /// What the actual table holds, for information (`None`: no value or no entry).
+    pub actual: Option<f64>,
+}
+
 /// Result of comparing an actual table with an expected one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Report {
     pub tolerance: Tolerance,
-    /// Number of expected entries examined.
+    /// Number of expected entries examined (documented differences excluded).
     pub compared: usize,
     /// Every entry outside tolerance, in key order.
     pub mismatches: Vec<Mismatch>,
+    /// Entries skipped because a documented difference covers them, in key order. They are neither
+    /// compared nor counted in `compared`, and never make the report fail.
+    pub documented: Vec<Skipped>,
 }
 
 impl Report {
@@ -114,6 +167,24 @@ impl fmt::Display for Report {
             self.compared,
             self.tolerance
         )?;
+        if !self.documented.is_empty() {
+            writeln!(
+                f,
+                "{} documented differences (not compared):",
+                self.documented.len()
+            )?;
+            for d in &self.documented {
+                writeln!(
+                    f,
+                    "  [{}] {}: {}, expected {}, got {}",
+                    d.group,
+                    d.name,
+                    d.id,
+                    show(d.expected),
+                    show(d.actual)
+                )?;
+            }
+        }
         for m in &self.mismatches {
             let expected = show(m.expected);
             let actual = show(m.actual);
@@ -164,9 +235,32 @@ fn show(v: Option<f64>) -> String {
 /// Every entry of `expected` is examined; all those outside tolerance are returned. Entries that
 /// exist only in `actual` are not an error (an engine may compute more than the oracle covers).
 pub fn compare_tables(expected: &Table, actual: &Table, tolerance: Tolerance) -> Report {
+    compare_tables_documented(expected, actual, tolerance, &[])
+}
+
+/// Like [`compare_tables`], but the entries covered by one of `differences` are not compared: they
+/// are listed in [`Report::documented`] (with the first matching identifier) and do not count in
+/// [`Report::compared`] nor make the report fail.
+pub fn compare_tables_documented(
+    expected: &Table,
+    actual: &Table,
+    tolerance: Tolerance,
+    differences: &[DocumentedDifference],
+) -> Report {
     let mut mismatches = Vec::new();
+    let mut documented = Vec::new();
     let mut compared = 0usize;
     for (group, name, exp) in expected.iter() {
+        if let Some(d) = differences.iter().find(|d| d.covers(group, name)) {
+            documented.push(Skipped {
+                group: group.to_string(),
+                name: name.to_string(),
+                id: d.id.clone(),
+                expected: exp,
+                actual: actual.get(group, name).flatten(),
+            });
+            continue;
+        }
         compared += 1;
         let act_entry = actual.get(group, name);
         let found = |kind: MismatchKind, actual: Option<f64>, error: Option<f64>| Mismatch {
@@ -196,6 +290,7 @@ pub fn compare_tables(expected: &Table, actual: &Table, tolerance: Tolerance) ->
         tolerance,
         compared,
         mismatches,
+        documented,
     }
 }
 
@@ -209,6 +304,77 @@ mod tests {
             t.insert(*g, *n, *v);
         }
         t
+    }
+
+    fn difference(
+        id: &str,
+        subjects: Option<&[&str]>,
+        parameters: &[&str],
+    ) -> DocumentedDifference {
+        DocumentedDifference {
+            id: id.to_string(),
+            subjects: subjects.map(|s| s.iter().map(|x| x.to_string()).collect()),
+            parameters: parameters.iter().map(|x| x.to_string()).collect(),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn documented_differences_are_skipped_and_reported_separately() {
+        let e = table(&[
+            ("1", "a", Some(1.0)),
+            ("2", "a", Some(5.0)),
+            ("2", "b", Some(3.0)),
+        ]);
+        let a = table(&[
+            ("1", "a", Some(1.0)),
+            ("2", "a", Some(9.0)),
+            ("2", "b", Some(3.5)),
+        ]);
+        let d = [difference("D-01", Some(&["2"]), &["a"])];
+        let r = compare_tables_documented(&e, &a, Tolerance::NCA_VS_PKNCA, &d);
+        // Subject 2's `a` is documented; subject 2's `b` is still a failure; subject 1 is unaffected.
+        assert_eq!(r.compared, 2);
+        assert_eq!(r.mismatches.len(), 1);
+        assert_eq!(r.mismatches[0].name, "b");
+        assert_eq!(r.documented.len(), 1);
+        let skipped = &r.documented[0];
+        assert_eq!((skipped.group.as_str(), skipped.name.as_str()), ("2", "a"));
+        assert_eq!(
+            (skipped.id.as_str(), skipped.expected, skipped.actual),
+            ("D-01", Some(5.0), Some(9.0))
+        );
+        let text = r.to_string();
+        assert!(
+            text.contains("1 documented differences (not compared)"),
+            "{text}"
+        );
+        assert!(text.contains("D-01"), "{text}");
+    }
+
+    #[test]
+    fn a_documented_difference_alone_does_not_fail_the_report() {
+        let e = table(&[("1", "a", Some(1.0))]);
+        let a = table(&[("1", "a", Some(2.0))]);
+        let d = [difference("D-07", None, &["a"])];
+        let r = compare_tables_documented(&e, &a, Tolerance::NCA_VS_PKNCA, &d);
+        assert!(r.is_ok());
+        assert_eq!(r.compared, 0);
+        assert_eq!(r.documented.len(), 1);
+        // Without the marker the same tables fail.
+        assert!(!compare_tables(&e, &a, Tolerance::NCA_VS_PKNCA).is_ok());
+    }
+
+    #[test]
+    fn a_difference_without_subjects_covers_every_subject_and_ids_are_checked() {
+        let d = difference("D-01", None, &["a"]);
+        assert!(d.covers("1", "a") && d.covers("9", "a") && !d.covers("1", "b"));
+        let one = difference("D-01", Some(&["2"]), &["a"]);
+        assert!(one.covers("2", "a") && !one.covers("1", "a"));
+        assert!(d.has_valid_id());
+        for bad in ["", "D-", "d-01", "D-1a", "01"] {
+            assert!(!difference(bad, None, &["a"]).has_valid_id(), "{bad}");
+        }
     }
 
     #[test]

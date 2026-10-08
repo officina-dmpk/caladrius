@@ -20,6 +20,9 @@ pub mod naive;
 pub mod oracle;
 pub mod tolerance;
 
-pub use compare::{Mismatch, MismatchKind, Report, Table, compare_tables};
+pub use compare::{
+    DocumentedDifference, Mismatch, MismatchKind, Report, Skipped, Table, compare_tables,
+    compare_tables_documented,
+};
 pub use oracle::{OracleCase, OracleError, Profile, list_cases, load_case};
 pub use tolerance::Tolerance;

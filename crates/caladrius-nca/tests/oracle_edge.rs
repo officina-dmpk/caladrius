@@ -19,7 +19,7 @@ use caladrius_nca::{
     NegativePolicy, Route, StartPolicy, TmaxTie, run,
 };
 use caladrius_testkit::oracle::{BlqRule, NaRule};
-use caladrius_testkit::{OracleCase, Table, Tolerance, compare_tables, load_case};
+use caladrius_testkit::{OracleCase, Table, Tolerance, compare_tables_documented, load_case};
 
 // Parameter groups. Names are PKNCA's.
 const OBSERVED: &[&str] = &["cmax", "tmax", "tfirst", "tlast", "clast.obs"];
@@ -214,7 +214,20 @@ fn check(case_name: &str, group: &[&str]) {
         "{case_name}: no expected value in this parameter group"
     );
     let (actual, errors) = run_engine(&case, group);
-    let report = compare_tables(&expected, &actual, Tolerance::NCA_VS_PKNCA);
+    // Values listed under `documented_differences` in the options file (specs/differences.md) are
+    // not compared; they are printed so that a run with `--nocapture` shows them.
+    let report = compare_tables_documented(
+        &expected,
+        &actual,
+        Tolerance::NCA_VS_PKNCA,
+        &case.options.documented_differences,
+    );
+    for skipped in &report.documented {
+        eprintln!(
+            "{case_name}: documented difference {} for subject {} {}",
+            skipped.id, skipped.group, skipped.name
+        );
+    }
     let mut problems = errors;
     if !report.is_ok() {
         problems.push(report.to_string());
