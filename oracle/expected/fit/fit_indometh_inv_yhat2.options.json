@@ -54,7 +54,27 @@
     "estimates": "minpack.lm::nlsLM (Levenberg-Marquardt, ftol = ptol = 1e-15); stats::nls (Gauss-Newton, relative-offset tol 1e-7) is required to agree within 1e-5 relative where it converges from the same start",
     "statistics": "oracle/scripts/fit_wls.R, formulas of specs/fit.md FIT-OUT-01 to FIT-OUT-07 on the analytic Jacobian; standard errors and S checked against summary.nls",
     "optimizer_agreement": {
+      "1": {
+        "nls_converged": false,
+        "max_rel_difference": null
+      },
       "2": {
+        "nls_converged": false,
+        "max_rel_difference": null
+      },
+      "3": {
+        "nls_converged": false,
+        "max_rel_difference": null
+      },
+      "4": {
+        "nls_converged": true,
+        "max_rel_difference": 0
+      },
+      "5": {
+        "nls_converged": false,
+        "max_rel_difference": null
+      },
+      "6": {
         "nls_converged": false,
         "max_rel_difference": null
       }
@@ -75,11 +95,21 @@
     "jsonlite": "2.0.0"
   },
   "subjects": [
-    "2"
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
   ],
-  "no_fixed_point": ["1", "3", "4", "5", "6"],
+  "no_fixed_point": [],
   "solved_by": {
-    "2": "iteration"
+    "1": "root_finding",
+    "2": "iteration",
+    "3": "root_finding",
+    "4": "root_finding",
+    "5": "root_finding",
+    "6": "root_finding"
   },
-  "n_values": 47
+  "n_values": 282
 }

@@ -88,7 +88,7 @@ use caladrius_fit::{
     Criterion, Derivatives, FitInput, FitOptions, FitResult, FitStatus, Weighting, run,
 };
 use caladrius_models::ModelId;
-use caladrius_testkit::{FitCase, Tolerance, load_fit_case};
+use caladrius_testkit::{FitCase, Tolerance, load_fit_case, load_gauss_newton_f1};
 
 fn model_of(case: &FitCase) -> ModelId {
     ModelId::from_id(&case.model)
@@ -369,7 +369,8 @@ fn default_options_are_the_documented_ones() {
 }
 
 /// Worked example F1: pure Gauss-Newton iterations (full steps, no halving) with analytic
-/// derivatives from (12, 0.15), stopped by the default criterion 1e-4 after iteration 4.
+/// derivatives from (12, 0.15), stopped by the default criterion 1e-4 after iteration 4. The
+/// iterates are compared with the double-precision reference of the oracle (task T-018).
 #[test]
 fn gauss_newton_trace_of_worked_example_f1() {
     let mut input = spec_input(Weighting::Uniform);
@@ -378,22 +379,23 @@ fn gauss_newton_trace_of_worked_example_f1() {
     assert_eq!(result.status(), FitStatus::Converged);
     let trace = result.trace();
     assert_eq!(trace.len(), 5, "iterations 0 to 4: {trace:?}");
-    let expected = [
-        (3.7383091, [12.0, 0.15]),
-        (0.4285909, [9.6163537, 0.2032666]),
-        (0.1957952, [9.9096786, 0.2040143]),
-        (0.1955901388, [9.9186464, 0.2040567]),
-        (0.1955901382, [9.9186411, 0.2040577]),
-    ];
-    for (i, (row, (wrss, estimates))) in trace.iter().zip(expected).enumerate() {
+    // The reference iterates are those of `oracle/expected/fit/gauss_newton_f1.csv`, computed in
+    // double precision by the oracle script; the specification prints them to 7 decimals, and
+    // rounding to 7 decimals alone can move a value by 5e-8 relative, which a printed value cannot
+    // be held to. Two implementations of the same recurrence in double precision agree to
+    // rounding, far below 1e-9 relative; 1e-9 is what is demanded.
+    let reference = load_gauss_newton_f1().unwrap();
+    for (i, (row, expected)) in trace.iter().zip(&reference).enumerate() {
         assert_eq!(row.iteration, i);
+        assert_eq!(expected.iteration, i);
         assert!(
-            (row.wrss - wrss).abs() <= 1e-7 * wrss,
-            "iteration {i}: WRSS {} against {wrss}",
-            row.wrss
+            (row.wrss - expected.wrss).abs() <= 1e-9 * expected.wrss,
+            "iteration {i}: WRSS {} against {}",
+            row.wrss,
+            expected.wrss
         );
-        for (a, e) in row.estimates.iter().zip(estimates) {
-            assert!((a - e).abs() <= 2e-7 * e, "iteration {i}: {a} against {e}");
+        for (a, e) in row.estimates.iter().zip([expected.v, expected.k]) {
+            assert!((a - e).abs() <= 1e-9 * e, "iteration {i}: {a} against {e}");
         }
     }
 }

@@ -321,6 +321,58 @@ pub fn load_fit_case(name: &str) -> Result<FitCase, OracleError> {
     })
 }
 
+/// One iterate of the Gauss-Newton trace of worked example F1 (`specs/fit.md` section 11).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GaussNewtonStep {
+    pub iteration: usize,
+    pub wrss: f64,
+    pub v: f64,
+    pub k: f64,
+}
+
+/// The iterates 0 to 5 of worked example F1 to full double precision (uniform weights, analytic
+/// derivatives, full steps from V = 12, k = 0.15), from `oracle/expected/fit/gauss_newton_f1.csv`.
+pub fn load_gauss_newton_f1() -> Result<Vec<GaussNewtonStep>, OracleError> {
+    let path = oracle_dir()
+        .join("expected")
+        .join("fit")
+        .join("gauss_newton_f1.csv");
+    let shown = path.display().to_string();
+    let text = read(&path)?;
+    let bad = |line: usize, message: &str| OracleError::Csv {
+        path: shown.clone(),
+        line,
+        message: message.to_string(),
+    };
+    let mut lines = text.lines().enumerate();
+    match lines.next() {
+        Some((_, "iteration,wrss,v,k")) => {}
+        _ => return Err(bad(1, "expected header iteration,wrss,v,k")),
+    }
+    let mut steps = Vec::new();
+    for (i, line) in lines {
+        let f: Vec<&str> = line.split(',').collect();
+        let [it, wrss, v, k] = f.as_slice() else {
+            return Err(bad(i + 1, "expected 4 fields"));
+        };
+        let num = |x: &str| {
+            x.trim()
+                .parse::<f64>()
+                .map_err(|_| bad(i + 1, "not a number"))
+        };
+        steps.push(GaussNewtonStep {
+            iteration: it
+                .trim()
+                .parse()
+                .map_err(|_| bad(i + 1, "not an iteration number"))?,
+            wrss: num(wrss)?,
+            v: num(v)?,
+            k: num(k)?,
+        });
+    }
+    Ok(steps)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,6 +458,44 @@ mod tests {
                 "F3 {name}: {x} against {value}"
             );
         }
+    }
+
+    #[test]
+    fn the_gauss_newton_reference_agrees_with_the_printed_iterations_of_f1() {
+        // specs/fit.md F1 prints WRSS to 7 decimals and the parameters to 7 decimals: the exact
+        // iterates must round to them (half a unit of the last printed place).
+        let steps = load_gauss_newton_f1().unwrap();
+        assert_eq!(steps.len(), 6);
+        let printed = [
+            (3.7383091, 12.0, 0.15),
+            (0.4285909, 9.6163537, 0.2032666),
+            (0.1957952, 9.9096786, 0.2040143),
+            (0.1955901388, 9.9186464, 0.2040567),
+            (0.1955901382, 9.9186411, 0.2040577),
+        ];
+        for (step, (wrss, v, k)) in steps.iter().zip(printed) {
+            let half_unit = |x: f64| {
+                if x == 0.1955901388 || x == 0.1955901382 {
+                    0.5e-10
+                } else {
+                    0.5e-7
+                }
+            };
+            assert!(
+                (step.wrss - wrss).abs() <= half_unit(wrss) * 1.0001,
+                "{step:?} against {wrss}"
+            );
+            assert!(
+                (step.v - v).abs() <= 0.5e-7 * 1.0001,
+                "{step:?} against {v}"
+            );
+            assert!(
+                (step.k - k).abs() <= 0.5e-7 * 1.0001,
+                "{step:?} against {k}"
+            );
+        }
+        assert_eq!(steps[0].iteration, 0);
+        assert_eq!(steps[5].iteration, 5);
     }
 
     #[test]

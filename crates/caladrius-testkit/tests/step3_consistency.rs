@@ -394,13 +394,13 @@ fn check_subject(case: &FitCase, subject: &str) {
         .collect();
     for j in 0..p {
         let gradient: f64 = (0..n).map(|i| jac[i][j] * w[i] * r[i]).sum();
-        // Cauchy-Schwarz scale of the weighted inner product of the Jacobian column and the residual.
-        let scale: f64 = ((0..n).map(|i| w[i] * jac[i][j] * jac[i][j]).sum::<f64>()
-            * (0..n).map(|i| w[i] * r[i] * r[i]).sum::<f64>())
-        .sqrt();
+        // The sum is zero to the cancellation of its own terms. (Not relative to a scale that
+        // contains the weights: a degenerate point with predictions of 1e-90 and weights of 1e90
+        // passed that test in the first version of this check, task T-018.)
+        let terms: f64 = (0..n).map(|i| (jac[i][j] * w[i] * r[i]).abs()).sum();
         assert!(
-            gradient.abs() <= 1e-6 * scale.max(1e-300) + 1e-12,
-            "{name} {subject}: J'Wr for {} is {gradient:e} (scale {scale:e}): not a stationary point",
+            gradient.abs() <= 1e-6 * terms,
+            "{name} {subject}: J'Wr for {} is {gradient:e} against terms of size {terms:e}: not a stationary point",
             names[j]
         );
     }
@@ -590,35 +590,35 @@ fn every_reference_fit_is_a_stationary_point_with_the_documented_statistics() {
             fits += 1;
         }
     }
-    // 12 Theoph subjects x 5 + 6 Indometh x 4 + 1 Indometh with a fixed point for inv_yhat2 + 5 spec.
-    assert_eq!(fits, 12 * 5 + 6 * 4 + 1 + 5);
+    // 12 Theoph subjects x 5 + 6 Indometh x 5 + 5 spec.
+    assert_eq!(fits, 12 * 5 + 6 * 5 + 5);
 }
 
+/// Task T-018: every subject of every case has a fixed point (or a minimum). The first version of
+/// the oracle declared five Indometh `inv_yhat2` subjects without one and accepted degenerate
+/// points (V of 0.004, k of 28, WRSS of 1e89) for four `inv_yhat` subjects; the stationarity
+/// condition `J' W r = 0` now has to hold, to the cancellation of its own terms, at every point.
 #[test]
-fn the_cases_without_a_fixed_point_are_the_poor_fits_of_the_reweighted_schemes() {
-    let case = load_fit_case("fit_indometh_inv_yhat2").unwrap();
-    assert_eq!(case.no_fixed_point.len(), 5);
-    assert_eq!(case.subjects.len(), 1);
-    for other in [
-        "fit_indometh_uniform",
-        "fit_indometh_inv_y",
-        "fit_indometh_inv_y2",
-        "fit_indometh_inv_yhat",
-    ] {
+fn every_subject_has_a_genuine_fixed_point_and_the_estimates_are_plausible() {
+    for name in list_fit_cases().unwrap() {
+        let case = load_fit_case(&name).unwrap();
         assert!(
-            load_fit_case(other).unwrap().no_fixed_point.is_empty(),
-            "{other}"
+            case.no_fixed_point.is_empty(),
+            "{name}: {:?}",
+            case.no_fixed_point
         );
-    }
-    for name in list_fit_cases()
-        .unwrap()
-        .iter()
-        .filter(|n| n.starts_with("fit_theoph"))
-    {
-        assert!(
-            load_fit_case(name).unwrap().no_fixed_point.is_empty(),
-            "{name}"
-        );
+        let in_dataset = case.dataset.profiles.len();
+        assert_eq!(case.subjects.len(), in_dataset, "{name}");
+        for subject in &case.subjects {
+            let v = case.expected.get(subject, "estimate.v").flatten().unwrap();
+            let k = case.expected.get(subject, "estimate.k").flatten().unwrap();
+            let wrss = case.expected.get(subject, "wrss").flatten().unwrap();
+            assert!(
+                v > 1.0 && v < 1000.0 && k > 1e-3 && k < 10.0,
+                "{name} {subject}: V {v}, k {k}"
+            );
+            assert!(wrss < 1e3, "{name} {subject}: WRSS {wrss:e}");
+        }
     }
 }
 

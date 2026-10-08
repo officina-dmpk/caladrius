@@ -56,27 +56,27 @@
     "optimizer_agreement": {
       "1": {
         "nls_converged": true,
-        "max_rel_difference": 1e-09
+        "max_rel_difference": 0
       },
       "2": {
         "nls_converged": true,
-        "max_rel_difference": 0
+        "max_rel_difference": 2e-16
       },
       "3": {
         "nls_converged": true,
-        "max_rel_difference": 6e-09
+        "max_rel_difference": 3e-16
       },
       "4": {
         "nls_converged": true,
-        "max_rel_difference": 2e-16
+        "max_rel_difference": 0
       },
       "5": {
         "nls_converged": true,
-        "max_rel_difference": 1e-08
+        "max_rel_difference": 0
       },
       "6": {
         "nls_converged": true,
-        "max_rel_difference": 3e-08
+        "max_rel_difference": 0
       }
     }
   },

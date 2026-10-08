@@ -28,7 +28,7 @@ pub use compare::{
 };
 pub use oracle::{OracleCase, OracleError, Profile, list_cases, load_case};
 pub use step3::{
-    FitCase, FitCaseOptions, ModelCase, Observations, list_fit_cases, list_model_cases,
-    load_fit_case, load_model_case,
+    FitCase, FitCaseOptions, GaussNewtonStep, ModelCase, Observations, list_fit_cases,
+    list_model_cases, load_fit_case, load_gauss_newton_f1, load_model_case,
 };
 pub use tolerance::Tolerance;

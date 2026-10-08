@@ -201,9 +201,32 @@ solve_fit <- function(md, d, weighting, start, lm) {
     th <- run(w, start)
     return(list(theta = th, w = w, iterations = 1L, by = "direct"))
   }
-  # Predicted-value weights: fixed-point iteration (weights from the previous estimates), then, if
-  # that has not settled in 100 rounds (it contracts slowly when the model fits poorly), Newton-type
-  # root finding on the stationarity equations J' W r = 0 with W frozen (minpack.lm::nls.lm).
+  # Predicted-value weights (FIT-WGT-03). A fixed point is a theta with J(theta)' W(theta) r(theta) = 0,
+  # W from the predictions at theta. Three steps, in this order:
+  #   1. fixed-point iteration (refit with frozen weights, reweight) until it settles;
+  #   2. if it has not settled in 100 rounds (it can cycle, or contract slowly, even when a fixed
+  #      point exists), root finding on the stationarity equations from where it stopped;
+  #   3. if that does not give a fixed point, root finding from a fixed grid of starting points
+  #      around the initial estimates.
+  # A candidate is accepted only if it passes `is_fixed_point`: the stationarity sums
+  # sum_i J_ij w_i r_i are small compared with the sum of the absolute values of their terms (a
+  # measure of cancellation that does not depend on the scale of the weights). Dividing by a quantity
+  # that grows with the weights (sqrt(sum w y^2)) accepted degenerate "solutions" with predictions
+  # of 1e-90 and weights of 1e90 (task T-018).
+  stationarity_terms <- function(par) {
+    par <- setNames(as.numeric(par), md$pars)
+    yh <- md$fn(d$t, d$dose, par)
+    w <- weights_of(weighting, d$y, yh)
+    J <- md$grad(d$t, d$dose, par)
+    t(J * (w * (d$y - yh)))  # row j: the terms of sum_i J_ij w_i r_i
+  }
+  is_fixed_point <- function(par, tol = 1e-10) {
+    par <- as.numeric(par)
+    if (any(!is.finite(par)) || any(par <= 0)) return(FALSE)
+    terms <- stationarity_terms(par)
+    if (any(!is.finite(terms))) return(FALSE)
+    all(abs(rowSums(terms)) <= tol * rowSums(abs(terms)))
+  }
   th <- unlist(start)
   done <- FALSE
   for (it in 1:100) {
@@ -213,20 +236,52 @@ solve_fit <- function(md, d, weighting, start, lm) {
     th <- thn
     if (done) break
   }
-  if (!done) {
-    stationarity <- function(par) {
-      names(par) <- md$pars
-      w <- weights_of(weighting, d$y, md$fn(d$t, d$dose, par))
-      r <- d$y - md$fn(d$t, d$dose, par)
-      as.numeric(crossprod(md$grad(d$t, d$dose, par), w * r)) / sqrt(sum(w * d$y^2))
+  by <- "iteration"
+  # The iteration is accepted when it settled AND the stationarity sums cancel to 1e-6 of their
+  # terms (a settled iteration is accurate to about 1e-8; a degenerate point is nowhere near).
+  if (!done || !is_fixed_point(th, 1e-6)) {
+    by <- "root_finding"
+    # Constant scale of each equation (from the start point): the roots do not depend on it.
+    scale0 <- pmax(rowSums(abs(stationarity_terms(unlist(start)))), .Machine$double.xmin)
+    f <- function(par) rowSums(stationarity_terms(par)) / scale0
+    # The stationarity equations as the first version of this script scaled them (by a quantity
+    # that depends on the weights): still the first try, so that the fixed points it found
+    # genuinely keep their digits; every result is judged by `is_fixed_point` alone.
+    f_old <- function(par) {
+      terms <- stationarity_terms(par)
+      yh <- md$fn(d$t, d$dose, setNames(as.numeric(par), md$pars))
+      rowSums(terms) / sqrt(sum(weights_of(weighting, d$y, yh) * d$y^2))
     }
-    root <- nls.lm(par = th, fn = stationarity, control = nls.lm.control(maxiter = 1000, ftol = 1e-30, ptol = 1e-30, gtol = 1e-30))
+    solve_from <- function(par0, fn = f) {
+      o <- tryCatch(nls.lm(par = par0, fn = fn,
+                           control = nls.lm.control(maxiter = 1000, ftol = 1e-30, ptol = 1e-30, gtol = 1e-30)),
+                    error = function(e) NULL)
+      if (is.null(o) || !is_fixed_point(o$par)) NULL else o
+    }
+    root <- solve_from(th, f_old)
+    if (is.null(root)) root <- solve_from(th)
+    if (is.null(root)) {
+      st0 <- unlist(start)
+      grid <- expand.grid(rep(list(c(0.25, 0.5, 1, 2, 4)), length(st0)))
+      roots <- list()
+      for (i in seq_len(nrow(grid))) {
+        r <- solve_from(st0 * as.numeric(grid[i, ]))
+        if (!is.null(r)) roots[[length(roots) + 1L]] <- r
+      }
+      if (!length(roots)) return(NULL)  # no fixed point found from any start
+      # Distinct roots, if there were several: keep the one with the smallest weighted sum of squares.
+      wrss_of <- function(r) {
+        yh <- md$fn(d$t, d$dose, r$par)
+        sum(weights_of(weighting, d$y, yh) * (d$y - yh)^2)
+      }
+      root <- roots[[which.min(vapply(roots, wrss_of, numeric(1)))]]
+      stopifnot(all(vapply(roots, function(r) max(abs(r$par / root$par - 1)) < 1e-6, logical(1))))
+    }
     th <- setNames(root$par, md$pars)
-    if (sqrt(sum(stationarity(th)^2)) >= 1e-10) return(NULL)  # no fixed point: the iteration cycles
     it <- it + root$niter
   }
   w <- weights_of(weighting, d$y, md$fn(d$t, d$dose, th))
-  list(theta = th, w = w, iterations = it, by = if (done) "iteration" else "root_finding")
+  list(theta = th, w = w, iterations = it, by = by)
 }
 
 # ---------------------------------------------------------------- datasets and cases
@@ -360,5 +415,23 @@ for (ds in datasets) {
     cat(sprintf("%-26s %2d subjects, %4d values, nls fails for %d\n", case, length(subjects), nrow(long),
                 sum(!vapply(agree, function(a) a$nls_converged, logical(1)))))
   }
+}
+# ---------------------------------------------------------------- Gauss-Newton trace of F1
+# Worked example F1 of specs/fit.md (uniform weights, analytic derivatives, full steps) from
+# (V, k) = (12, 0.15): the iterates to full double precision, for the trace test of caladrius-fit.
+# The specification prints them to 7 decimals; rounding alone can move a printed value by 5e-8
+# relative, so the test compares with these.
+{
+  f1 <- read_profile(file.path(data_dir, "fit/spec.csv"))
+  tt <- f1$time; yy <- f1$conc; dose <- f1$dose[1]
+  th <- c(v = 12, k = 0.15)
+  trace_rows <- character(0)
+  for (i in 0:5) {
+    r <- yy - iv_fn(tt, dose, th)
+    trace_rows <- c(trace_rows, sprintf("%d,%s,%s,%s", i, num(sum(r^2)), num(th[["v"]]), num(th[["k"]])))
+    J <- iv_grad(tt, dose, th)
+    th <- th + as.numeric(solve(crossprod(J), crossprod(J, r)))
+  }
+  write_lines_lf(c("iteration,wrss,v,k", trace_rows), file.path(exp_dir, "gauss_newton_f1.csv"))
 }
 cat(sprintf("total %d values | %s | minpack.lm %s\n", total_values, versions$R, versions$minpack.lm))
