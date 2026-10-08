@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "kind": "model_derivatives",
+  "case": "model_pk2_deriv_oral_1_ka_eq_alpha_macro",
+  "generated_by": "oracle/scripts/models_2c_closed_form.R",
+  "model": "pk2.oral_1",
+  "parameterisation": "macro",
+  "dose": 100,
+  "textbook_double_ok": false,
+  "parameters": {
+    "a": 5.555555555555555,
+    "b": 4.444444444444445,
+    "alpha": 1,
+    "beta": 0.1,
+    "ka": 1
+  },
+  "times": [-1, 0, 0.1, 0.5, 1, 2, 2.5, 4, 5, 10, 20, 40, 80, 160, 400],
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "note": "ka = alpha exactly, macro set",
+  "quantities": {
+    "derivative": "d_<name> at a time is the partial derivative of the concentration with respect to the parameter <name> of this case (the dose fixed; for the macro set vc = D / (a + b) moves with a and b); 0 before the dose and before the lag",
+    "omitted": "an entry whose condition number (sum of the absolute terms of the chain rule through V, alpha, beta, w, or of the two one-compartment terms for ka, tlag, dur, divided by the absolute sum) exceeds 1e3 is not written: no double precision closed form can be asked for 1e-12 relative accuracy near a zero of the derivative"
+  },
+  "method": {
+    "derivatives": "central differences in 256-bit arithmetic (Rmpfr), relative step 1e-25, of the independent explicit form of the concentration; rounded once to double",
+    "kappa_max": 1000,
+    "n_omitted_ill_conditioned": 5,
+    "n_omitted_structural_zero": 2,
+    "kappa_max_kept": 800.3169311185565
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "expm": "1.0.1",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 68,
+  "n_times": 15
+}

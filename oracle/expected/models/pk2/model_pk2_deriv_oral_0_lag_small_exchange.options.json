@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "kind": "model_derivatives",
+  "case": "model_pk2_deriv_oral_0_lag_small_exchange",
+  "generated_by": "oracle/scripts/models_2c_closed_form.R",
+  "model": "pk2.oral_0_lag",
+  "parameterisation": "clearance",
+  "dose": 50,
+  "textbook_double_ok": true,
+  "parameters": {
+    "cl": 3,
+    "vc": 15,
+    "q": 0.3,
+    "vp": 40,
+    "dur": 10,
+    "tlag": 2
+  },
+  "times": [-1, 0, 0.453096, 1, 2.26548, 4.26548, 4.53096, 7, 9.06193, 11.0619, 17, 18.1239, 22, 36.7839, 73.5679, 147.136, 149.136, 294.271, 588.543, 590.543, 1177.09, 2354.17, 5885.43],
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "note": "derivatives, point small_exchange, clearance set",
+  "quantities": {
+    "derivative": "d_<name> at a time is the partial derivative of the concentration with respect to the parameter <name> of this case (the dose fixed; for the macro set vc = D / (a + b) moves with a and b); 0 before the dose and before the lag",
+    "omitted": "an entry whose condition number (sum of the absolute terms of the chain rule through V, alpha, beta, w, or of the two one-compartment terms for ka, tlag, dur, divided by the absolute sum) exceeds 1e3 is not written: no double precision closed form can be asked for 1e-12 relative accuracy near a zero of the derivative"
+  },
+  "method": {
+    "derivatives": "central differences in 256-bit arithmetic (Rmpfr), relative step 1e-25, of the independent explicit form of the concentration; rounded once to double",
+    "kappa_max": 1000,
+    "n_omitted_ill_conditioned": 0,
+    "n_omitted_structural_zero": 0,
+    "kappa_max_kept": 112.50817477785314
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "expm": "1.0.1",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 138,
+  "n_times": 23
+}
