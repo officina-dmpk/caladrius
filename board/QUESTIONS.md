@@ -80,6 +80,14 @@ Observed results are an allowed source and cost no licence risk. Please look at 
 4. whether, for IV bolus data without a sample at time 0, the extrapolated C0 is added to the profile before the AUC is computed;
 5. what Tlag is for a profile that starts with zeros.
 
+Observed by the human on his screen (2026-10-08, NCA setup, reported by the orchestrator in its own words; screenshots kept in `private/screenshots/` for the reader only):
+
+1. AUC method: four choices: linear trapezoid with linear interpolation (the default), linear-log trapezoid, linear-up/log-down, and linear trapezoid with linear/log interpolation.
+2. BLQ: a separate "BQL rules" object exists in the project tree; not yet observed.
+3. λz: the regression has its own weighting (uniform by default; 1/Y, 1/Y², user-defined also offered). The best-fit rules are a maximum number of points and an earliest start time, both empty by default. Acceptance criteria (adjusted R² ≥, %AUC extrapolated ≤, span ≥, number of samples ≥, %AUC_tau extrapolated ≤) exist and are all empty by default: no acceptance threshold is enforced unless the user sets one. A "disable curve stripping" setting exists. Exclusion of Cmax: not yet observed.
+4. C0 for IV bolus: not yet observed. Model types: plasma (200-202), urine (210-212), drug effect (220). Dose type default: extravascular. A dose normalisation setting exists (none by default). For steady state (non-bolus) an imputed concentration at dose time can be Cmin, Ctau or Clast.
+5. Tlag: not yet observed.
+
 Decision taken meanwhile: the public oracle uses PKNCA's defaults; the "reference profile" of `specs/nca.md` stays `assumed`.
 
 Answer: _pending_.
