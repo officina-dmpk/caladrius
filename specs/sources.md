@@ -117,3 +117,16 @@ A small script kept in the session's scratch folder (not in the repository, not 
 - H4: for a pure mono-exponential profile, the log rule reproduces the analytic AUC and AUMC to rounding error, and the percentage error of the linear rule at 0.5, 2 and 4 half-lives per interval matches the figures in the abstract of S-12 (about 1%, 15.5%, 57.1%).
 - H5: a search over random profiles found the discriminating λz profiles of worked example W6.
 - H6: the rules of `specs/nca.md` applied to the 18 public profiles of T-003 reproduce every parameter in `oracle/expected/*.csv` that the script computes, to better than 1e-14 relative (details in `specs/nca.md` section 11). Reading the public oracle files is allowed; `private/` and `crates/` were not opened.
+
+## 6. Internal evidence added after the oracle (card T-007, 2026-10-08)
+
+The reader did not open `crates/`, `private/`, or the source code of PKNCA. The keys below are the project's own board and oracle files, read as reported by the agents who produced them. They back the tag `confirmed by oracle` in `specs/nca.md`.
+
+| key | what | where | note |
+|---|---|---|---|
+| E-01 | Public oracle (card T-003): `theoph`, `theoph_linear`, `indometh`, `indometh_linear`, expected values computed with PKNCA 0.12.1 on R 4.5.2 with every option written explicitly, plus the facts recorded by the oracle agent (C0 added for Indometh, `tfirst`, no R² floor, dose constants) | `oracle/expected/*.csv`, `*.options.json`, `oracle/data/README.md`, `board/tasks/T-003.md` | 1080 values; the testkit re-derives them independently within 1e-6. PKNCA is used as an external tool, not as source code. |
+| E-02 | Synthetic discriminating profiles (card T-005): `synthetic_lz`, `synthetic_lz_f1e3`, 4 subjects, 116 values each | `oracle/data/synthetic_lz.csv`, `oracle/expected/synthetic_lz*`, `board/tasks/T-005.md` | Settles the tie rule and the positive-slope filter order for PKNCA. The oracle agent reports that PKNCA's own function agrees on the strict comparison; this cannot be separated by data, so the reader relies on the engine and the oracle agent's report for it, not on a reading of the PKNCA source. |
+| E-03 | Engine reports and test results (cards T-004a, T-004b, T-004c): `oracle_public` 21 of 21, `oracle_synthetic` 16 of 16, `cargo xtask conformance` 1312 of 1312 values within 1e-6 relative on 6 cases | `board/tasks/T-004a.md`, `T-004b.md`, `T-004c.md` | As reported by the engine and reviewer agents; the reader did not re-run the tests. |
+| E-04 | Decisions of the orchestrator recorded on the cards: default `start_policy = auto`, BLQ-set points kept out of λz, Tlast and Tfirst, new options in `NcaOptions` only, missing or invalid dose gives NC instead of an error | `board/tasks/T-004a.md`, `T-004c.md` | Design decisions, not oracle facts. |
+
+What the oracle does not cover is listed per rule in `specs/nca.md` (lines "Not covered by the oracle") and gathered in open item O-17.

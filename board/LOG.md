@@ -9,3 +9,4 @@
 - 2026-10-08 T-004b (engine): lambda_z.rs and extrapolation.rs; terminal_phase and extrapolation green on 6 oracle cases (17/21 public, 14/16 synthetic); new NcaOptions::lambda_z_selection; commit 48feaed; review approved.
 - 2026-10-08 T-004c (engine): derived parameters (MRT, CL/F, Vz/F, Vss, .dn), NCA-DAT-10, T-004b follow-ups, `cargo xtask conformance` (docs/conformance.md); 21/21 + 16/16 oracle tests, 1312/1312 values (100%); commit b76dc8b; review approved. STEP 2 REACHED.
 - 2026-10-08 T-006 (interface): conformance gate hardened (per-parameter floors, parse errors, computed-presence rule, atomic write, 41 xtask tests); commit 1d82059.
+- 2026-10-08 T-007 (reader): specs/nca.md synced with the oracle and engine: 66 rules (30 confirmed by oracle), LZ-05 strict >, dose NC reasons, O-01/O-02/O-08 closed, O-16/O-17 opened.
