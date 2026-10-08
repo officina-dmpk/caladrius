@@ -20,3 +20,4 @@
 - 2026-10-08 T-010 (engine): caladrius-models, 6 one-compartment closed-form models, expm1-stable forms, jacobian; 73/73 oracle, 16 unit tests; commits d4d7d1b, 1bd028c; review approved after 5 fixes.
 - 2026-10-08 T-018 (oracle): arbitration: engine claims upheld; fit_indometh_inv_yhat/inv_yhat2 regenerated (true fixed points, 5245 values), F1 trace reference at 15 digits, D-02 closed; commit 282c6a2.
 - 2026-10-08 T-011a (engine): caladrius-fit core (WLS, 5 weightings, Gauss-Newton + step halving + Levenberg damping, statistics, trace); 114/114 oracle after T-018; commits 93ce952, 7cfad3a, b883ef8; review approved.
+- 2026-10-08 T-011b (engine): CI, matrices, condition numbers, partials, initial estimates (curve stripping), bounds, fit quality flags; 114/114 oracle, 26 unit tests; commits af4853f, b59e458; review approved. STEP 3 REACHED.

@@ -20,7 +20,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | done | T-008, T-009 |
 | T-011 | caladrius-fit (umbrella, split into T-011a/b) | engine | split | T-010 |
 | T-011a | caladrius-fit core: WLS, Gauss-Newton Levenberg-Hartley, estimates, SE, CV%, WRSS, AIC/SBC | engine | done | T-010 |
-| T-011b | caladrius-fit outputs: CI, matrices, condition numbers, trace, initial estimates, bounds | engine | to review | T-011a |
+| T-011b | caladrius-fit outputs: CI, matrices, condition numbers, trace, initial estimates, bounds | engine | done | T-011a |
 | T-012 | Oracle edge cases without public coverage (interior zeros, missing values, IV infusion, Tlag, dose-normalised, AUMC %%extrap) via synthetic PKNCA runs | oracle | done | T-007 |
 | T-013 | caladrius-nca: edge parameters (tlag, vss, auciv*, aumcall.dn), PKNCA profile for replaced values | engine | done | T-012 |
 | T-014 | Documented-difference marker in oracle/testkit/conformance; D-01 negative concentrations | oracle | done | T-012 |
@@ -29,3 +29,6 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-017 | specs/models.md and specs/fit.md sync after the oracle (M5 fix, precision note, fit facts, tags) | reader | todo | T-009, T-010, T-011 |
 | T-018 | Arbitration of the 1/ŷ fit oracle cases (fixed points) and the F1 trace tolerance | oracle | done | T-009, T-011a |
 | T-019 | Private oracle infrastructure (feature private-oracle, export loader, private conformance counts) and exercise 1 NCA | oracle | in progress | T-013 |
+| T-020 | caladrius-project (data model) and caladrius-engine (command registry, schemas, history) | interface | in progress | T-011b |
+| T-021 | caladrius-cli and conformance extended to models and fit | interface | todo | T-020 |
+| T-022 | caladrius-mcp (MCP server over stdio) | interface | todo | T-020 |
