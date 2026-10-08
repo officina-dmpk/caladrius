@@ -1,0 +1,8 @@
+/target
+/target-*
+/private/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+!/private/README.md
