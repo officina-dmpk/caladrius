@@ -4,3 +4,4 @@
 - 2026-10-08 T-001 (interface): 11-crate workspace, deny lints, xtask layers/wasm (30 tests), wasm target installed; commit c8b7e7c. Orchestrator added clippy.toml, licenses, .gitignore fix.
 - 2026-10-08 T-003 (oracle): Theoph and Indometh datasets, PKNCA 0.12.1 script, 1080 expected values in 4 cases, testkit (Tolerance, table comparison, loaders, 36 tests), 20 failing oracle tests against the assumed `caladrius_nca::run` API; commit 4b670e4.
 - 2026-10-08 T-002 (reader): specs/nca.md (61 rules: 50 documented, 11 assumed; 42-row vocabulary; 8 worked examples; 15 open items) and specs/sources.md; reference documentation NOT used (terms of use), Q-005..Q-008 raised.
+- 2026-10-08 T-004a (engine): caladrius-nca types, validation (16 tests), cleaning, AUC/AUMC rules (linear, lin-up/log-down, lin-log), observed parameters; 9/21 oracle tests green; review: 7 findings fixed; commits ac432b2, 54ce34e.
