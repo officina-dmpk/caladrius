@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Caladrius developer tasks: `cargo xtask layers` and `cargo xtask wasm`."
+description = "Caladrius developer tasks: `cargo xtask layers`, `cargo xtask wasm` and `cargo xtask conformance`."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# `conformance` runs the engine on the oracle cases through the test kit.
+caladrius-nca = { path = "../crates/caladrius-nca" }
+caladrius-testkit = { path = "../crates/caladrius-testkit" }
 toml = { version = "1.1.7", default-features = false, features = ["std", "serde", "parse"] }
 
 [lints]

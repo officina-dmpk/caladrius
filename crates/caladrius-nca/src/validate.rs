@@ -8,7 +8,7 @@ use crate::{
 
 /// Checks `input`; `Ok` means every later step may assume: equal non-zero lengths, finite strictly
 /// increasing times, no infinite concentration, no negative concentration under the `Error` policy,
-/// a finite dose > 0, a valid route and valid options.
+/// a valid route and valid options. The dose is not checked here (NCA-DAT-10).
 pub(crate) fn validate(input: &NcaInput) -> Result<(), NcaError> {
     if input.time.len() != input.conc.len() {
         return Err(NcaError::LengthMismatch {
@@ -21,9 +21,6 @@ pub(crate) fn validate(input: &NcaInput) -> Result<(), NcaError> {
     }
     validate_times(&input.time)?;
     validate_concentrations(&input.time, &input.conc, input.options.negative)?;
-    if !(input.dose.is_finite() && input.dose > 0.0) {
-        return Err(NcaError::InvalidDose { value: input.dose });
-    }
     if let Route::IvInfusion { duration } = input.route {
         if !(duration.is_finite() && duration > 0.0) {
             return Err(NcaError::InvalidInfusionDuration { value: duration });

@@ -4,8 +4,8 @@
 //! panic and never a number.
 
 use caladrius_nca::{
-    BlqAction, BlqPolicy, LambdaZManual, LambdaZOptions, MissingPolicy, NcaError, NcaInput,
-    NcaOptions, NegativePolicy, Route, run,
+    BlqAction, BlqPolicy, LambdaZManual, LambdaZOptions, MissingPolicy, NcReason, NcaError,
+    NcaInput, NcaOptions, NegativePolicy, ParamValue, Route, run,
 };
 
 fn valid() -> NcaInput {
@@ -163,18 +163,35 @@ fn zero_concentrations_are_valid() {
 }
 
 #[test]
-fn invalid_dose() {
-    for dose in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+fn missing_or_invalid_dose_only_blanks_dose_dependent_parameters() {
+    // NCA-DAT-10, DAT-11: the run goes on; the reason says what to fix.
+    for (dose, reason) in [
+        (f64::NAN, NcReason::DoseMissing),
+        (0.0, NcReason::InvalidDose),
+        (-5.0, NcReason::InvalidDose),
+        (f64::INFINITY, NcReason::InvalidDose),
+    ] {
         let mut i = valid();
         i.dose = dose;
-        match run(&i) {
-            Err(NcaError::InvalidDose { value }) => {
-                assert!(value.to_bits() == dose.to_bits());
-                let message = NcaError::InvalidDose { value }.to_string();
-                assert!(message.contains("greater than 0"), "{message}");
-            }
-            other => panic!("dose {dose}: expected InvalidDose, got {other:?}"),
+        let r = run(&i).unwrap_or_else(|e| panic!("dose {dose}: {e}"));
+        for name in [
+            "cl.obs",
+            "cl.pred",
+            "vz.obs",
+            "vz.pred",
+            "cmax.dn",
+            "aucinf.obs.dn",
+        ] {
+            assert_eq!(
+                r.parameter(name),
+                Some(ParamValue::NotCalculated(reason)),
+                "dose {dose}: {name}"
+            );
         }
+        for name in ["cmax", "auclast", "lambda.z", "aucinf.obs", "mrt.obs"] {
+            assert!(r.get(name).is_some(), "dose {dose}: {name}");
+        }
+        assert!(reason.to_string().contains("dose"));
     }
 }
 
@@ -298,7 +315,6 @@ fn every_error_message_names_a_fix() {
             time: 0.0,
             value: -1.0,
         },
-        NcaError::InvalidDose { value: 0.0 },
         NcaError::InvalidInfusionDuration { value: 0.0 },
     ];
     for e in errors {

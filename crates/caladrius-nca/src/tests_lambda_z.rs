@@ -337,11 +337,150 @@ fn manual_selection_with_two_points_or_a_rising_phase() {
     // Two points: λz is given, adjusted R² is not defined.
     let r = ev(&TH_T, &TH_C, manual(&[12.12, 24.37]));
     assert_close(&r, "lambda.z", naive_fit(&[12.12, 24.37]).0);
-    assert_nc(&r, "adj.r.squared", NcReason::TooFewPoints);
+    assert_nc(&r, "adj.r.squared", NcReason::Undefined);
     // A rising phase: not estimable.
     let r = ev(&TH_T, &TH_C, manual(&[0.25, 0.57, 1.12]));
     assert_nc(&r, "lambda.z", NcReason::NoValidFit);
     // One point.
     let r = ev(&TH_T, &TH_C, manual(&[24.37]));
     assert_nc(&r, "lambda.z", NcReason::TooFewPoints);
+}
+
+// ---- Review findings of T-004b ----
+
+/// Cmax at 1; the last 3 to 5 eligible points decrease, the full set of 6 rises (low point at 2).
+const SKIP_T: [f64; 8] = [0.0, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0];
+const SKIP_C: [f64; 8] = [0.0, 10.0, 1.0, 2.0, 4.0, 3.0, 2.5, 2.0];
+
+#[test]
+fn an_admissible_but_rising_larger_fit_is_skipped() {
+    // With a factor of 10 every fit is within tolerance; the 6-point fit has λz <= 0, so the
+    // largest valid fit (5 points) is selected, under both tie rules.
+    for tie_rule in [LambdaZTieRule::Tolerance, LambdaZTieRule::Bonus] {
+        let mut options = with_selection(LambdaZSelection {
+            tie_rule,
+            ..LambdaZSelection::default()
+        });
+        options.lambda_z.adj_r_squared_factor = 10.0;
+        let r = ev(&SKIP_T, &SKIP_C, options);
+        let six = r
+            .lambda_z_candidates()
+            .iter()
+            .find(|c| c.n_points == 6)
+            .unwrap();
+        assert!(!six.valid && !six.selected, "{tie_rule:?}");
+        assert_eq!(six.half_life(), None);
+        assert_close(&r, "lambda.z.n.points", 5.0);
+    }
+}
+
+#[test]
+fn flat_terminal_phase_has_undefined_r_squared() {
+    let r = ev(
+        &TH_T,
+        &[0.0, 5.0, 9.0, 4.0, 3.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+        with_selection(LambdaZSelection {
+            manual: Some(LambdaZManual::Times(vec![9.05, 12.12, 24.37])),
+            ..LambdaZSelection::default()
+        }),
+    );
+    assert_nc(&r, "lambda.z", NcReason::NoValidFit);
+    let fit = r.lambda_z_candidates().first().unwrap();
+    assert_eq!(fit.r_squared, None);
+    assert_eq!(fit.half_life(), None);
+    assert!(NcReason::Undefined.to_string().contains("3 points"));
+}
+
+#[test]
+fn overflowing_regression_sums_give_no_candidate() {
+    let t = [0.0, 1.0, 1e200, 2e200, 3e200, 4e200];
+    let c = [0.0, 9.0, 8.0, 4.0, 2.0, 1.0];
+    let r = ev(&t, &c, NcaOptions::default());
+    assert!(r.get("lambda.z").is_none());
+    assert!(
+        r.lambda_z_candidates()
+            .iter()
+            .all(|c| c.adj_r_squared.is_none_or(f64::is_finite))
+    );
+}
+
+#[test]
+fn lambda_z_selection_and_candidates_round_trip_through_json() {
+    let selection = LambdaZSelection {
+        tie_rule: LambdaZTieRule::Bonus,
+        positive_filter_first: true,
+        exclude: vec![12.12],
+        manual: Some(LambdaZManual::Range {
+            start: 3.0,
+            end: 30.0,
+        }),
+    };
+    let text = serde_json::to_string(&selection).unwrap();
+    assert_eq!(
+        serde_json::from_str::<LambdaZSelection>(&text).unwrap(),
+        selection
+    );
+    let r = ev(&TH_T, &TH_C, NcaOptions::default());
+    for candidate in r.lambda_z_candidates() {
+        let text = serde_json::to_string(candidate).unwrap();
+        assert_eq!(
+            &serde_json::from_str::<LambdaZCandidate>(&text).unwrap(),
+            candidate
+        );
+    }
+}
+
+// ---- Derived parameters (NCA-EXT-04 to 07, OBS-05) ----
+
+#[test]
+fn w2_derived_parameters_iv_bolus_and_infusion() {
+    // W2 (D = 100): MRT 5, CL 2, Vz 10, Vss 10.
+    let t = [0.0, 1.0, 2.0, 4.0, 8.0, 12.0];
+    let c: Vec<f64> = t.iter().map(|t: &f64| 10.0 * (-0.2 * t).exp()).collect();
+    let r = run_with(&t, &c, Route::IvBolus, NcaOptions::default());
+    assert_close(&r, "mrt.iv.obs", 5.0);
+    assert_close(&r, "cl.obs", 2.0);
+    assert_close(&r, "vz.obs", 10.0);
+    assert_close(&r, "vss.iv.obs", 10.0);
+    assert_close(&r, "cmax.dn", 0.1);
+    assert_close(&r, "aucinf.obs.dn", 0.5);
+    assert_nc(&r, "mrt.obs", NcReason::NotApplicableToRoute);
+    // The same areas read as a 2-hour infusion: MRT loses T_inf/2 = 1 (W5), Vss = CL·MRT = 8.
+    let r = run_with(
+        &t,
+        &c,
+        Route::IvInfusion { duration: 2.0 },
+        NcaOptions::default(),
+    );
+    assert_close(&r, "lambda.z", 0.2);
+    assert_close(&r, "mrt.iv.obs", 4.0);
+    assert_close(&r, "vss.iv.obs", 8.0);
+}
+
+#[test]
+fn w4_derived_parameters() {
+    let r = run(&NcaInput {
+        time: vec![0.25, 0.5, 1.0, 2.0, 4.0],
+        conc: vec![8.0, 6.4, 4.1, 1.7, 0.29],
+        dose: 50.0,
+        route: Route::IvBolus,
+        options: NcaOptions::default(),
+    })
+    .unwrap();
+    assert_close(&r, "mrt.iv.obs", 1.13053581183);
+    assert_close(&r, "cl.obs", 4.43866007581);
+    assert_close(&r, "vz.obs", 5.02314219973);
+    assert_close(&r, "vss.iv.obs", 5.01806417225);
+}
+
+#[test]
+fn extravascular_mrt_includes_absorption_and_has_no_vss() {
+    let r = ev(&TH_T, &TH_C, NcaOptions::default());
+    let ratio = |a: &str, b: &str| r.get(a).unwrap() / r.get(b).unwrap();
+    assert_close(&r, "mrt.obs", ratio("aumcinf.obs", "aucinf.obs"));
+    assert_close(&r, "mrt.last", ratio("aumclast", "auclast"));
+    assert_close(&r, "cl.pred", 100.0 / r.get("aucinf.pred").unwrap());
+    assert_close(&r, "vz.obs", ratio("cl.obs", "lambda.z"));
+    assert_nc(&r, "vss.iv.obs", NcReason::NotApplicableToRoute);
+    assert_nc(&r, "mrt.iv.obs", NcReason::NotApplicableToRoute);
 }

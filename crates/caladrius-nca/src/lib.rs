@@ -12,11 +12,13 @@
 //!
 //! Implemented: input validation, data cleaning, C0, Cmax, Tmax, Tfirst, Tlast, Clast, AUClast,
 //! AUCall, AUMClast, AUMCall, the terminal phase (λz, R², t½, Clast,pred, span ratio) and the
-//! extrapolation to infinity (AUCinf, AUMCinf, % extrapolated). CL, Vz, MRT and Vss come later;
-//! until then `get` returns `None` for those names.
+//! extrapolation to infinity (AUCinf, AUMCinf, % extrapolated), MRT, CL, Vz, Vss and
+//! dose-normalised values. A missing or invalid dose only makes the dose-dependent parameters
+//! not calculated (NCA-DAT-10).
 
 mod auc;
 mod clean;
+mod derived;
 mod error;
 mod extrapolation;
 mod float;
@@ -60,7 +62,8 @@ pub struct NcaInput {
         deserialize_with = "crate::float::de_vec"
     )]
     pub conc: Vec<f64>,
-    /// Dose given at time 0, > 0.
+    /// Dose given at time 0. NaN (JSON `null`) means missing; a missing, non-finite or
+    /// non-positive dose makes only the dose-dependent parameters not calculated (NCA-DAT-10).
     #[serde(
         serialize_with = "crate::float::ser",
         deserialize_with = "crate::float::de"
@@ -120,18 +123,23 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         Err(reason) => ParamValue::nc(*reason),
     };
     let lambda_z = fit(|c| c.lambda_z);
-    let half_life = fit(LambdaZCandidate::half_life);
+    let half_life = match &terminal.selected {
+        Ok(c) => c
+            .half_life()
+            .map_or(ParamValue::nc(NcReason::NonFinite), ParamValue::of),
+        Err(reason) => ParamValue::nc(*reason),
+    };
     let span = fit(|c| c.time_last - c.time_first);
     let adj_r_squared = match &terminal.selected {
         Ok(c) => c
             .adj_r_squared
-            .map_or(ParamValue::nc(NcReason::TooFewPoints), ParamValue::of),
+            .map_or(ParamValue::nc(NcReason::Undefined), ParamValue::of),
         Err(reason) => ParamValue::nc(*reason),
     };
     let r_squared = match &terminal.selected {
         Ok(c) => c
             .r_squared
-            .map_or(ParamValue::nc(NcReason::NonFinite), ParamValue::of),
+            .map_or(ParamValue::nc(NcReason::Undefined), ParamValue::of),
         Err(reason) => ParamValue::nc(*reason),
     };
     // NCA-LZ-01: Clast,pred = exp(a − λz·Tlast), at the observed Tlast.
@@ -148,6 +156,24 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         obs.clast,
         clast_pred,
         obs.tlast,
+    );
+
+    // NCA-EXT-04 to 07, NCA-OBS-05, with the dose of NCA-DAT-10.
+    let derived = derived::derived(
+        input.route,
+        &derived::Inputs {
+            dose: derived::dose_value(input.dose),
+            lambda_z,
+            cmax: obs.cmax,
+            clast: obs.clast,
+            auclast: areas.auclast,
+            aucall: areas.aucall,
+            aumclast: areas.aumclast,
+            aucinf_obs: ext.aucinf_obs,
+            aucinf_pred: ext.aucinf_pred,
+            aumcinf_obs: ext.aumcinf_obs,
+            aumcinf_pred: ext.aumcinf_pred,
+        },
     );
 
     // NCA-IV-01: C0 is reported for an IV bolus only.
@@ -190,6 +216,7 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         ("aumcpext.pred", ext.aumcpext_pred),
     ]
     .into_iter()
+    .chain(derived)
     .map(|(name, value)| Parameter {
         name: name.to_string(),
         value,

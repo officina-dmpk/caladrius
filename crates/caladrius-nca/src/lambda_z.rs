@@ -41,9 +41,11 @@ pub struct LambdaZCandidate {
 }
 
 impl LambdaZCandidate {
-    /// Half-life ln 2 / λz.
-    pub fn half_life(&self) -> f64 {
-        std::f64::consts::LN_2 / self.lambda_z
+    /// Half-life ln 2 / λz; `None` unless the fit is valid (λz > 0).
+    pub fn half_life(&self) -> Option<f64> {
+        self.valid
+            .then(|| std::f64::consts::LN_2 / self.lambda_z)
+            .filter(|h| h.is_finite())
     }
 }
 
@@ -55,7 +57,8 @@ pub(crate) struct Terminal {
 }
 
 /// Ordinary least squares of y = ln C on x = t, on centred sums (NCA-LZ-01). `None` for fewer
-/// than 2 points or no spread in time (impossible with strictly increasing times).
+/// than 2 points, no spread in time (impossible with strictly increasing times), or sums that
+/// overflow. R² and adjusted R² are `None` when undefined (flat ln C, fewer than 3 points).
 fn regress(points: &[(f64, f64)]) -> Option<LambdaZCandidate> {
     let (&(time_first, _), &(time_last, _)) = (points.first()?, points.last()?);
     let n = points.len();
@@ -72,14 +75,17 @@ fn regress(points: &[(f64, f64)]) -> Option<LambdaZCandidate> {
         sxy += dx * dy;
         syy += dy * dy;
     }
-    if sxx.is_nan() || sxx <= 0.0 {
+    if !(sxx.is_finite() && syy.is_finite() && sxy.is_finite()) || sxx <= 0.0 {
         return None;
     }
     let slope = sxy / sxx;
-    let r_squared = (syy > 0.0).then(|| sxy * sxy / (sxx * syy));
+    let r_squared = (syy > 0.0)
+        .then(|| sxy * sxy / (sxx * syy))
+        .filter(|r2| r2.is_finite());
     let adj_r_squared = r_squared
         .filter(|_| n >= 3)
-        .map(|r2| 1.0 - (1.0 - r2) * (count - 1.0) / (count - 2.0));
+        .map(|r2| 1.0 - (1.0 - r2) * (count - 1.0) / (count - 2.0))
+        .filter(|a| a.is_finite());
     let lambda_z = -slope;
     Some(LambdaZCandidate {
         n_points: n,
@@ -229,15 +235,15 @@ fn automatic(
             let score = |c: &LambdaZCandidate| {
                 c.adj_r_squared.unwrap_or(f64::NEG_INFINITY) + factor * c.n_points as f64
             };
+            // NCA-LZ-06: the valid fit with the largest score.
             candidates
                 .iter()
-                .filter(|c| competes(c))
+                .filter(|c| competes(c) && c.valid)
                 .max_by(|a, b| {
                     score(a)
                         .total_cmp(&score(b))
                         .then(a.n_points.cmp(&b.n_points))
                 })
-                .filter(|c| c.valid)
                 .map(|c| c.n_points)
         }
     };

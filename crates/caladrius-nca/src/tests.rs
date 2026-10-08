@@ -195,10 +195,9 @@ fn tmax_tie_rule_is_an_option() {
 }
 
 #[test]
-fn derived_parameters_are_not_computed_yet() {
-    // CL, Vz, MRT and Vss come with task T-004c.
+fn unknown_parameter_names_are_absent() {
     let r = ev(&T, &C, NcaOptions::default());
-    for name in ["cl.obs", "vz.obs", "mrt.obs", "mrt.iv.obs", "vss.iv.obs"] {
+    for name in ["tlag", "aucivpbextinf.obs", "no.such.parameter"] {
         assert_eq!(r.get(name), None, "{name}");
         assert_eq!(r.parameter(name), None, "{name}");
     }
@@ -560,11 +559,14 @@ fn missing_concentrations_travel_as_json_null() {
 
 #[test]
 fn non_finite_numbers_in_errors_serialize_as_text() {
-    let e = NcaError::InvalidDose { value: f64::NAN };
+    let e = NcaError::InvalidInfusionDuration { value: f64::NAN };
     let text = serde_json::to_string(&e).unwrap();
-    assert_eq!(text, r#"{"code":"invalid_dose","value":"NaN"}"#);
+    assert_eq!(
+        text,
+        r#"{"code":"invalid_infusion_duration","value":"NaN"}"#
+    );
     match serde_json::from_str::<NcaError>(&text).unwrap() {
-        NcaError::InvalidDose { value } => assert!(value.is_nan()),
+        NcaError::InvalidInfusionDuration { value } => assert!(value.is_nan()),
         other => panic!("{other:?}"),
     }
     let e = NcaError::InvalidInfusionDuration {

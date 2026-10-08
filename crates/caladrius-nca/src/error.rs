@@ -80,15 +80,6 @@ pub enum NcaError {
         )]
         value: f64,
     },
-    /// The dose is not a finite number > 0.
-    InvalidDose {
-        /// The dose given.
-        #[serde(
-            serialize_with = "crate::float::ser",
-            deserialize_with = "crate::float::de"
-        )]
-        value: f64,
-    },
     /// An IV infusion without a finite duration > 0.
     InvalidInfusionDuration {
         /// The duration given.
@@ -146,10 +137,6 @@ impl fmt::Display for NcaError {
                 f,
                 "point {} (time {time}): the concentration {value} is negative; correct it, mark it below the limit of quantification (0), or choose a negative-concentration policy (allow or set to zero)",
                 index + 1
-            ),
-            Self::InvalidDose { value } => write!(
-                f,
-                "the dose {value} is not a positive number; give a dose greater than 0"
             ),
             Self::InvalidInfusionDuration { value } => write!(
                 f,

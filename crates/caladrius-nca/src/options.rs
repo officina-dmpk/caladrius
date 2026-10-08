@@ -196,8 +196,8 @@ pub enum LambdaZTieRule {
     /// the most points (NCA-LZ-05, the primary reading).
     #[default]
     Tolerance,
-    /// The fit with the largest adjusted R² + `adj_r_squared_factor` × number of points, ties to the
-    /// most points (NCA-LZ-06).
+    /// The valid fit (λz > 0) with the largest adjusted R² + `adj_r_squared_factor` × number of
+    /// points, ties to the most points (NCA-LZ-06).
     Bonus,
 }
 
@@ -225,7 +225,8 @@ pub struct LambdaZSelection {
     pub tie_rule: LambdaZTieRule,
     /// Open item O-02 (NCA-LZ-07). `false` (PKNCA): the best adjusted R² is taken over every
     /// candidate, and fits with λz <= 0 are discarded afterwards, so λz can be not calculated even
-    /// when a decreasing fit exists. `true`: only fits with λz > 0 compete.
+    /// when a decreasing fit exists. `true`: only fits with λz > 0 compete. It changes the
+    /// tolerance rule only: the bonus rule always scores the valid fits only (NCA-LZ-06).
     pub positive_filter_first: bool,
     /// Sample times left out of the automatic selection (NCA-LZ-09).
     pub exclude: Vec<f64>,

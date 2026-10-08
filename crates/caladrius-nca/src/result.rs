@@ -26,6 +26,12 @@ pub enum NcReason {
     NoValidFit,
     /// A ratio whose area is zero or negative (NCA-EXT-02, EXT-08).
     NonPositiveArea,
+    /// Not defined for this fit: adjusted R² of a 2-point fit, R² of a flat ln C.
+    Undefined,
+    /// The dose is missing (NCA-DAT-10).
+    DoseMissing,
+    /// The dose is not a finite number > 0 (NCA-DAT-10, DAT-11).
+    InvalidDose,
     /// The computation overflowed or was undefined.
     NonFinite,
 }
@@ -42,6 +48,9 @@ impl std::fmt::Display for NcReason {
             Self::TooFewPoints => "too few positive points after Tmax for the terminal phase; lower the minimum number of points, allow the Tmax point, or choose the points manually",
             Self::NoValidFit => "no terminal phase decreases (the fitted slope is not negative); choose other points or report the terminal phase as not estimable",
             Self::NonPositiveArea => "the area is zero or negative, so the ratio is undefined",
+            Self::Undefined => "not defined for this fit: adjusted R² needs at least 3 points and R² needs concentrations that change",
+            Self::DoseMissing => "the dose is missing; give the dose to compute clearance, volumes and dose-normalised values",
+            Self::InvalidDose => "the dose is not a positive number; give a dose greater than 0 to compute clearance, volumes and dose-normalised values",
         })
     }
 }

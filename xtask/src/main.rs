@@ -7,6 +7,7 @@
 )]
 //! Developer tasks for the Caladrius workspace, run as `cargo xtask <task>` (alias in `.cargo/config.toml`).
 
+mod conformance;
 mod console;
 mod error;
 mod layers;
@@ -22,15 +23,17 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
-  layers   print the layer table and check the dependency rules between crates
-  wasm     cargo check the L0 to L3 crates for wasm32-unknown-unknown
-  help     show this message";
+  layers       print the layer table and check the dependency rules between crates
+  wasm         cargo check the L0 to L3 crates for wasm32-unknown-unknown
+  conformance  run caladrius-nca on every oracle case and write docs/conformance.md
+  help         show this message";
 
 /// The tasks this binary can run.
 #[derive(Debug, PartialEq, Eq)]
 enum Task {
     Layers,
     Wasm,
+    Conformance,
     Help,
 }
 
@@ -41,6 +44,7 @@ fn parse_task(args: &[OsString]) -> std::result::Result<Task, String> {
         [task] => match task.to_str() {
             Some("layers") => Ok(Task::Layers),
             Some("wasm") => Ok(Task::Wasm),
+            Some("conformance") => Ok(Task::Conformance),
             Some("help" | "-h" | "--help") => Ok(Task::Help),
             _ => Err(format!("unknown task `{}`", task.to_string_lossy())),
         },
@@ -61,6 +65,7 @@ fn main() -> ExitCode {
     let outcome: Result<()> = match task {
         Task::Layers => layers::run(),
         Task::Wasm => wasm::run(),
+        Task::Conformance => conformance::run(),
         Task::Help => {
             console::out(USAGE);
             Ok(())
@@ -88,6 +93,7 @@ mod tests {
     fn known_tasks_are_recognised() {
         assert_eq!(parse(&["layers"]), Ok(Task::Layers));
         assert_eq!(parse(&["wasm"]), Ok(Task::Wasm));
+        assert_eq!(parse(&["conformance"]), Ok(Task::Conformance));
         assert_eq!(parse(&["help"]), Ok(Task::Help));
         assert_eq!(parse(&["--help"]), Ok(Task::Help));
         assert_eq!(parse(&["-h"]), Ok(Task::Help));
