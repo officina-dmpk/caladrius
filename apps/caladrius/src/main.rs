@@ -9,21 +9,25 @@
 //! read: the file dialog, a path on the command line and files dropped on the window all end in
 //! `UiApp::load_csv(name, bytes)`; the interface itself never touches the disk.
 
-use std::path::Path;
+mod projectio;
+
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use caladrius_ui::projectfile::is_project_file;
 use caladrius_ui::{Action, Request, UiApp};
 
 const USAGE: &str = "\
 Caladrius: pharmacokinetic analysis.
 
 usage:
-  caladrius [FILE.csv]     open the application, optionally with a CSV file to import
+  caladrius [FILE]         open the application, optionally with a CSV file to import or a
+                           saved project (FILE.caladrius.json)
   caladrius --help         show this message
   caladrius --version      show the version
 
 Open a CSV with the button or drop it on the window; the table is shown as it will be read
-before anything is imported. The same commands are available without a window in
+before anything is imported. Projects are saved and opened from the File menu (Ctrl+S, Ctrl+O). The same commands are available without a window in
 `caladrius-cli` and to agents in `caladrius-mcp`.";
 
 /// What the command line asks for.
@@ -59,13 +63,115 @@ fn read(path: &Path) -> Result<(String, Vec<u8>), String> {
 
 struct Desktop {
     ui: UiApp,
+    /// The file the project is saved in (the interface only knows its name).
+    project_path: Option<PathBuf>,
+    /// The title last given to the window.
+    title: String,
 }
 
 impl Desktop {
+    fn new(ui: UiApp) -> Desktop {
+        Desktop {
+            ui,
+            project_path: None,
+            title: String::new(),
+        }
+    }
+
+    /// A file given on the command line or dropped on the window: a project or a CSV.
     fn open(&mut self, path: &Path) {
+        let name = projectio::display_name(path);
+        if is_project_file(&name) {
+            match projectio::read(path) {
+                Ok((name, bytes)) => {
+                    self.ui.open_project_guarded(&name, bytes);
+                    self.follow_project(path);
+                }
+                Err(message) => self.ui.perform(vec![Action::Notice(message)]),
+            }
+            return;
+        }
         match read(path) {
             Ok((name, bytes)) => self.ui.load_csv(&name, &bytes),
             Err(message) => self.ui.perform(vec![Action::Notice(message)]),
+        }
+    }
+
+    /// Remembers `path` as the project's file when the interface now holds that file.
+    fn follow_project(&mut self, path: &Path) {
+        if self.ui.file_name() == Some(projectio::display_name(path).as_str()) {
+            self.project_path = Some(path.to_path_buf());
+        }
+    }
+
+    fn pick_project(&mut self) {
+        let picked = rfd::FileDialog::new()
+            .add_filter("Caladrius project", &["json"])
+            .set_title("Open a project")
+            .pick_file();
+        if let Some(path) = picked {
+            match projectio::read(&path) {
+                Ok((name, bytes)) => {
+                    if self.ui.open_project(&name, &bytes) {
+                        self.project_path = Some(path);
+                    }
+                }
+                Err(message) => self.ui.perform(vec![Action::Notice(message)]),
+            }
+        }
+    }
+
+    fn save_project(&mut self, suggested: &str, bytes: &[u8], ask: bool) {
+        let target = match (&self.project_path, ask) {
+            (Some(path), false) => Some(path.clone()),
+            _ => rfd::FileDialog::new()
+                .add_filter("Caladrius project", &["json"])
+                .set_title("Save the project")
+                .set_file_name(suggested)
+                .save_file()
+                .map(projectio::with_extension),
+        };
+        let Some(path) = target else {
+            self.ui.project_save_cancelled();
+            return;
+        };
+        match projectio::write(&path, bytes) {
+            Ok(()) => {
+                let name = projectio::display_name(&path);
+                self.project_path = Some(path);
+                self.ui.project_saved(&name);
+            }
+            Err(message) => self.ui.project_save_failed(&message),
+        }
+    }
+
+    /// Does what the interface asked, until it has nothing more to ask.
+    fn serve(&mut self, ctx: &egui::Context) {
+        loop {
+            let requests = self.ui.take_requests();
+            if requests.is_empty() {
+                break;
+            }
+            for request in requests {
+                match request {
+                    Request::PickCsv => {
+                        let picked = rfd::FileDialog::new()
+                            .add_filter("CSV or text", &["csv", "txt", "tsv"])
+                            .set_title("Open a CSV file")
+                            .pick_file();
+                        if let Some(path) = picked {
+                            self.open(&path);
+                        }
+                    }
+                    Request::OpenProject => self.pick_project(),
+                    Request::SaveProject {
+                        suggested,
+                        bytes,
+                        ask,
+                    } => self.save_project(&suggested, &bytes, ask),
+                    Request::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                }
+            }
         }
     }
 }
@@ -79,19 +185,19 @@ impl eframe::App for Desktop {
                 self.open(&path);
             }
         }
+        // Closing the window with unsaved changes asks first.
+        if ctx.input(|i| i.viewport().close_requested()) && !self.ui.close_requested() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
         self.ui.ui(ctx);
-        for request in self.ui.take_requests() {
-            match request {
-                Request::PickCsv => {
-                    let picked = rfd::FileDialog::new()
-                        .add_filter("CSV or text", &["csv", "txt", "tsv"])
-                        .set_title("Open a CSV file")
-                        .pick_file();
-                    if let Some(path) = picked {
-                        self.open(&path);
-                    }
-                }
-            }
+        self.serve(ctx);
+        if self.ui.file_name().is_none() {
+            self.project_path = None;
+        }
+        let title = self.ui.window_title();
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
         }
     }
 }
@@ -138,7 +244,7 @@ fn main() -> ExitCode {
         "Caladrius",
         options,
         Box::new(move |_cc| {
-            let mut desktop = Desktop { ui: UiApp::new() };
+            let mut desktop = Desktop::new(UiApp::new());
             if let Some(path) = &first_file {
                 desktop.open(Path::new(path));
             }
@@ -206,7 +312,7 @@ mod tests {
 
     #[test]
     fn the_interface_gets_the_bytes_and_shows_the_preview() {
-        let mut desktop = Desktop { ui: UiApp::new() };
+        let mut desktop = Desktop::new(UiApp::new());
         let dir = std::env::temp_dir().join(format!("caladrius-app-open-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("p.csv");

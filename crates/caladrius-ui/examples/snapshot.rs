@@ -206,6 +206,40 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     app.state.log_axis = true;
     scenes.push(("22-simulation-dark-semilog", app));
 
+    // A simulation opened from a selected worksheet takes its units.
+    let mut app = with_oral();
+    app.perform(vec![
+        Action::Select(Selection::Worksheet(1)),
+        Action::NewSimulation,
+    ]);
+    scenes.push(("23-simulation-with-worksheet-units", app));
+
+    // The project saved to a file, then the data edited: the tree names the file, marks the
+    // project modified and shows both analyses out of date.
+    let mut app = nca(with_oral());
+    app.perform(vec![Action::NewFit, Action::RunFit]);
+    app.perform(vec![Action::SaveProject]);
+    let _ = app.take_requests();
+    app.project_saved("pilot-study.caladrius.json");
+    app.perform(vec![Action::SetCell {
+        worksheet: 1,
+        row: 4,
+        column: "Conc".to_owned(),
+        text: "4,2".to_owned(),
+    }]);
+    app.perform(vec![Action::Select(Selection::Worksheet(1))]);
+    scenes.push(("24-tree-stale-and-modified", app));
+
+    // Unsaved changes: the question with its three answers.
+    let mut app = nca(with_oral());
+    app.perform(vec![Action::OpenProject]);
+    scenes.push(("25-unsaved-changes-question", app));
+
+    let mut app = nca(with_oral());
+    app.perform(vec![Action::NewProject]);
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("26-unsaved-changes-question-dark", app));
+
     scenes
 }
 

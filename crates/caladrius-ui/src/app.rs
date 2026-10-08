@@ -14,6 +14,8 @@ use crate::fmt;
 use crate::import::{self, PendingImport};
 use crate::model::{Overview, Status, Table, WorksheetInfo, read};
 use crate::nca::{self, NcaPage};
+use crate::projectfile::{FileState, Guarded};
+use crate::projectmenu;
 use crate::sheet::{self, Rejected};
 use crate::sim::{self, SimPage};
 use crate::theme::{ThemeMode, Tokens};
@@ -62,6 +64,20 @@ pub enum Action {
     ImportCancel,
     /// A message for the status bar.
     Notice(String),
+    /// Start a new empty project (asks first when there are unsaved changes).
+    NewProject,
+    /// Open a project file (asks first when there are unsaved changes).
+    OpenProject,
+    /// Save the project (asks for a file name when it has none).
+    SaveProject,
+    /// Save the project under another file name.
+    SaveProjectAs,
+    /// Close the application (asks first when there are unsaved changes).
+    Quit,
+    /// The answers to "save the changes?".
+    GuardSave,
+    GuardDiscard,
+    GuardCancel,
 }
 
 /// What the engine understood of a typed cell, when that is not what was typed (`3,25` is 3.25).
@@ -106,6 +122,19 @@ enum Shown {
 pub enum Request {
     /// Ask the person for a CSV file and give it back with [`UiApp::load_csv`].
     PickCsv,
+    /// Ask the person for a project file and give it back with [`UiApp::open_project`].
+    OpenProject,
+    /// Write the project document. `suggested` is the file name to offer; `ask`: let the person
+    /// choose where (Save as, or a project that has no file yet), else write over the file the
+    /// project came from. Answer with [`UiApp::project_saved`], [`UiApp::project_save_failed`] or
+    /// [`UiApp::project_save_cancelled`].
+    SaveProject {
+        suggested: String,
+        bytes: Vec<u8>,
+        ask: bool,
+    },
+    /// Close the window: the person has decided about the unsaved changes.
+    Close,
 }
 
 /// The UI state that is worth keeping: serializable (golden rule 7).
@@ -150,10 +179,11 @@ pub struct UiApp {
     applied: Option<ThemeMode>,
     pub(crate) overview: Overview,
     pub(crate) sheet: Option<SheetView>,
-    rejected: Option<Rejected>,
-    pending: Option<PendingImport>,
+    pub(crate) rejected: Option<Rejected>,
+    pub(crate) pending: Option<PendingImport>,
     pub(crate) notice: Option<Notice>,
-    requests: Vec<Request>,
+    pub(crate) requests: Vec<Request>,
+    pub(crate) file: FileState,
     theme_error: Option<String>,
 }
 
@@ -187,8 +217,10 @@ impl UiApp {
             pending: None,
             notice: None,
             requests: Vec::new(),
+            file: FileState::default(),
             theme_error,
         };
+        app.file.saved = app.engine.project().clone();
         app.refresh_overview();
         app
     }
@@ -343,10 +375,12 @@ impl UiApp {
 
     /// Takes the answer of a run into the page of its kind.
     fn adopt_run(&mut self, view: &Value) {
-        if let Some(page) = self.state.nca.as_mut() {
+        // Only the page that shows this analysis takes the answer (the tree can run any of them).
+        let id = view.get("id").and_then(Value::as_u64);
+        if let Some(page) = self.state.nca.as_mut().filter(|p| p.analysis == id) {
             page.adopt(view);
         }
-        if let Some(page) = self.state.fit.as_mut() {
+        if let Some(page) = self.state.fit.as_mut().filter(|p| p.analysis == id) {
             page.adopt(view);
         }
     }
@@ -433,7 +467,7 @@ impl UiApp {
                             // Nothing to say when it was read as typed; no stale message either.
                             self.notice = understood_note(&text, &answer).map(|text| Notice {
                                 kind: NoticeKind::Info,
-                                text,
+                                text: fmt::plain(&text),
                             });
                         }
                         Err(_) => self.rejected = Some(Rejected { row, column, text }),
@@ -491,6 +525,14 @@ impl UiApp {
                         text,
                     });
                 }
+                Action::NewProject => self.guarded(Guarded::NewProject),
+                Action::OpenProject => self.guarded(Guarded::OpenProject),
+                Action::SaveProject => self.save_project(false),
+                Action::SaveProjectAs => self.save_project(true),
+                Action::Quit => self.guarded(Guarded::Close),
+                Action::GuardSave => self.guard_save(),
+                Action::GuardDiscard => self.guard_discard(),
+                Action::GuardCancel => self.guard_cancel(),
             }
         }
     }
@@ -544,11 +586,18 @@ impl UiApp {
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped {
             if let Some(bytes) = file.bytes {
-                self.load_csv(&file.name, &bytes);
+                if crate::projectfile::is_project_file(&file.name) {
+                    self.open_project_guarded(&file.name, bytes.to_vec());
+                } else {
+                    self.load_csv(&file.name, &bytes);
+                }
             }
         }
         let tokens = self.tokens.clone();
         let mut actions: Vec<Action> = Vec::new();
+        if self.file.guard.is_none() {
+            projectmenu::shortcuts(ctx, &mut actions);
+        }
 
         egui::TopBottomPanel::top("top-bar")
             .frame(tokens.panel_frame(tokens.colors.panel))
@@ -579,6 +628,10 @@ impl UiApp {
                         self.main(ui, &tokens, &mut actions);
                     });
             });
+        if let Some(what) = self.file.guard.clone() {
+            let name = self.engine.project().name().to_owned();
+            projectmenu::guard_dialog(ctx, &tokens, &name, &what, &mut actions);
+        }
         self.perform(actions);
     }
 
@@ -665,6 +718,7 @@ impl UiApp {
             );
             ui.label(RichText::new(&self.overview.name).color(c.text_muted.color()));
             ui.separator();
+            projectmenu::file_menu(ui, actions);
             if ui.button("Open CSV…").clicked() {
                 actions.push(Action::OpenCsv);
             }
@@ -729,6 +783,25 @@ impl UiApp {
                 .strong()
                 .size(self.tokens.font.heading),
         );
+        let marker = if self.is_dirty() { " *" } else { "" };
+        let mut title = format!("{}{marker}", self.overview.name);
+        if let Some(file) = self.file_name() {
+            title = format!("{title}  ({file})");
+        }
+        ui.label(RichText::new(title).color(c.text_muted.color()));
+        let stale = self
+            .overview
+            .analyses
+            .iter()
+            .filter(|a| a.status.is_stale())
+            .count();
+        if stale > 0 {
+            ui.label(
+                RichText::new(format!("{stale} analysis result(s) out of date"))
+                    .small()
+                    .color(c.stale.color()),
+            );
+        }
         ui.add_space(self.tokens.spacing.small);
         ui.label(RichText::new("Worksheets").color(c.text_muted.color()));
         if self.overview.worksheets.is_empty() {
@@ -756,23 +829,52 @@ impl UiApp {
         }
         for a in &self.overview.analyses {
             let selected = self.state.selection == Selection::Analysis(a.id);
+            let stale = a.status.is_stale();
             ui.horizontal(|ui| {
-                let (dot, color) = match &a.status {
-                    Status::Fresh => ("●", c.ok.color()),
-                    Status::Stale { .. } => ("●", c.stale.color()),
-                    Status::NoResult => ("○", c.text_muted.color()),
+                // A drawn dot (the font has no glyph for one): filled when there is a result,
+                // an outline when there is none; green when fresh, amber when out of date.
+                let (filled, color) = match &a.status {
+                    Status::Fresh => (true, c.ok.color()),
+                    Status::Stale { .. } => (true, c.stale.color()),
+                    Status::NoResult => (false, c.text_muted.color()),
                 };
-                ui.label(RichText::new(dot).color(color));
-                if ui.selectable_label(selected, &a.label).clicked() {
+                let radius = self.tokens.size.marker_medium;
+                let (rect, _) = ui
+                    .allocate_exact_size(egui::Vec2::splat(radius + radius), egui::Sense::hover());
+                if filled {
+                    ui.painter().circle_filled(rect.center(), radius, color);
+                } else {
+                    ui.painter().circle_stroke(
+                        rect.center(),
+                        radius,
+                        egui::Stroke::new(self.tokens.stroke.medium, color),
+                    );
+                }
+                let name = if stale {
+                    RichText::new(&a.label).color(c.stale.color())
+                } else {
+                    RichText::new(&a.label)
+                };
+                let response = ui.selectable_label(selected, name);
+                let response = match a.status.sentence() {
+                    Some(sentence) => response.on_hover_text(sentence),
+                    None => response,
+                };
+                if response.clicked() {
                     actions.push(Action::Select(Selection::Analysis(a.id)));
                 }
             });
-            if a.status.is_stale() {
-                ui.label(
-                    RichText::new("   out of date")
-                        .small()
-                        .color(c.stale.color()),
-                );
+            if stale {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("   out of date")
+                            .small()
+                            .color(c.stale.color()),
+                    );
+                    if ui.small_button("Run again").clicked() {
+                        actions.push(Action::RunAgain(a.id));
+                    }
+                });
             }
         }
     }

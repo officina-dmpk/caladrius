@@ -135,6 +135,14 @@ pub struct Sizes {
     pub diagram_gap: f32,
     pub residual_plot_height: f32,
     pub small_plot_height: f32,
+    /// The width of a question dialog.
+    pub dialog_width: f32,
+    /// The width of the command palette.
+    pub palette_width: f32,
+    /// The height of the list of the command palette.
+    pub palette_list_height: f32,
+    /// The width of the label column of the settings page.
+    pub settings_label_width: f32,
 }
 
 /// Line widths.

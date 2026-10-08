@@ -10,16 +10,16 @@ use crate::app::{Action, Request, Selection, UiApp, UiState};
 use crate::model::Status;
 use crate::theme::ThemeMode;
 
-const ORAL: &str = "Time (h),Conc (mg/L),Dose (mg)\n0,0,100\n0.25,1.279,100\n0.5,2.195,100\n1,3.293,100\n2,3.971,100\n4,3.611,100\n6,2.989,100\n8,2.451,100\n12,1.643,100\n24,0.495,100\n";
+pub(crate) const ORAL: &str = "Time (h),Conc (mg/L),Dose (mg)\n0,0,100\n0.25,1.279,100\n0.5,2.195,100\n1,3.293,100\n2,3.971,100\n4,3.611,100\n6,2.989,100\n8,2.451,100\n12,1.643,100\n24,0.495,100\n";
 
-fn with_oral() -> UiApp {
+pub(crate) fn with_oral() -> UiApp {
     let mut app = UiApp::new();
     app.load_csv("oral.csv", ORAL.as_bytes());
     app.perform(vec![Action::ImportConfirm]);
     app
 }
 
-fn with_analysis() -> UiApp {
+pub(crate) fn with_analysis() -> UiApp {
     let mut app = with_oral();
     app.perform(vec![Action::NewAnalysis]);
     app
@@ -532,7 +532,7 @@ fn the_app_asks_for_a_file_picker_instead_of_opening_files() {
 
 // ---- drawn by a harness ------------------------------------------------------------------
 
-fn harness(app: UiApp) -> Harness<'static, UiApp> {
+pub(crate) fn harness(app: UiApp) -> Harness<'static, UiApp> {
     Harness::builder()
         .with_size(egui::vec2(1400.0, 1000.0))
         .build_state(|ctx, app: &mut UiApp| app.ui(ctx), app)
@@ -630,9 +630,9 @@ fn the_number_the_engine_understood_is_shown_when_it_differs_from_what_was_typed
         }]);
     };
     set(&mut app, "3,25");
-    assert_eq!(app.notice_text(), Some("Read `3,25` as 3.25."));
+    assert_eq!(app.notice_text(), Some("Read 3,25 as 3.25."));
     set(&mut app, "NA");
-    assert_eq!(app.notice_text(), Some("Read `NA` as a missing value."));
+    assert_eq!(app.notice_text(), Some("Read NA as a missing value."));
     // What was typed as the engine writes it needs no remark, and the old remark goes away.
     set(&mut app, "2.5");
     assert_eq!(app.notice_text(), None);
@@ -857,7 +857,7 @@ fn a_data_edit_makes_the_fit_stale_and_run_again_refreshes_it() {
     let mut h = harness(app);
     h.run_steps(3);
     assert!(h.query_all_by_label_contains("Out of date").count() >= 1);
-    h.get_by_label("Run again").click();
+    h.get_all_by_label("Run again").next().unwrap().click();
     h.run_steps(3);
     assert_eq!(h.state().fit_page().unwrap().status(), Status::Fresh);
 }
