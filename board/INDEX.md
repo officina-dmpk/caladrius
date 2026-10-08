@@ -36,4 +36,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-024 | caladrius-ui first slice: theme tokens, worksheet, NCA page with λz point selection, snapshots | interface | done | T-022, T-017 |
 | T-025 | Units in NCA results (time/conc/dose units as data, derived units per parameter) | engine | done | T-015 |
 | T-026 | caladrius-ui second slice: model fit page with live curve, diagnostics plots, simulation page | interface | done | T-024 |
-| T-027 | caladrius-ui third slice: project save/load, command palette, settings page, T-026 follow-ups | interface | todo | T-026 |
+| T-027 | caladrius-ui third slice: project save/load, command palette, settings page, T-026 follow-ups | interface | done | T-026 |
