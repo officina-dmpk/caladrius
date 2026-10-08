@@ -12,16 +12,16 @@ Decisions taken meanwhile, to confirm or revert:
 4. A `janitor` role (Haiku) for mechanical work.
 5. Repository at `C:\Users\abdou\apothicaire\caladrius`, its own git repository, separate from the Apothicaire agent; can be moved out later without changes.
 
-Answer: _pending_.
+Answer (2026-10-08, human): all five confirmed.
 
 ## Q-002 (2026-10-08, orchestrator): reference software license
 
 Before any comparison with the reference software's outputs in `private/`, the human must check the license granted by the university: is comparing results and publishing a conformance table allowed? Until answered, the private oracle feature stays off and no number from `private/` is produced by an agent.
 
-Answer: _pending_.
+Answer (2026-10-08, human): yes, comparing is allowed. The private oracle feature may be used once files are dropped in `private/`. Publication of any numeric comparison still requires the human's explicit decision (section 2.4 of `AGENTS.md`).
 
 ## Q-003 (2026-10-08, orchestrator): R packages
 
 T-003 needs `PKNCA` installed in R (`install.packages("PKNCA")`). `AGENTS.md` allows installs through package managers, so the oracle agent will do it unless told otherwise.
 
-Answer: _pending_.
+Answer (2026-10-08, human): ok, install PKNCA.
