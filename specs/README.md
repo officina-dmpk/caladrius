@@ -9,4 +9,4 @@ Every rule carries a status tag:
 - `assumed`: our best guess; becomes a test task before being relied on.
 - `observed`: seen on the human's screen of the reference software (an allowed source), not yet tested against a private export.
 
-Files: `nca.md` (T-002), later `models.md`, `fit.md`, `ux.md`, `differences.md` (documented method differences with the reference software), `sources.md` (sources consulted and their terms of use).
+Files: `nca.md` (T-002), `models.md` (T-008; one compartment, sections 1 to 10; two compartments, section 11, T-031: `MOD-2C-*`), `fit.md`, `ux.md`, `differences.md` (documented method differences with the reference software), `sources.md` (sources consulted and their terms of use).

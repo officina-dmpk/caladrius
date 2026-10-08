@@ -6,11 +6,11 @@ Card T-008, synced with the model oracle and the engine by card T-017. Written b
 
 **Status tags** (see `specs/README.md`): `confirmed by oracle`, `documented, untested`, `assumed`. The model oracle (card T-009) now exists: 21 cases and 886 expected values, produced by an independent implementation in 256-bit arithmetic rounded once to double, cross-checked within 1e-8 against a matrix exponential and an adaptive ODE solution that also integrates the AUC and the first moment; the tolerance is 1e-12 relative, an expected zero must be exact. 73 oracle tests pass against the engine (card T-010). A rule is `confirmed by oracle` when those cases exercise it; the cases are named in the line `Oracle:` of the rule. A choice made for Caladrius (names, validation, numerical safeguards the oracle does not exercise) is `assumed`.
 
-**Rule ids.** `MOD-<AREA>-<nn>`. Areas: GEN (conventions and domains), IVB (intravenous bolus), IVI (intravenous infusion), AB1 (first-order absorption), AB0 (zero-order absorption), SEC (secondary parameters), NUM (numerics), MD (multiple dosing, later), VOC (vocabulary).
+**Rule ids.** `MOD-<AREA>-<nn>`. Areas: GEN (conventions and domains), IVB (intravenous bolus), IVI (intravenous infusion), AB1 (first-order absorption), AB0 (zero-order absorption), SEC (secondary parameters), NUM (numerics), MD (multiple dosing, later), VOC (vocabulary), 2C (two compartments, section 11).
 
 **Clean room.** The reference software's own documentation was not used (`specs/sources.md` section 2). The textbooks cannot be read by the reader (S-17, S-18 are cited at book level only). The equations below are therefore derived (D) from the linear differential equations of the compartment diagram, which is how the textbooks obtain them, and compared with the model catalogue and the CL/V convention of two open packages (S-20, S-21). Where a rule is a design choice it says so.
 
-**Scope (AGENTS.md section 1).** One compartment, linear first-order elimination, single dose, closed form. Two compartments, user-written ODE models and several subjects are later steps. Multiple dosing is noted in MOD-MD-01 and not specified further.
+**Scope (AGENTS.md section 1).** One compartment, linear first-order elimination, single dose, closed form. Two compartments are specified in section 11 (card T-031); user-written ODE models and several subjects are later steps. Multiple dosing is noted in MOD-MD-01 and not specified further.
 
 **Numerics.** Double precision. Nothing is rounded inside the computation. A function value that is not finite is an error (MOD-NUM-02), never a silent NaN. The engine evaluates numerically stable rearrangements of the formulas below, which are the same functions (section 8, MOD-AB1-03, MOD-NUM-01); a form that differs from the textbook one only by rounding is not a method difference and has no entry in `specs/differences.md`.
 
@@ -68,7 +68,7 @@ Models are chosen by route and number of compartments (AGENTS.md section 7, fric
 | `pk1.oral_0` | extravascular | zero-order, no lag | V/F, CL/F (or k), T | MOD-AB0-01 |
 | `pk1.oral_0_lag` | extravascular | zero-order with lag | V/F, CL/F (or k), T, tlag | MOD-AB0-02 |
 
-The prefix `pk1` means one compartment; `pk2` is reserved for the next step. The six ids coincide one to one with the six single-dose functions of S-20.
+The prefix `pk1` means one compartment; `pk2` (two compartments) is specified in section 11 (MOD-2C-20). The six ids coincide one to one with the six single-dose functions of S-20.
 - Status: `confirmed by oracle`
 - Oracle: the six ids are the model ids of the 21 cases (`pk1.iv_bolus`, `pk1.iv_infusion`, `pk1.oral_1`, `pk1.oral_1_lag`, `pk1.oral_0`, `pk1.oral_0_lag`), E-08.
 - Sources: S-20 (catalogue); `AGENTS.md` sections 4 and 7.
@@ -251,5 +251,217 @@ Numbers were computed by the reader in a throwaway script kept outside the repos
 | OM-01 | CLOSED 2026-10-08 (T-009, T-010): the model oracle exists (21 cases, 886 values, independent 256-bit implementation, ODE cross-checks, 73 tests green). Not covered: textbook examples with page references, two-compartment models, multiple dosing, extreme parameter ranges (overflow handling is covered by engine unit tests only) | all | later cards |
 | OM-02 | Which models and which parameter names the reference software offers are not known to the reader (documentation is off limits); the reader's catalogue follows two open packages (S-20, S-21). Compare names with the headers of the human's exports | MOD-GEN-05, MOD-VOC-01 | question Q-009 |
 | OM-03 | Whether the reference software's zero-order absorption has its own "lag" or treats lag separately, and whether its first-order model with ka = k is accepted | MOD-AB1-02, MOD-AB0-02 | private oracle / human's screen |
-| OM-04 | Two-compartment models, Michaelis–Menten elimination, multiple dosing and steady state are not specified | MOD-MD-01 | later cards |
+| OM-04 | Two-compartment models: specified in section 11 (T-031), open items OM-06 to OM-13 there. Michaelis–Menten elimination, multiple dosing and steady state are not specified | MOD-MD-01 | later cards |
 | OM-05 | Textbook section and page numbers for the one-compartment equations | all | someone holding the books (S-17, S-18) |
+
+## 11. Two-compartment models (card T-031)
+
+Written by the `reader` agent on 2026-10-09, in its own words and formulas, before any oracle or engine work for two compartments (marching order, `AGENTS.md` section 12 step 7). Ids: `MOD-2C-nn`. Sources are cited by the keys of `specs/sources.md` (the keys added for this section are S-33 to S-35, in its section 11; S-13, S-14, S-15, S-17, S-18, S-20, S-30 are older keys). Nothing here is `confirmed by oracle`: no two-compartment case exists in `oracle/` yet. A rule is `documented, untested` when it is a standard result of the textbooks (book level, S-17, S-18) or papers (S-33, S-34), re-derived (D) and, where stated, checked by the reader (hand checks H11 to H14, section 11.7); a choice made for Caladrius is `assumed`. The reference software's own documentation was not used (Q-005 pending).
+
+**Notation added to section 1.** Vc central volume, Vp peripheral volume, CL clearance, Q intercompartmental clearance (for extravascular input all four are the apparent quantities divided by F: volumes and clearances scale with 1/F, rates do not, MOD-GEN-03). Micro-constants k10 = CL/Vc, k12 = Q/Vc, k21 = Q/Vp. S = k10 + k12 + k21 and P = k10·k21. α > β > 0 are the two exponents (the roots of r² − S·r + P = 0). Weights wα, wβ (MOD-2C-03). A and B are the intravenous coefficients A = D·wα/Vc and B = D·wβ/Vc (D the effective dose). The unit-dose response function Φ is defined in MOD-2C-06.
+
+### 11.1 System, parameterisations, conversions
+
+#### MOD-2C-01 The system
+Three amounts: depot G (extravascular models only), central A1, peripheral A2. dG/dt = −ka·G; dA1/dt = input(t) − (k10 + k12)·A1 + k21·A2; dA2/dt = k12·A1 − k21·A2; C = A1/Vc. input(t) is the bolus amount at t = 0 (IV bolus), the constant rate R0 = D/T on [0, T] (infusion, zero-order absorption), or ka·G (first-order absorption). Elimination is first order from the central compartment only; the peripheral compartment is a linear exchange, so Vss = Vc + Vp (MOD-2C-13). Single dose, linear, time since dose, lag and effective dose exactly as MOD-GEN-02 and MOD-GEN-03. The model reduces to the one-compartment models of sections 3 to 6 when Q = 0, a case excluded here (MOD-2C-05).
+- Status: `documented, untested`
+- Sources: S-17, S-18 (two-compartment open model with elimination from the central compartment, book level); S-33 (n-compartment mammillary model with elimination from the central compartment only, abstract); S-35 (central and peripheral compartments, rates q/vc and q/vp); D.
+
+#### MOD-2C-02 The three parameterisations
+Every two-compartment id accepts exactly one complete parameter set (a mixture, or two complete sets, is an error naming the offending parameter):
+
+| set | parameters | note |
+|---|---|---|
+| clearance (default) | `cl`, `vc`, `q`, `vp` | k10 = cl/vc, k12 = q/vc, k21 = q/vp |
+| micro | `k10`, `k12`, `k21`, `vc` | cl = k10·vc, q = k12·vc, vp = vc·k12/k21 |
+| macro | `a`, `b`, `alpha`, `beta` (and the dose, which is then required, MOD-2C-05) | `a` = A and `b` = B are the **intravenous** coefficients D·wα/Vc and D·wβ/Vc for every route; vc = D/(a + b) |
+
+Further parameters by id as in MOD-GEN-05 (`ka`, `tlag`, `dur`). The clearance set is the default of the catalogue and of the fit (MOD-2C-17 gives why). The macro coefficients are defined by the intravenous bolus even for the oral ids, so that one definition serves all six ids and the conversions never divide by (ka − α) or (ka − β); the coefficients of the oral profile itself (A_o, B_o of MOD-2C-09) are derived outputs. The reference software's choice for oral macro models is not known (open item OM-08).
+- Status: `assumed`
+- Sources: S-20 (the six single-dose two-compartment functions are parameterised by CL, V1, V2, Q); S-35 (cl, vc, q, vp with k12 = q/vc, k21 = q/vp, and alpha, beta, A, B as derived quantities); S-17, S-18 (micro- and macro-constants, book level); design choice for the names, the default and the macro definition.
+
+#### MOD-2C-03 Micro-constants to exponents and weights
+S = k10 + k12 + k21. Δ = S² − 4·k10·k21 = (k10 − k21)² + k12·(k12 + 2·k10 + 2·k21), a sum of non-negative terms, > 0 whenever k12 > 0 (so α > β strictly). r = √Δ. α = (S + r)/2, β = k10·k21/α (not (S − r)/2). Then α + β = S, α·β = k10·k21, and k10 and k21 both lie strictly between β and α (D: the quadratic evaluated at k21 equals −k12·k21 < 0, and at k10 equals −k12·k10 < 0). Weights: wα = (α − k21)/(α − β), wβ = (k21 − β)/(α − β), both in (0, 1), wα + wβ = 1, and (s + k21)/((s + α)(s + β)) = wα/(s + α) + wβ/(s + β) (D: partial fractions of the transfer function of the central compartment). Stable evaluation of the weights: with u = k10 + k12 − k21 and the identity (α − k21)·(k21 − β) = k12·k21, take p = α − k21 = (u + r)/2 and q = k21 − β = k12·k21/p if u ≥ 0, otherwise q = (r − u)/2 and p = k12·k21/q; then wα = p/(p + q) and wβ = q/(p + q). Every operation is a sum of positive numbers, a product or a quotient, so no digits are lost for any k10, k12, k21 (MOD-2C-21). The macro coefficients follow: A = D·wα/Vc, B = D·wβ/Vc, A + B = D/Vc.
+- Status: `documented, untested`
+- Sources: S-17, S-18 (α and β as the roots of the quadratic with sum k10 + k12 + k21 and product k10·k21, book level); S-33 (coefficients and exponents of the polyexponential equation); D (calculus; H11, H12 and example N7 for numbers).
+
+#### MOD-2C-04 Exponents and weights to micro-constants (the reverse conversion)
+Given α > β > 0, wα = A/(A + B) ∈ (0, 1), wβ = 1 − wα = B/(A + B), and the dose D: Vc = D/(A + B); k21 = α·wβ + β·wα (the weighted mean of the two exponents, which lies in (β, α)); k10 = α·β/k21; k12 = wα·wβ·(α − β)²/k21. All are positive products and quotients; the textbook k12 = α + β − k10 − k21 cancels when k12 is small relative to α and is not used. Then CL = k10·Vc, Q = k12·Vc, Vp = Q/k21. The two conversions are mutually inverse: the map between {Vc, k10, k12, k21 > 0} and {A > 0, B > 0, α > β > 0} (D fixed) is a bijection (D: the forward direction MOD-2C-03 gives A, B > 0 and α > β > 0; the backward direction above gives positive micro-constants).
+- Status: `documented, untested`
+- Sources: S-17, S-18 (conversion between macro- and micro-constants, book level); S-33; D (from α − k21 = wα·(α − β), k21 − β = wβ·(α − β) and (α − k21)(k21 − β) = k12·k21). Worked example N7.
+
+#### MOD-2C-05 Parameter domains and errors
+Required: `cl`, `vc`, `q`, `vp` > 0 (or `k10`, `k12`, `k21`, `vc` > 0, or `a`, `b` > 0 and `alpha` > `beta` > 0), all finite; `ka`, `dur` > 0, `tlag` ≥ 0 and D ≥ 0 as in MOD-GEN-04. Refused with a readable error naming the parameter and the value:
+1. `q` = 0 or `vp` = 0 (or `k12` = 0): this is a one-compartment model; the message says to use `pk1.*`. A negative value is the usual domain error.
+2. Macro set: `alpha` ≤ `beta` (the larger exponent must be named `alpha`; swapping the two names is the same curve, but the engine does not sort silently), `a` ≤ 0, `b` ≤ 0, or a dose that is 0 or missing (vc = D/(a + b) would be undefined).
+3. A derived micro-constant or volume that is not finite and > 0 (for example q/vp overflowing), or a computed r, p or q that is 0 or not finite (reachable only when k12·k21 underflows; error code `DegenerateExponents`).
+4. A parameter of another parameterisation or of another model id, a missing one, or two sets together.
+Not refused: α and β as close as the double-precision input allows (MOD-2C-21), ka equal or close to α, β, k10, k12 or k21 (MOD-2C-10), k10 = k21. A dose of 0 gives C = 0 everywhere with the clearance and micro sets (as MOD-GEN-04).
+- Status: `assumed`
+- Sources: golden rule 6 of `AGENTS.md`; MOD-GEN-04 (same style); D (the exclusion of k12 = 0 follows from Δ > 0 in MOD-2C-03).
+
+### 11.2 Closed forms
+
+#### MOD-2C-06 Superposition of two one-compartment functions
+For every input of this file, C(t) = (1/Vc)·[ wα·Φ(α, t) + wβ·Φ(β, t) ], where Φ(λ, t) is the concentration that the one-compartment model with volume 1, elimination rate constant λ (so CL = λ), the same effective dose D and the same input parameters (ka, tlag, T) gives at time t: the functions of sections 3 to 6 with V = 1 and k = λ. This is exact for the bolus, the infusion, zero-order and first-order absorption, with or without lag, because the input enters through a linear transfer function and (s + k21)/((s + α)(s + β)) = wα/(s + α) + wβ/(s + β) (MOD-2C-03). Consequences used below: every two-compartment function is a positive combination of two one-compartment functions (no cancellation); the AUC, the AUMC, the Cmax bracket and the partial derivatives are the same combinations (MOD-2C-14, 15, 18); the engine may build the six ids from its stable one-compartment kernels (MOD-AB1-03), while the oracle's independent reference is the explicit sums of exponentials given in each rule. Whichever way it is written, the same function results.
+- Status: `documented, untested`
+- Sources: S-17, S-18 (superposition and Laplace-domain solutions of the two-compartment model, book level); S-33; D (linearity and partial fractions; H11 checks the combination against a numerical ODE solution, H12 against the explicit forms).
+
+#### MOD-2C-07 IV bolus
+For t ≥ 0: C(t) = A·e^(−α·t) + B·e^(−β·t) = (D/Vc)·[wα·e^(−α·t) + wβ·e^(−β·t)]. C(0) = A + B = D/Vc. Before the dose C = 0 (MOD-GEN-02).
+- Status: `documented, untested`
+- Sources: S-17, S-18 (biexponential disposition, book level); S-33 (bolus polyexponential equation); S-34 (body as more than a single compartment, two-exponential decline, 1968); D. Worked example N1; H11.
+
+#### MOD-2C-08 IV infusion, during and after
+R0 = D/T. For 0 ≤ t ≤ T: C(t) = (A/(α·T))·(1 − e^(−α·t)) + (B/(β·T))·(1 − e^(−β·t)). For t > T: C(t) = (A/(α·T))·(1 − e^(−α·T))·e^(−α·(t − T)) + (B/(β·T))·(1 − e^(−β·T))·e^(−β·(t − T)), equivalently (A/(α·T))·(e^(α·T) − 1)·e^(−α·t) + (B/(β·T))·(e^(β·T) − 1)·e^(−β·t). The branches agree at t = T. The plateau of a long infusion is A/(α·T) + B/(β·T) = R0/CL. The bolus is the limit T → 0 with D fixed.
+- Status: `documented, untested`
+- Sources: S-17, S-18; S-33 (constant-rate infusion, abstract); D (MOD-2C-06 applied to MOD-IVI-01; A/T = R0·wα/Vc). Worked example N2.
+
+#### MOD-2C-09 First-order absorption, no lag, ka ≠ α and ka ≠ β
+C(t) = A_o·e^(−α·t) + B_o·e^(−β·t) − (A_o + B_o)·e^(−ka·t), with A_o = ka·A/(ka − α) = (D·ka/Vc)·wα/(ka − α) and B_o = ka·B/(ka − β) = (D·ka/Vc)·wβ/(ka − β). Equivalently, in the form that MOD-2C-06 gives and that the engine evaluates: C(t) = (D·ka/Vc)·[ wα·(e^(−α·t) − e^(−ka·t))/(ka − α) + wβ·(e^(−β·t) − e^(−ka·t))/(ka − β) ]. The coefficient of e^(−ka·t) is −(A_o + B_o), which makes C(0) = 0; in micro-constants it equals (D·ka/Vc)·(k21 − ka)/((α − ka)(β − ka)). The signs of A_o and B_o are those of ka − α and ka − β (with ka > α > β they are + and +; with α > ka > β, A_o < 0 and B_o > 0). The oral-profile coefficients are therefore not the IV ones (MOD-2C-02), and A = A_o·(ka − α)/ka, B = B_o·(ka − β)/ka.
+- Status: `documented, untested`
+- Sources: S-17, S-18 (oral dosing of the two-compartment model, three exponentials including the absorption term, book level); S-20 (the oral two-compartment functions exist in the catalogue, equations not written out there); D (partial fractions of ka·(s + k21)/((s + ka)(s + α)(s + β)); H12). Worked example N3.
+
+#### MOD-2C-10 The limits ka = α and ka = β, and stable evaluation
+The first form of MOD-2C-09 divides by ka − α and ka − β, is undefined at ka = α or ka = β, and loses digits near them (large terms of opposite sign cancel). The limits, by the confluent partial fractions (D), for t ≥ 0:
+- ka = α: C(t) = (D·α/Vc)·[ wα·t·e^(−α·t) + wβ·(e^(−β·t) − e^(−α·t))/(α − β) ];
+- ka = β: C(t) = (D·β/Vc)·[ wβ·t·e^(−β·t) + wα·(e^(−β·t) − e^(−α·t))/(α − β) ].
+Both are the continuous limits of MOD-2C-09 (D: (e^(−x·t) − e^(−ka·t))/(ka − x) → t·e^(−x·t) as ka → x). The single stable form for every ka is the second form of MOD-2C-09 with each difference quotient written as in MOD-AB1-03: for x ∈ {α, β}, a = min(ka, x), δ = |ka − x|, (e^(−x·t) − e^(−ka·t))/(ka − x) = t·e^(−a·t)·g(δ·t), with g(z) = (1 − e^(−z))/z computed through `expm1` and g(0) = 1. Each term is non-negative, the weights are positive and add to 1, so no cancellation occurs for any ka/α or ka/β, the exact limits included, and the result is never negative by rounding. The same holds when α and β are almost equal (MOD-2C-21). The cases ka = k10, ka = k12 or ka = k21 are not special.
+- Status: `documented, untested`
+- Sources: D (limits; H12 and H13 against a 70-digit evaluation); MOD-AB1-02 and MOD-AB1-03 (the one-compartment limit and its stable forms); design choice for the evaluation. Worked example N4 gives values at ka = α, ka = β and their neighbours, and the damage done to the textbook form.
+
+#### MOD-2C-11 Lag time
+For the extravascular ids with lag, C(t) = 0 for t ≤ tlag and C(t) = the lag-free function of MOD-2C-09/10 (or MOD-2C-12) evaluated at t − tlag for t > tlag. Continuous at tlag, with a kink, as MOD-AB1-05. The IV ids have no lag.
+- Status: `documented, untested`
+- Sources: MOD-AB1-05, MOD-AB0-02; S-20 (the catalogue has the lagged first-order and zero-order two-compartment functions); D. Worked example N5.
+
+#### MOD-2C-12 Zero-order absorption
+The infusion function of MOD-2C-08 with the apparent Vc/F, CL/F, Q/F, Vp/F and T the absorption duration: C(t) = (A/(α·T))·(1 − e^(−α·t)) + (B/(β·T))·(1 − e^(−β·t)) for 0 ≤ t ≤ T and the decaying sum of MOD-2C-08 after T; with lag, shifted by tlag as MOD-2C-11. Its stable one-compartment kernels are those of MOD-AB1-03 (zero-order input and infusion). Tmax = T (+ tlag) exactly and Cmax = C(T).
+- Status: `documented, untested`
+- Sources: MOD-AB0-01, MOD-AB0-02; S-20 (the same duration parameter); D. Worked example N5.
+
+### 11.3 Derived quantities
+
+#### MOD-2C-13 Disposition quantities
+Distribution half-life t½α = ln 2/α; terminal half-life t½β = ln 2/β (the value that `half_life` reports, as λz in NCA); initial concentration of the bolus C0 = D/Vc = A + B. CL = k10·Vc = D/(A/α + B/β). Vss = Vc + Vp = Vc·(1 + k12/k21) = CL·MRT_system (the Vss of NCA, S-14, S-15). Vz (Vβ) = CL/β = D/(β·AUC∞). Volume of the extrapolated terminal line, V_extrap = D/B. In general Vc < Vss < Vz < V_extrap (checked, H14: no exception in 200 000 random parameter sets; not proved here). MRT of the system, MRT_system = Vss/CL = (1/k10)·(1 + k12/k21). The mean residence time of the profile adds the input time: MRT = MRT_system + T/2 (infusion, zero-order absorption), + 1/ka (first-order absorption), plus tlag, as MOD-SEC-02. The Vc, Vp, Vss, Vz and CL of the extravascular ids are the /F quantities.
+- Status: `documented, untested`
+- Sources: S-17, S-18 (distribution and terminal half-lives, volumes of distribution, book level); S-33 (clearance, volume at steady state, extrapolated volume and half-life from the coefficients and exponents, abstract); S-14, S-15 (Vss by statistical moments, any mode of administration); `specs/nca.md` NCA-EXT-04..07; D. Worked example N1.
+
+#### MOD-2C-14 AUC and AUMC
+Bolus: AUC(0, ∞) = A/α + B/β = D/CL; AUMC(0, ∞) = A/α² + B/β² = D·Vss/CL²; AUC(0, t) = (A/α)(1 − e^(−α·t)) + (B/β)(1 − e^(−β·t)). For the other ids the finite-time areas are the combination of MOD-2C-06: AUC(0, t) = wα·AUC₁(α; t) + wβ·AUC₁(β; t), where AUC₁(λ; t) is the one-compartment area of MOD-IVI-02 or MOD-AB1-04 (stable forms in MOD-AB1-03) with V = Vc and k = λ, that is D/(Vc·λ) in place of D/CL. Explicitly for first-order absorption: AUC(0, t) = (D/Vc)·Σ_i (w_i/λ_i)·[1 − (ka·e^(−λ_i·t) − λ_i·e^(−ka·t))/(ka − λ_i)], λ_i ∈ {α, β} with the matching weights. For every id: AUC(0, ∞) = D/CL, independent of ka, T, tlag and Q; AUMC(0, ∞) = D·Vss/CL² + (D/CL)·m with m = 0 (bolus), T/2 + tlag (infusion, zero-order absorption), 1/ka + tlag (first-order absorption). MRT of the profile = AUMC/AUC = Vss/CL + m.
+- Status: `documented, untested`
+- Sources: S-17, S-18; S-33; S-13 (statistical moments); `specs/nca.md` NCA-EXT-04..07; D (integrals of e^(−λ·t) and t·e^(−λ·t); mean transit times of input and disposition add). Worked examples N1 to N3.
+
+#### MOD-2C-15 Cmax and Tmax
+Closed where the shape is simple: bolus, no interior maximum (Cmax = C0 at t = 0); infusion and zero-order absorption, Tmax = T + tlag and Cmax = C(T) (D: during the input C' > 0, since both combined terms increase; after it C' < 0, since both weights are positive). First-order absorption: numerical. C(t) has exactly one maximum for t > tlag (D: C' is a sum of three exponentials, e^(−ka·t), e^(−α·t), e^(−β·t) or their confluent versions, so it has at most two real zeros; C'(0) = D·ka/Vc > 0 and C' < 0 at large t, so the number of zeros is odd, hence one). Bracket: let x_α = ln(ka/α)/(ka − α) and x_β = ln(ka/β)/(ka − β) be the one-compartment peak times of MOD-AB1-04 (1/α and 1/β at equality); then Tmax − tlag lies in [min(x_α, x_β), max(x_α, x_β)] (D: both one-compartment derivatives are positive before their own peak time and negative after it, and the weights are positive). A safeguarded bracketing root finder (bisection steps guarantee convergence) on C'(t) = 0 inside this bracket, to a relative tolerance on t of 1e-12, gives Tmax; at the maximum C is flat, so Cmax = C(Tmax) is insensitive to the remaining error. The oracle produces `tmax_pred` and `cmax_pred` from its independent evaluation; Cmax is the primary check, Tmax the secondary one.
+- Status: `documented, untested`
+- Sources: MOD-AB1-04; D (sign changes of exponential sums; H13 for the bracket in worked example N3). Worked example N3.
+
+#### MOD-2C-16 Consistency with NCA
+For data lying exactly on a two-compartment model, the NCA of `specs/nca.md` agrees with the analytic values only when the sampling resolves both phases, so the checks are test properties with their own tolerance (independent computation, `AGENTS.md` section 5): (a) AUC(0, ∞) of the log-linear trapezoid on a dense grid tends to D/CL; on a sparse grid the error of the trapezoids on a biexponential is not zero (NCA-AUC-10); (b) λz tends to β only when the window starts late enough that the α-term is negligible, A·e^(−α·t) ≤ ε·B·e^(−β·t), that is t ≥ ln(A/(ε·B))/(α − β) (N1 with ε = 1e-6: t ≥ 15.7); an earlier window overestimates λz and so underestimates t½, Vz and the extrapolated area; (c) CL = D/AUC∞ is the same quantity as the model's CL; Vz (NCA) tends to CL/β and not to Vss; (d) Vss of NCA (from AUMC∞) tends to Vc + Vp, so Vss ≠ Vz is expected and not an error; (e) for the IV bolus the back-extrapolated C0 of NCA tends to A + B only if the first samples are early enough; (f) for the infusion and zero-order ids, MRT_NCA − T/2 tends to Vss/CL (NCA-EXT-04); (g) the dose-normalised quantities of the extravascular ids are the /F values.
+- Status: `documented, untested`
+- Sources: `specs/nca.md` NCA-LZ-01, NCA-EXT-04..07, NCA-AUC-10, W2, MOD-SEC-03; S-17, S-18 (a biexponential curve has terminal slope β only after the distribution phase, book level); D.
+
+### 11.4 Partial derivatives
+
+#### MOD-2C-17 Internal parameters and the choice of parameterisation
+Define the internal parameters ψ = (V, α, β, w) with V = Vc and w = wα (wβ = 1 − w). With Φ(λ, t) of MOD-2C-06 (it includes the dose and the input parameters), C = (1/V)·[ w·Φ(α, t) + (1 − w)·Φ(β, t) ]. Every partial derivative of C with respect to ψ and to the input parameters is a combination of the one-compartment derivatives, which the one-compartment engine already has for k, ka, dur and tlag (`specs/fit.md` FIT-JAC-02). The derivatives with respect to a user parameterisation are the chain rule through ψ (MOD-2C-19). Which set is simplest: the macro set (a, b, alpha, beta) gives the most direct formulas, because C = (a/D)·Φ(α, t) + (b/D)·Φ(β, t) is linear in a and b; the ψ set is the natural intermediate. The clearance set is nevertheless the default for fitting: its parameters are positive, directly interpretable, and free of the ordering constraint α > β that a box-bounded fit cannot express. The engine implements the Jacobian ∂ψ/∂θ for the three sets of MOD-2C-02 and multiplies; forward differences remain the user default and analytic derivatives an option, as in FIT-JAC-01/02.
+- Status: `assumed`
+- Sources: D (calculus); `specs/fit.md` FIT-JAC-01, FIT-JAC-02 (what the fit needs); design choice for the default parameterisation. H14 (analytic against 70-digit central differences).
+
+#### MOD-2C-18 Derivatives with respect to ψ and the input parameters
+With Φ_α = Φ(α, t), Φ_β = Φ(β, t), Φ_λ = ∂Φ/∂λ and D fixed:
+- ∂C/∂V = −C/V.
+- ∂C/∂w = (Φ_α − Φ_β)/V.
+- ∂C/∂α = (w/V)·Φ_λ(α, t); ∂C/∂β = ((1 − w)/V)·Φ_λ(β, t).
+- For an input parameter η ∈ {ka, dur, tlag}: ∂C/∂η = (1/V)·[ w·∂Φ/∂η(α, t) + (1 − w)·∂Φ/∂η(β, t) ].
+For the IV bolus Φ = D·e^(−λ·t) and Φ_λ = −t·Φ. With the macro parameters (D fixed): ∂C/∂a = Φ_α/D, ∂C/∂b = Φ_β/D, ∂C/∂alpha = (a/D)·Φ_λ(α, t), ∂C/∂beta = (b/D)·Φ_λ(β, t). `dur` is normally fixed in a fit (FIT-BND-03); the derivative with respect to tlag has a kink at t = tlag (zero before it, the one-sided value after it), as in the one-compartment case.
+- Status: `documented, untested`
+- Sources: D (derivative of a sum of two terms; MOD-2C-06). Worked example N8.
+
+#### MOD-2C-19 Chain rule to the user parameterisations
+Write α_θ = ∂α/∂θ, β_θ = ∂β/∂θ, d = α − β.
+- Micro set (V, k10, k12, k21): α_θ = (α·S_θ − P_θ)/d and β_θ = −(β·S_θ − P_θ)/d, with S_θ = 1 for the three constants and P_θ = k21 (for k10), 0 (for k12), k10 (for k21). That is ∂α/∂k10 = wα, ∂β/∂k10 = wβ; ∂α/∂k12 = α/d, ∂β/∂k12 = −β/d; ∂α/∂k21 = (α − k10)/d, ∂β/∂k21 = (k10 − β)/d (in every case α_θ + β_θ = S_θ). Weight: ∂w/∂θ = [ (α_θ − ∂k21/∂θ) − w·(α_θ − β_θ) ]/d, with ∂k21/∂θ = 1 for k21 and 0 for the others. V enters only through ∂C/∂V.
+- Clearance set (cl, vc, q, vp), through the micro set: ∂k10/∂cl = 1/vc, ∂k10/∂vc = −k10/vc; ∂k12/∂q = 1/vc, ∂k12/∂vc = −k12/vc; ∂k21/∂q = 1/vp, ∂k21/∂vp = −k21/vp; V = vc. With ∂C/∂k_j = ∂C/∂α·α_j + ∂C/∂β·β_j + ∂C/∂w·w_j: ∂C/∂cl = (∂C/∂k10)/vc; ∂C/∂q = (∂C/∂k12)/vc + (∂C/∂k21)/vp; ∂C/∂vp = −k21·(∂C/∂k21)/vp; ∂C/∂vc = ∂C/∂V − [k10·∂C/∂k10 + k12·∂C/∂k12]/vc.
+- Macro set: V = D/(a + b), w = a/(a + b); ∂C/∂a and ∂C/∂b are direct (MOD-2C-18) and α, β are parameters.
+The differences α − k10 and α − k21 are evaluated stably as in MOD-2C-03 (α − k10 = (u′ + r)/2 with u′ = k12 + k21 − k10 when u′ ≥ 0, otherwise k12·k10/((r − u′)/2)). The derivatives with respect to the micro-constants grow like 1/d when α ≈ β: that is the real sensitivity (the data cannot tell k12 from zero) and is reported as such, not suppressed.
+- Status: `documented, untested`
+- Sources: D (implicit differentiation of r² − S·r + P = 0); H14 (the chain rule reproduces 70-digit central differences in worked example N8). Not a textbook result.
+
+### 11.5 Catalogue, numerics
+
+#### MOD-2C-20 Model ids and defaults
+Added to the table of MOD-GEN-05 (the prefix `pk2` was reserved there). The six ids coincide one to one with the six single-dose two-compartment functions of S-20.
+
+| model id | route | input | parameters (default set) | equation |
+|---|---|---|---|---|
+| `pk2.iv_bolus` | IV | bolus | cl, vc, q, vp | MOD-2C-07 |
+| `pk2.iv_infusion` | IV | zero-order, duration T | cl, vc, q, vp, dur | MOD-2C-08 |
+| `pk2.oral_1` | extravascular | first-order, no lag | cl, vc, q, vp (all /F), ka | MOD-2C-09, 10 |
+| `pk2.oral_1_lag` | extravascular | first-order with lag | cl, vc, q, vp, ka, tlag | MOD-2C-11 |
+| `pk2.oral_0` | extravascular | zero-order, no lag | cl, vc, q, vp, dur | MOD-2C-12 |
+| `pk2.oral_0_lag` | extravascular | zero-order with lag | cl, vc, q, vp, dur, tlag | MOD-2C-12 |
+
+The default parameterisation is the clearance set for every id; the micro and macro sets are selected by supplying their parameters instead (MOD-2C-02). Results always show all three sets (cl, vc, q, vp; k10, k12, k21; a, b, alpha, beta) plus the quantities of MOD-2C-13 and, where closed, MOD-2C-15. Vocabulary additions to MOD-VOC-01 (same status): parameters `vc`, `vp`, `q`, `k10`, `k12`, `k21`, `a`, `b`, `alpha`, `beta` (aliases V1, V2, Q, CL in S-20, S-35), and outputs `half_life` (= terminal, ln 2/β), `half_life_alpha`, `vss`, `vz`, `v_extrap`, `auc_inf`, `aumc_inf`, `mrt_system`, `mrt`, `c0` (bolus), `cmax_pred`, `tmax_pred`. A one-compartment id is never silently upgraded or downgraded by the number of parameters supplied.
+- Status: `assumed`
+- Sources: S-20 (catalogue, argument names CL, V1, V2, Q, ka, tlag, dur/tinf); S-35 (cl, vc, q, vp); design choice (MOD-GEN-05 style, `AGENTS.md` section 7).
+
+#### MOD-2C-21 Numerics: the discriminant, α ≈ β, and the textbook forms
+Three places lose digits in a direct implementation. (1) The discriminant S² − 4·k10·k21 subtracts nearly equal numbers when k12 is small; the sum-of-non-negative-terms form of MOD-2C-03 does not (worked example N6: at k12 = 1e-12 and k10 = k21 = 0.2 the textbook form gives r with a relative error of 1.8e-5). (2) The weights (α − k21)/(α − β) and the reverse k12 = α + β − k10 − k21, repaired by MOD-2C-03/04. (3) The three-exponential oral form near ka = α or ka = β, repaired by MOD-2C-10. With these, α and β may be arbitrarily close, down to the point where k12·k21 underflows (MOD-2C-05 item 3), without cancellation: the combined form is a positive combination, and in the limit it becomes the one-compartment function with k = α ≈ β (N6). The textbook explicit forms are what the oracle's independent implementation evaluates in extended precision (OM-06), never what the engine evaluates. The sensitivities (MOD-2C-19) are not regularised. The fit's own safeguards for α ≈ β (Vp and Q unidentifiable when the data show a single phase) belong to `specs/fit.md` (open item OF-08).
+- Status: `assumed`
+- Sources: design choice (golden rule 6: no NaN from 0/0, no digits lost); MOD-AB1-03, MOD-NUM-01 (the one-compartment precedents); D; H12, H13 for the numbers.
+
+#### MOD-2C-22 Overflow, underflow and what the engine refuses
+Every exponent is negative, so e^(−λ·t) underflows to 0 and is correct as 0; the products t·e^(−a·t) are formed as in MOD-NUM-01. A concentration, area or derived quantity that is not finite (small vc with a large dose, tiny cl, a macro `a` + `b` that overflows) is an `Overflow` error as in MOD-NUM-02, never an infinity or a NaN. Because all terms of the combined form are non-negative, no clamp to 0 is needed except before the lag. The complete list of refusals is MOD-2C-05 together with MOD-GEN-04 (NaN or infinite times, non-finite parameters, unknown or missing parameter names). Times are accepted unsorted (MOD-GEN-02).
+- Status: `assumed`
+- Sources: golden rule 6 of `AGENTS.md`; MOD-NUM-01, MOD-NUM-02 (precedent); D.
+
+#### MOD-2C-23 Identifiability and ambiguity (for the fit)
+(a) Labels: in the macro set α > β is a convention; the same curve arises with the pairs (A, α) and (B, β) exchanged, which is why the engine refuses α ≤ β instead of sorting (MOD-2C-05). (b) With first-order absorption the three exponents of the profile are exchangeable as shapes: a profile with exponents λ1 > λ2 > λ3 can be read with ka = λ1 (usual) or with ka = λ2 or λ3 (flip-flop cases, MOD-AB1-06); not every assignment gives positive micro-constants, and the number of admissible readings is not specified here (open item OM-09). The initial estimates assume ka > α > β by default (`specs/fit.md` FIT-INI-03). (c) As Q → 0 or Vp → 0, one phase disappears (wα → 0 or wβ → 0) and Vp, then Q, become unidentifiable (∂C/∂vp → 0); the fit reports a singular or ill-conditioned covariance matrix with the usual NC and a readable reason, and the bounds of FIT-BND-03 (lower bound 1e-6 × the initial estimate) keep the model inside MOD-2C-05. (d) From concentrations of an extravascular dose only cl/F, vc/F, q/F, vp/F are identifiable (MOD-GEN-03).
+- Status: `assumed`
+- Sources: S-17, S-18 (flip-flop, identifiability of polyexponential decompositions, book level); S-33; D; `specs/fit.md` FIT-INI-03, FIT-BND-03.
+
+#### MOD-2C-24 Multiple dosing (later)
+Superposition of single-dose profiles as MOD-MD-01. At steady state with equal doses at interval τ, each exponential e^(−λ·t) of the single-dose function (λ ∈ {α, β, ka}) is multiplied by 1/(1 − e^(−λ·τ)); in the combined form the two one-compartment steady-state functions are combined with the weights wα, wβ. Not specified further; a later card.
+- Status: `documented, untested`
+- Sources: S-17, S-18 (superposition, book level); S-20 (steady-state two-compartment functions exist in the catalogue); D.
+
+### 11.6 Worked examples
+
+Computed by the reader in a throwaway script with 70-digit decimal arithmetic, outside the repository (checks H11 to H14), and targets for unit tests and for the oracle. Common case for N1 to N5, N7 and N8: D = 100, Vc = 10, CL = 2, Q = 4, Vp = 8, hence k10 = 0.2, k12 = 0.4, k21 = 0.5, S = 1.1, α = 1 and β = 0.1 exactly (αβ = 0.1 = k10·k21), wα = 5/9, wβ = 4/9, A = 50/9 = 5.5555555556, B = 40/9 = 4.4444444444. Values to the digits shown.
+
+**N1. IV bolus (`pk2.iv_bolus`).** C0 = 10. C(1) = 6.0652743089, C(4) = 3.0809537540, C(12) = 1.3386750763, C(24) = 0.4031909037. t½α = 0.6931471806, t½β = 6.9314718056. AUC(0, ∞) = A/α + B/β = 5.5555555556 + 44.4444444444 = 50 = D/CL; AUC(0, 4) = 20.1062444046, AUC(0, 24) = 45.9680909647. AUMC(0, ∞) = A/α² + B/β² = 5.5555555556 + 444.4444444444 = 450 = D·Vss/CL². MRT = 9 = Vss/CL, Vss = 18 = Vc + Vp, Vz = CL/β = 20, V_extrap = D/B = 22.5 (order Vc 10 < Vss 18 < Vz 20 < V_extrap 22.5, MOD-2C-13). C(24) agrees with a fourth-order Runge-Kutta solution of the ODEs (0.4031909037182, H11). For NCA of data on this curve, the α-term is below 1e-6 of the β-term from t ≥ 15.7 (MOD-2C-16 b).
+
+**N2. IV infusion, T = 2 (R0 = 50; `pk2.iv_infusion`).** C(1) = 3.8706144848; C(2) = 6.4300519226 = Cmax at Tmax = 2; C(5) = 3.1037489142; C(24) = 0.4463378912. AUC(0, 2) = 7.3160986930, AUC(0, 24) = 45.5366210942, AUC(0, ∞) = 50. MRT of the profile = 9 + T/2 = 10, AUMC(0, ∞) = 500. The same numbers describe `pk2.oral_0` with the apparent quantities.
+
+**N3. First-order absorption, ka = 2 (`pk2.oral_1`).** C(1) = 6.1838339644, C(4) = 3.3342105358 (Runge-Kutta: 3.3342105358, H11), C(12) = 1.4091639967. Oral-profile coefficients (MOD-2C-09): A_o = 11.1111111111, B_o = 4.6783625731, coefficient of e^(−ka·t) = −15.7894736842. Tmax = 0.9501291546, Cmax = 6.1898890498; the bracket of MOD-2C-15 is [ln 2/1, ln 20/1.9] = [0.6931471806, 1.5767009876] and contains Tmax. AUC(0, 12) = 35.9089744488, AUC(0, 24) = 45.7558852258, AUC(0, ∞) = 50, MRT of the profile = 9 + 1/2 = 9.5. Other ka: ka = 1 (= α): C(1) = 4.6954190034, C(4) = 3.6267890476, C(12) = 1.4877580966, Tmax = 1.5350257231, Cmax = 5.0089388633; ka = 0.1 (= β): C(1) = 0.7336055048, C(4) = 1.5941519381, C(12) = 1.7922876905, Tmax = 8.6170616924, Cmax = 1.8785197816.
+
+**N4. The limits ka = α and ka = β and their neighbours (t = 3, `pk2.oral_1`).** ka = α = 1: C(3) = 4.242283990397 (the explicit limit form of MOD-2C-10 and the stable form agree to all digits shown). ka = α + 1e-3, +1e-6, +1e-9: 4.242226751871, 4.242283933924, 4.242283990341. ka = β = 0.1: C(3) = 1.414320067276; ka = β + 1e-3, +1e-6, +1e-9: 1.426062473717, 1.414331830891, 1.414320079039. The textbook three-exponential form (MOD-2C-09) in double precision gives 4.242226751871 at +1e-3 (correct), 4.242283933897 at +1e-6 (relative error 6e-12) and 4.242283962510 at +1e-9 (relative error 6.6e-9, instead of 4.242283990341): the loss the stable form removes.
+
+**N5. Lag and zero-order with lag (tlag = 0.5).** `pk2.oral_1_lag`, ka = 2: C(0.5) = 0 and C(3) = 4.4491793389 (= the lag-free C(2.5) of N3); Tmax = 0.9501291546 + 0.5 = 1.4501291546, Cmax unchanged; MRT of the profile 9 + 0.5 + 0.5 = 10 (MOD-2C-14). `pk2.oral_0_lag`, T = 2: C(3) = 5.2885410903 (= the infusion function of N2 at 2.5); Tmax = T + tlag = 2.5.
+
+**N6. Nearly equal exponents (`pk2.iv_bolus`; k10 = k21 = 0.2, k12 = 1e-9, Vc = 10, D = 100).** The stable discriminant gives r = α − β = 2.828427126514e-5 (the textbook S² − 4·k10·k21 in double precision gives 2.828427045497e-5, relative error 2.9e-8; at k12 = 1e-12 the figures are 8.944271910005e-7 against 8.944110913856e-7, relative error 1.8e-5). Weights wα = 0.500017677670, wβ = 0.499982322330. C(1) = 8.187307523411 and C(10) = 1.353352832366, which are 10·e^(−0.2) and 10·e^(−2) to 12 digits: the model has become a one-compartment model with k = 0.2. A second case, k10 = 0.2, k21 = 0.5, k12 = 1e-9: α = 0.500000001667, β = 0.199999999333, wα = 5.556e-9, a very small but positive weight.
+
+**N7. Conversions both ways.** Forward: (cl, vc, q, vp) = (2, 10, 4, 8) gives (k10, k12, k21) = (0.2, 0.4, 0.5), then α = 1, β = 0.1, (a, b) = (50/9, 40/9). Reverse from (a, b, alpha, beta) = (50/9, 40/9, 1, 0.1) and D = 100: vc = 100/(a + b) = 10; w = 5/9; k21 = 1·(4/9) + 0.1·(5/9) = 0.5; k10 = 0.1/0.5 = 0.2; k12 = (5/9)(4/9)(0.9)²/0.5 = 0.4; cl = 2, q = 4, vp = q/k21 = 8. Oral coefficients for ka = 2: A_o = ka·A/(ka − α) = 2·(50/9)/1 = 11.1111111111 and B_o = 2·(40/9)/1.9 = 4.6783625731.
+
+**N8. Partial derivatives (IV bolus, t = 1, clearance set).** Sensitivities of the exponents at this point: ∂α/∂(k10, k12, k21) = (0.5555555556, 1.1111111111, 0.8888888889), ∂β/∂(k10, k12, k21) = (0.4444444444, −0.1111111111, 0.1111111111) (each pair adds to 1). C(1) = 6.0652743089 and ∂C/∂(cl, vc, q, vp) = (−0.5869035023, −0.3130661305, −0.3180294080, −0.0610860459), reproduced to ten digits by 70-digit central differences with step 1e-25 (H14).
+
+### 11.7 Hand checks of section 11
+
+- **H11.** A fourth-order Runge-Kutta solution of the three ODEs (step 2e-5 for the oral case, 1.2e-3 for the bolus, double precision) reproduces C(4) of N3 (3.334210535799908) and C(24) of N1 (0.4031909037182288) to 12 digits.
+- **H12.** The explicit limit forms of MOD-2C-10 and the stable combination of MOD-2C-06 agree to 12 digits at t = 3 for ka = α and ka = β (N4); the three-exponential form of MOD-2C-09 agrees with the combination at ka = α + 1e-3.
+- **H13.** 70-digit evaluation of the neighbours of N4 and of the Tmax bracket of N3 (bisection on C′ inside the bracket for ka = 2, 1, 0.1); the AUCs of N1 to N3 are 70-digit evaluations of the combination of MOD-2C-06, so they are not independent of it: the independent check of the areas (ODE-integrated) is left to the oracle (OM-06).
+- **H14.** The chain rule of MOD-2C-19 reproduces central differences at 70 digits (N8). In 200 000 random parameter sets (rates between e^−6 and e^3, Vc between 0.1 and 50) the order Vc < Vss < Vz < V_extrap of MOD-2C-13 held in every one.
+
+### 11.8 Open items (two compartments)
+
+| id | item | rule | who and how |
+|---|---|---|---|
+| OM-06 | The two-compartment model oracle does not exist. Cases it must produce (card T-032): for each of the six ids, the base case of N1 in the three parameterisations (they must give the same values), a case with a clear distribution phase (k12 much larger than k10) and one with a small peripheral exchange; closed-form grids with C(t), AUC(0, t), AUMC(0, t) (finite and to infinity), MRT, Vss, Vz, V_extrap, α, β, A, B, wα, the half-lives, `tmax_pred`, `cmax_pred`; an independent 256-bit evaluation of the explicit sums of this section (the textbook three-exponential forms, not the engine's combination), rounded once to double as in T-009, cross-checked within 1e-8 by a matrix exponential of the 3 × 3 (or 2 × 2) system and by an adaptive ODE solution (`deSolve`) that also integrates the AUC and the first moment; tolerance 1e-12 relative, an expected zero exact; grids with t = −1, t = 0, the lag and duration boundaries | all | oracle card T-032 |
+| OM-07 | Oracle edge cases: ka = α, ka = β, and ka = α ± 1e-3, 1e-6, 1e-9 and the same for β; ka between α and β; ka below β (flip-flop shape); ka/α = 500; k12 = 1e-3, 1e-6, 1e-9, 1e-12 with k10 = k21 and with k10 ≠ k21; α/β = 1e3; very small and very large times (underflow); dose 0; the error cases of MOD-2C-05 (q = 0, vp = 0, alpha ≤ beta, macro without dose, mixed sets, unknown names) as specification tests | MOD-2C-05, 10, 21, 22 | oracle card T-032 |
+| OM-08 | Which parameter sets and names the reference software uses for two compartments, whether its oral macro models use the IV coefficients or the oral-profile coefficients (MOD-2C-02, MOD-2C-09), whether it sorts α and β | MOD-2C-02, 05, 20 | question Q-009 (names); the headers of the human's exports |
+| OM-09 | The number of admissible readings of a three-exponential oral profile (flip-flop cases) and the warning a fit must give | MOD-2C-23 | later card; `specs/fit.md` OF-08, OF-11 |
+| OM-10 | Derivative oracle: gradients of C in the three parameterisations against 256-bit central differences (or complex-step evaluation), at the base case and near α ≈ β; the partial-derivative table of the fit against the analytic Jacobian | MOD-2C-17 to 19 | oracle card T-032, engine card |
+| OM-11 | Textbook worked examples with page references: none can be cited yet, because the reader cannot read the books. Candidates for someone holding them: the two-compartment IV bolus and oral examples of Gibaldi and Perrier (S-18, the chapters on the two-compartment open model and on multicompartment absorption); the worked examples of the compartmental chapters of Gabrielsson and Weiner (S-17); the numerical examples of Wagner 1976 (S-33), which relate coefficients and exponents to CL, Vss and Vβ. Each must give chapter, example and page and the printed digits, and be recomputed by the engine within the printed precision | all | someone holding the books (as OM-05) |
+| OM-12 | Steady state and multiple dosing for two compartments, three compartments, Michaelis-Menten elimination | MOD-2C-24 | later cards |
+| OM-13 | Section and page numbers for the two-compartment equations in S-17 and S-18 (MOD-2C-01 to 16); the pages of S-34 were taken from reference lists and not checked at the publisher | all | someone holding the books |
