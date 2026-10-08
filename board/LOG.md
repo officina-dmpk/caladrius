@@ -28,3 +28,4 @@
 - 2026-10-08 T-021 (interface): caladrius-cli (commands, json/csv, project files), engine follow-ups, conformance for models (886) and fits (5340); commits 0dd4ba6, ac29053; review approved.
 - 2026-10-08 T-022 (interface): caladrius-mcp stdio server (18 tools, schemas, bounded reads, batches, notifications); commits e9abd59, 6ec4320; review approved. STEP 4 REACHED (673 workspace tests).
 - 2026-10-08 T-025 (engine): explicit time/conc/dose units in NCA options, unit string per result, CL in L/time; commit 389e8cf; review approved.
+- 2026-10-08 published: https://github.com/officina-dmpk/caladrius (public, 75 commits), per Q-013.
