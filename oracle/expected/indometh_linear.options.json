@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "case": "indometh_linear",
+  "dataset": "indometh",
+  "data_file": "data/indometh.csv",
+  "generated_by": "oracle/scripts/nca_pknca.R",
+  "route": "iv_bolus",
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "dose": "25 mg IV bolus (test constant)",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "PKNCA": "0.12.1",
+    "jsonlite": "2.0.0"
+  },
+  "pknca_options": {
+    "conc.na": "drop",
+    "conc.blq": {
+      "first": "keep",
+      "middle": "drop",
+      "last": "keep"
+    },
+    "first.tmax": true,
+    "allow.tmax.in.half.life": false,
+    "min.hl.points": 3,
+    "adj.r.squared.factor": 0.0001,
+    "min.hl.r.squared": 0.9,
+    "min.span.ratio": 2,
+    "max.aucinf.pext": 20,
+    "max.missing": 0.5,
+    "auc.method": "linear"
+  },
+  "pknca_dose_route": "intravascular",
+  "interval": {
+    "start": 0,
+    "end": "Inf"
+  },
+  "parameter_notes": {
+    "aucpext": "percentage of AUC(0-inf) that is extrapolated, in percent",
+    "lambda.z": "1/h; selected by PKNCA best adjusted R squared among the last 3 or more points, Tmax excluded",
+    "half.life": "ln(2) / lambda.z, in h",
+    "mrt": "extravascular: mrt.obs/mrt.pred = AUMC/AUC (no absorption-time correction); IV: mrt.iv.obs/mrt.iv.pred",
+    "cl": "dose / AUC(0-inf); this is CL/F for the oral case",
+    "vz": "dose / (lambda.z * AUC(0-inf)); this is Vz/F for the oral case"
+  },
+  "preprocessing": [
+    "C0 is back-extrapolated on the log scale from the first two positive concentrations (pk.calc.c0, method logslope) and added as a point at t = 0 for AUC, AUMC and derived parameters",
+    "cmax, tmax and tfirst are taken from the observed samples only, without the back-extrapolated point",
+    "the added point and the observed Cmax point are excluded from the terminal-phase selection (PKNCA exclude_half.life), so that lambda.z is the one obtained on the observed samples only; the script asserts that lambda.z is identical with and without the added point"
+  ],
+  "n_subjects": 6,
+  "parameters": ["c0", "cmax", "tmax", "tfirst", "tlast", "clast.obs", "lambda.z", "r.squared", "adj.r.squared", "lambda.z.time.first", "lambda.z.time.last", "lambda.z.n.points", "clast.pred", "half.life", "span.ratio", "auclast", "aucall", "aumclast", "aucinf.obs", "aucinf.pred", "aumcinf.obs", "aumcinf.pred", "aucpext.obs", "aucpext.pred", "cl.obs", "cl.pred", "mrt.iv.obs", "mrt.iv.pred", "vz.obs", "vz.pred", "vss.iv.obs", "vss.iv.pred"],
+  "n_values": 192,
+  "n_na": 0
+}
