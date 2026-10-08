@@ -256,6 +256,52 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     app.state.mode = ThemeMode::Dark;
     scenes.push(("29-palette-query-nca-dark", app));
 
+    // The settings page: the defaults with the system locale shown as a suggestion; a changed
+    // page in the dark theme where the locale's suggestion is in use; a search.
+    let mut app = UiApp::new();
+    app.set_system_locale(Some("fr-FR"));
+    app.perform(vec![Action::OpenSettings]);
+    scenes.push(("30-settings-defaults-locale-suggested", app));
+
+    let mut app = nca(with_oral());
+    app.set_system_locale(Some("fr-FR"));
+    app.apply_locale_suggestion();
+    app.perform(vec![
+        Action::SetSetting {
+            key: "fit.max_iterations".to_owned(),
+            value: json!(80),
+        },
+        Action::SetSetting {
+            key: "nca.auc_method".to_owned(),
+            value: json!("linear"),
+        },
+        Action::SetSetting {
+            key: "theme".to_owned(),
+            value: json!("dark"),
+        },
+        Action::OpenSettings,
+    ]);
+    scenes.push(("31-settings-changed-comma-dark", app));
+
+    let mut app = UiApp::new();
+    app.perform(vec![Action::OpenSettings]);
+    app.state.settings_query = "fit".to_owned();
+    scenes.push(("32-settings-search-fit", app));
+
+    // With a decimal comma and six digits the results follow.
+    let mut app = nca(with_oral());
+    app.perform(vec![
+        Action::SetSetting {
+            key: "decimal_mark".to_owned(),
+            value: json!("comma"),
+        },
+        Action::SetSetting {
+            key: "significant_digits".to_owned(),
+            value: json!(6),
+        },
+    ]);
+    scenes.push(("33-nca-decimal-comma-six-digits", app));
+
     scenes
 }
 

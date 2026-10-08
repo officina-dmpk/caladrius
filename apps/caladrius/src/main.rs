@@ -9,6 +9,7 @@
 //! read: the file dialog, a path on the command line and files dropped on the window all end in
 //! `UiApp::load_csv(name, bytes)`; the interface itself never touches the disk.
 
+mod config;
 mod projectio;
 
 use std::path::{Path, PathBuf};
@@ -97,6 +98,21 @@ impl Desktop {
         }
     }
 
+    /// Reads the stored settings and the system locale into the interface. With no stored
+    /// settings (a first start) the locale suggests the decimal mark, and the settings page
+    /// shows that it did.
+    fn start_settings(&mut self) {
+        self.ui
+            .set_system_locale(config::system_locale().as_deref());
+        match config::read_settings() {
+            Ok(Some(text)) => {
+                self.ui.set_settings_json(&text);
+            }
+            Ok(None) => self.ui.apply_locale_suggestion(),
+            Err(message) => self.ui.perform(vec![Action::Notice(message)]),
+        }
+    }
+
     /// Remembers `path` as the project's file when the interface now holds that file.
     fn follow_project(&mut self, path: &Path) {
         if self.ui.file_name() == Some(projectio::display_name(path).as_str()) {
@@ -170,6 +186,11 @@ impl Desktop {
                         ask,
                     } => self.save_project(&suggested, &bytes, ask),
                     Request::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                    Request::SaveSettings(text) => {
+                        if let Err(message) = config::write_settings(&text) {
+                            self.ui.perform(vec![Action::Notice(message)]);
+                        }
+                    }
                 }
             }
         }
@@ -245,6 +266,7 @@ fn main() -> ExitCode {
         options,
         Box::new(move |_cc| {
             let mut desktop = Desktop::new(UiApp::new());
+            desktop.start_settings();
             if let Some(path) = &first_file {
                 desktop.open(Path::new(path));
             }

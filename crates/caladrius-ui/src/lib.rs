@@ -31,6 +31,9 @@ pub mod plot;
 pub mod plotdata;
 pub mod projectfile;
 pub mod projectmenu;
+pub mod settings;
+pub mod settingsflow;
+pub mod settingspage;
 pub mod sheet;
 pub mod sim;
 pub mod theme;
@@ -45,3 +48,5 @@ pub use theme::{ThemeMode, Tokens};
 mod tests_palette;
 #[cfg(test)]
 mod tests_project;
+#[cfg(test)]
+mod tests_settings;

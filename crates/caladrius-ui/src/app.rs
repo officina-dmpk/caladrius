@@ -17,6 +17,8 @@ use crate::nca::{self, NcaPage};
 use crate::palette::{self, CommandLine, PaletteState};
 use crate::projectfile::{FileState, Guarded};
 use crate::projectmenu;
+use crate::settings::{Settings, ThemeChoice};
+use crate::settingspage;
 use crate::sheet::{self, Rejected};
 use crate::sim::{self, SimPage};
 use crate::theme::{ThemeMode, Tokens};
@@ -88,6 +90,15 @@ pub enum Action {
     DescribeProject,
     /// Open the settings page.
     OpenSettings,
+    /// Change one setting, by its key (`nca.auc_method`).
+    SetSetting {
+        key: String,
+        value: Value,
+    },
+    /// Put one setting back to its default.
+    ResetSetting(String),
+    /// Take the decimal mark the system locale suggests.
+    UseSystemSuggestion,
 }
 
 /// What the engine understood of a typed cell, when that is not what was typed (`3,25` is 3.25).
@@ -116,6 +127,8 @@ pub enum Selection {
     NewFit,
     /// A model simulation being set up.
     NewSimulation,
+    /// The settings page.
+    Settings,
 }
 
 /// Which analysis page is on screen.
@@ -145,6 +158,8 @@ pub enum Request {
     },
     /// Close the window: the person has decided about the unsaved changes.
     Close,
+    /// Store the settings (JSON text) with the application's configuration.
+    SaveSettings(String),
 }
 
 /// The UI state that is worth keeping: serializable (golden rule 7).
@@ -163,6 +178,9 @@ pub struct UiState {
     /// The command palette.
     #[serde(default)]
     pub palette: PaletteState,
+    /// What is typed in the search box of the settings page.
+    #[serde(default)]
+    pub settings_query: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -199,6 +217,12 @@ pub struct UiApp {
     pub(crate) file: FileState,
     /// The registry as the palette lists it (read once).
     pub(crate) commands: Vec<CommandLine>,
+    /// The settings of the person.
+    pub settings: Settings,
+    /// What the program last was asked to store.
+    pub(crate) saved_settings: String,
+    /// The theme the operating system reports, when it does.
+    pub(crate) system_theme: Option<ThemeMode>,
     theme_error: Option<String>,
 }
 
@@ -234,6 +258,9 @@ impl UiApp {
             requests: Vec::new(),
             file: FileState::default(),
             commands: palette::registry(),
+            settings: Settings::default(),
+            saved_settings: Settings::default().to_json(),
+            system_theme: None,
             theme_error,
         };
         app.file.saved = app.engine.project().clone();
@@ -442,7 +469,10 @@ impl UiApp {
             .unwrap_or_default();
         self.state.fit = None;
         self.state.sim = None;
-        self.state.nca = Some(NcaPage::new(id, subject));
+        let mut page = NcaPage::new(id, subject);
+        // The defaults of the settings, for what differs from the engine's.
+        page.options = self.settings.nca_options();
+        self.state.nca = Some(page);
         self.run_nca();
     }
 
@@ -461,7 +491,12 @@ impl UiApp {
                 Action::SimChanged => self.sim_changed(),
                 Action::SimSave => self.sim_save(),
                 Action::ToggleTheme => {
-                    self.state.mode = self.state.mode.toggled();
+                    self.settings.theme = match self.state.mode.toggled() {
+                        ThemeMode::Light => ThemeChoice::Light,
+                        ThemeMode::Dark => ThemeChoice::Dark,
+                    };
+                    self.apply_settings();
+                    self.remember_settings();
                 }
                 Action::RunNca => self.run_nca(),
                 Action::RunAgain(id) => {
@@ -554,6 +589,9 @@ impl UiApp {
                 Action::PaletteRun(key) => self.palette_run(&key),
                 Action::DescribeProject => self.describe_project(),
                 Action::OpenSettings => self.open_settings(),
+                Action::SetSetting { key, value } => self.set_setting(&key, value),
+                Action::ResetSetting(key) => self.reset_setting(&key),
+                Action::UseSystemSuggestion => self.use_system_suggestion(),
             }
         }
     }
@@ -597,6 +635,11 @@ impl UiApp {
 
     /// Draws the whole window and applies what the person did.
     pub fn ui(&mut self, ctx: &Context) {
+        let system = ctx.system_theme().map(|t| match t {
+            egui::Theme::Dark => ThemeMode::Dark,
+            egui::Theme::Light => ThemeMode::Light,
+        });
+        self.follow_settings(system);
         if self.applied != Some(self.state.mode) {
             if let Ok(t) = Tokens::embedded(self.state.mode) {
                 self.tokens = t;
@@ -943,6 +986,13 @@ impl UiApp {
                 ),
                 None => self.welcome(ui, tokens, actions),
             },
+            Selection::Settings => settingspage::central(
+                ui,
+                tokens,
+                &self.settings,
+                &mut self.state.settings_query,
+                actions,
+            ),
             Selection::Analysis(_) | Selection::NewFit | Selection::NewSimulation => {
                 match (self.shown(), self.sheet.as_ref()) {
                     (Shown::Nca, Some(s)) => {

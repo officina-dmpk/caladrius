@@ -203,6 +203,7 @@ impl Axes {
             .show_grid(false)
             .x_grid_spacer(move |_| x_marks.clone())
             .y_grid_spacer(move |_| y_grid.clone())
+            .x_axis_formatter(|mark, _| fmt::number(mark.value))
             .y_axis_formatter(move |mark, _| {
                 if log {
                     if (mark.value - mark.value.round()).abs() < 1e-9 {
