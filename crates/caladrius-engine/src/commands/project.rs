@@ -168,26 +168,41 @@ fn load(engine: &mut Engine, params: Value) -> Result<Value, CommandError> {
             ));
         }
     };
+    // A history that cannot be read or is damaged is left out: the project itself is what the
+    // person asked for, and the result says that the history was not restored.
     let saved_history = doc.as_object_mut().and_then(|m| m.remove("history"));
-    let entries: Vec<HistoryEntry> = match saved_history {
-        Some(h) => serde_json::from_value(h).map_err(|e| {
-            CommandError::new(
-                "load_failed",
-                format!("the history of the project is not readable: {e}"),
-            )
-        })?,
-        None => Vec::new(),
+    let (entries, mut history_note) = match saved_history {
+        None => (Some(Vec::new()), None),
+        Some(h) => match serde_json::from_value::<Vec<HistoryEntry>>(h) {
+            Ok(entries) => (Some(entries), None),
+            Err(e) => (
+                None,
+                Some(format!(
+                    "the saved history is not readable and was left out: {e}"
+                )),
+            ),
+        },
     };
     let bytes = serde_json::to_vec(&doc).map_err(|e| {
         CommandError::new("load_failed", format!("the project cannot be read: {e}"))
     })?;
     let project = Project::from_bytes(&bytes)?;
     // Everything is checked: from here on nothing fails, so a refused file changes nothing.
-    let restored = engine.history.adopt(entries)?;
+    let restored = match entries.map(|e| engine.history.adopt(e)) {
+        Some(Ok(restored)) => restored,
+        Some(Err(e)) => {
+            history_note = Some(format!("the saved history was left out: {}", e.message));
+            false
+        }
+        None => false,
+    };
     engine.project = project;
     let mut out = overview(engine)?;
     if let Some(map) = out.as_object_mut() {
         map.insert("history_restored".to_owned(), json!(restored));
+        if let Some(note) = history_note {
+            map.insert("history_note".to_owned(), json!(note));
+        }
     }
     Ok(out)
 }
@@ -215,6 +230,7 @@ pub(crate) const LOAD: CommandDef = CommandDef {
         if let Some(map) = schema.as_object_mut() {
             if let Some(Value::Object(props)) = map.get_mut("properties") {
                 props.insert("history_restored".to_owned(), crate::schema::boolean());
+                props.insert("history_note".to_owned(), string());
             }
             if let Some(Value::Array(req)) = map.get_mut("required") {
                 req.push(json!("history_restored"));

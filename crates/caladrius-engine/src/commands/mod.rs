@@ -96,7 +96,11 @@ where
     match Option::<Value>::deserialize(deserializer)? {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s)),
-        Some(Value::Number(n)) => Ok(Some(n.to_string())),
+        // `1`, `1.0` and "1" are the same label (the worksheet writes whole numbers without a point).
+        Some(Value::Number(n)) => Ok(Some(match n.as_f64() {
+            Some(x) if x.fract() == 0.0 && x.abs() < 1e15 => format!("{x:.0}"),
+            _ => n.to_string(),
+        })),
         Some(_) => Err(D::Error::custom("a subject is a string or a number")),
     }
 }

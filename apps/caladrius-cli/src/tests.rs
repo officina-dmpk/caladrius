@@ -387,3 +387,159 @@ fn a_project_file_carries_state_between_invocations() {
     assert!(failure(&["project.describe", "--project", project]).contains("load_failed"));
     assert_eq!(fs::read_to_string(project).unwrap(), "{}");
 }
+
+#[test]
+fn an_argument_that_is_not_text_is_refused_with_its_position() {
+    use std::ffi::OsString;
+    #[cfg(windows)]
+    let bad = {
+        use std::os::windows::ffi::OsStringExt;
+        OsString::from_wide(&[0x61, 0xD800])
+    };
+    #[cfg(unix)]
+    let bad = {
+        use std::os::unix::ffi::OsStringExt;
+        OsString::from_vec(vec![0x61, 0xff])
+    };
+    let e = text_args([OsString::from("nca.run"), bad]).unwrap_err();
+    assert_eq!(e.0, "argument 2 is not valid text");
+    assert_eq!(
+        text_args([OsString::from("a"), OsString::from("b")]).unwrap(),
+        ["a", "b"]
+    );
+}
+
+#[test]
+fn data_import_with_a_csv_file_is_the_import_itself() {
+    let dir = scratch("import");
+    let file = csv_file(&dir);
+    let project = dir.join("p.caladrius.json");
+    let project = project.to_str().unwrap();
+    let out = run_args(&["data.import", "--csv", &file, "--project", project]).unwrap();
+    let v = json_out(&out);
+    assert_eq!(v["worksheet"]["name"], "study");
+    assert_eq!(v["worksheet"]["rows"], 9);
+    assert!(
+        out.notes.iter().any(|n| n.contains("unit `mg/L`")),
+        "{:?}",
+        out.notes
+    );
+    // The project was written: the worksheet is there for the next call.
+    let d = json_out(&run_args(&["project.describe", "--project", project]).unwrap());
+    assert_eq!(d["worksheets"][0]["name"], "study");
+    // A name can be given, and the CSV cannot be given twice.
+    let v = json_out(&run_args(&["data.import", "--csv", &file, "--param", "name=mine"]).unwrap());
+    assert_eq!(v["worksheet"]["name"], "mine");
+    assert!(failure(&["data.import", "--csv", &file, "--param", "csv=a,b"]).contains("once"));
+}
+
+#[test]
+fn a_repeated_parameter_is_refused_naming_the_key() {
+    for list in [
+        vec![
+            "data.describe",
+            "--param",
+            "worksheet=1",
+            "--param",
+            "worksheet=2",
+        ],
+        vec![
+            "nca.run",
+            "--param",
+            "options.auc_method=linear",
+            "--param",
+            "options=1",
+        ],
+        vec![
+            "nca.run",
+            "--param",
+            "options=1",
+            "--param",
+            "options.auc_method=linear",
+        ],
+    ] {
+        let m = failure(&list);
+        assert!(
+            m.contains("--param") && m.contains("conflicts"),
+            "{list:?}: {m}"
+        );
+    }
+    let m = failure(&[
+        "data.describe",
+        "--param",
+        "worksheet=1",
+        "--param",
+        "worksheet=2",
+    ]);
+    assert!(m.contains("`--param worksheet`"), "{m}");
+    // Siblings are not a conflict.
+    assert!(check_duplicate_params(&args(&["options.a=1", "options.b=2", "route=x"])).is_ok());
+}
+
+#[test]
+fn bad_flag_combinations_are_refused_before_anything_runs() {
+    let dir = scratch("flags");
+    let file = csv_file(&dir);
+    let project = dir.join("p.caladrius.json");
+    let project = project.to_str().unwrap();
+    for (list, text) in [
+        (
+            vec!["nca.run", "--format", "csv", "--table", "nope"],
+            "no table `nope`",
+        ),
+        (
+            vec!["nca.run", "--table", "nca.parameters"],
+            "--table needs --format csv",
+        ),
+        (vec!["nca.run", "--format", "text"], "only for `commands`"),
+        (
+            vec!["data.describe", "--format", "csv"],
+            "no table to print",
+        ),
+        (
+            vec!["project.describe", "--format", "csv"],
+            "no table to print",
+        ),
+    ] {
+        let mut full = list.clone();
+        full.extend([
+            "--csv",
+            &file,
+            "--project",
+            project,
+            "--param",
+            "route=extravascular",
+        ]);
+        let m = failure(&full);
+        assert!(m.contains(text), "{list:?}: {m}");
+        // Nothing ran: no project was written.
+        assert!(!std::path::Path::new(project).exists(), "{list:?}");
+    }
+}
+
+#[test]
+fn a_numeric_subject_may_be_spelled_one_point_zero() {
+    let dir = scratch("subject");
+    let file = dir.join("n.csv");
+    fs::write(
+        &file,
+        "id,time,conc,dose\n1,0,0,10\n1,1,5,10\n1,2,3,10\n1,4,1,10\n",
+    )
+    .unwrap();
+    let file = file.to_str().unwrap();
+    for subject in ["subject=1", "subject=1.0", "subject=\"1\""] {
+        let v = json_out(
+            &run_args(&[
+                "nca.run",
+                "--csv",
+                file,
+                "--param",
+                "route=extravascular",
+                "--param",
+                subject,
+            ])
+            .unwrap(),
+        );
+        assert_eq!(v["result"]["subjects"][0]["subject"], "1", "{subject}");
+    }
+}

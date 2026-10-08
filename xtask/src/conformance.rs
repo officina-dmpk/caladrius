@@ -73,7 +73,9 @@ impl Kind {
         match self {
             Kind::Nca => "NCA against PKNCA (relative error 1e-6)",
             Kind::Model => "Models against exact closed-form values (relative error 1e-12)",
-            Kind::Fit => "Weighted least-squares fits against reference fits (1e-4 on estimates and statistics, 1e-6 on the residual sum of squares)",
+            Kind::Fit => {
+                "Weighted least-squares fits against reference fits (1e-4 on estimates and statistics, 1e-6 on the residual sum of squares)"
+            }
         }
     }
 
@@ -536,12 +538,10 @@ fn render(reports: &[CaseReport]) -> String {
         if !r.errors.is_empty() {
             out.push('\n');
         }
-        out.push_str(
-            &format!(
-                "| {} | validated | documented differences | status |\n|---|---|---|---|\n",
-                r.kind.parameter_title()
-            ),
-        );
+        out.push_str(&format!(
+            "| {} | validated | documented differences | status |\n|---|---|---|---|\n",
+            r.kind.parameter_title()
+        ));
         for (name, c) in &r.parameters {
             let status = if c.validated == c.expected {
                 "ok"
@@ -610,11 +610,18 @@ fn private_lines() -> Result<(Vec<PrivateLine>, Vec<String>)> {
                 }
                 ExportKind::FinalParameters | ExportKind::CoreOutput => {
                     let entries = read_export(file).map_err(private_error)?;
-                    evaluate_private(&entries, &private_engine_values(case, &profile, file.method)?)
+                    evaluate_private(
+                        &entries,
+                        &private_engine_values(case, &profile, file.method)?,
+                    )
                 }
             };
             for d in &counts.mismatched {
-                notes.push(format!("private {label}: {} differs: {}", d.name, d.describe()));
+                notes.push(format!(
+                    "private {label}: {} differs: {}",
+                    d.name,
+                    d.describe()
+                ));
             }
             lines.push(PrivateLine { label, counts });
         }
@@ -771,6 +778,7 @@ pub fn run(private: bool) -> Result<()> {
     }
     reports.extend(step3::model_reports()?);
     reports.extend(step3::fit_reports()?);
+    check_unique_names(&reports)?;
     // The private oracle is reported on the console whenever its files are there; its counts go
     // into the file only on request (publishing a numeric comparison with the reference software
     // is the human's decision, AGENTS.md section 2).
@@ -841,6 +849,19 @@ pub fn run(private: bool) -> Result<()> {
     }
     console::out(&format!("conformance: wrote {OUTPUT}"));
     Ok(())
+}
+
+/// NCA, model and fit cases share one namespace of floors (floors are looked up by case name):
+/// two cases with the same name would silently share their floors.
+fn check_unique_names(reports: &[CaseReport]) -> Result<()> {
+    let mut seen = std::collections::BTreeSet::new();
+    match reports.iter().find(|r| !seen.insert(r.name.as_str())) {
+        None => Ok(()),
+        Some(r) => Err(XtaskError::new(format!(
+            "two oracle cases are called `{}` (NCA, model and fit cases share the floors' namespace); rename one",
+            r.name
+        ))),
+    }
 }
 
 /// Checks the floors recorded in `path` against `reports`, then rewrites `path`. Any error leaves
@@ -921,6 +942,15 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn case_names_are_unique_across_kinds() {
+        let mut model = report("same", 1, 1);
+        model.kind = Kind::Model;
+        assert!(check_unique_names(&[report("a", 1, 1), report("b", 1, 1)]).is_ok());
+        let err = check_unique_names(&[report("same", 1, 1), model]).unwrap_err();
+        assert!(err.to_string().contains("`same`"), "{err}");
     }
 
     #[test]

@@ -12,7 +12,13 @@ use std::io::{Write, stderr, stdin, stdout};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = match caladrius_cli::text_args(std::env::args_os().skip(1)) {
+        Ok(args) => args,
+        Err(e) => {
+            let _ = writeln!(stderr(), "error: {e}");
+            return ExitCode::from(1);
+        }
+    };
     match caladrius_cli::run(&args, &mut stdin()) {
         Ok(output) => {
             for note in &output.notes {

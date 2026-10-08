@@ -10,13 +10,11 @@
 use std::collections::BTreeMap;
 
 use caladrius_fit::{
-    Criterion, Derivatives, FitInput, FitOptions, FitResult, FitStatus, Weighting,
-    run as run_fit,
+    Criterion, Derivatives, FitInput, FitOptions, FitResult, FitStatus, Weighting, run as run_fit,
 };
 use caladrius_models::{ModelId, ModelInput, ModelOutput, run as run_model};
 use caladrius_testkit::{
-    FitCase, ModelCase, Tolerance, list_fit_cases, list_model_cases, load_fit_case,
-    load_model_case,
+    FitCase, ModelCase, Tolerance, list_fit_cases, list_model_cases, load_fit_case, load_model_case,
 };
 
 use super::{CaseReport, Count, Kind};
@@ -249,10 +247,8 @@ fn fit_row_ok(
 }
 
 fn evaluate_fit(case: &FitCase) -> Result<CaseReport> {
-    let mut counts: BTreeMap<&str, Count> = FIT_GROUPS
-        .iter()
-        .map(|g| (*g, Count::default()))
-        .collect();
+    let mut counts: BTreeMap<&str, Count> =
+        FIT_GROUPS.iter().map(|g| (*g, Count::default())).collect();
     let mut errors = Vec::new();
     let mut results: BTreeMap<&str, FitResult> = BTreeMap::new();
     for subject in &case.subjects {
@@ -339,7 +335,12 @@ mod tests {
             assert_eq!(t.validated, t.expected, "{}", r.name);
             // conc and auc come first.
             let names: Vec<&str> = r.parameters.iter().map(|(n, _)| n.as_str()).collect();
-            assert_eq!(names.get(..2), Some(["conc", "auc"].as_slice()), "{}", r.name);
+            assert_eq!(
+                names.get(..2),
+                Some(["conc", "auc"].as_slice()),
+                "{}",
+                r.name
+            );
         }
     }
 
@@ -386,7 +387,12 @@ mod tests {
             profile.dose *= 2.0;
         }
         let r = evaluate_fit(&case).unwrap();
-        let estimates = r.parameters.iter().find(|(n, _)| n == "estimates").unwrap().1;
+        let estimates = r
+            .parameters
+            .iter()
+            .find(|(n, _)| n == "estimates")
+            .unwrap()
+            .1;
         assert!(estimates.validated < estimates.expected);
         // A model that cannot run gives an error line and no validated value.
         let mut model = load_model_case("model_iv_bolus_k").unwrap();

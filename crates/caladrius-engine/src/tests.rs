@@ -840,14 +840,31 @@ fn the_saved_project_carries_its_history() {
     assert_eq!(busy.history().len(), 2);
     assert_eq!(busy.project(), e.project());
 
-    // A damaged history refuses the whole file.
+    // A damaged history is left out; the project loads and the result says so.
     let mut damaged = doc.clone();
     damaged["history"][2]["seq"] = json!(9);
     let mut target = Engine::new();
-    let before = target.project().clone();
-    let failure = err(&mut target, "project.load", json!({ "project": damaged }));
-    assert_eq!(failure.code, "load_failed");
-    assert_eq!(target.project(), &before);
+    let r = ok(&mut target, "project.load", json!({ "project": damaged }));
+    assert_eq!(r["history_restored"], false);
+    assert!(
+        r["history_note"].as_str().unwrap().contains("position 9"),
+        "{r}"
+    );
+    assert_eq!(target.project(), e.project());
+    assert_eq!(target.history().len(), 1);
+    let mut unreadable = doc.clone();
+    unreadable["history"] = json!("nonsense");
+    let mut target = Engine::new();
+    let r = ok(
+        &mut target,
+        "project.load",
+        json!({ "project": unreadable }),
+    );
+    assert_eq!(r["history_restored"], false);
+    assert!(
+        r["history_note"].as_str().unwrap().contains("not readable"),
+        "{r}"
+    );
     // A file without history (older, or written by hand) loads with an empty one.
     let mut plain = doc;
     plain.as_object_mut().unwrap().remove("history");
@@ -1325,4 +1342,22 @@ fn every_property_and_value_of_every_parameter_schema_is_known_to_the_command() 
             .unwrap_or_else(|e| panic!("example of {} failed: {e}", c.id));
     }
     assert!(tried > 150, "{tried}");
+}
+
+#[test]
+fn a_whole_number_subject_has_one_label_whatever_its_spelling() {
+    let mut e = Engine::new();
+    ok(
+        &mut e,
+        "data.import",
+        json!({ "name": "n", "csv": "id,time,conc,dose\n1,0,0,10\n1,1,5,10\n1,2,3,10\n1,4,1,10\n" }),
+    );
+    for subject in [json!(1), json!(1.0), json!("1")] {
+        let r = ok(
+            &mut e,
+            "nca.run",
+            json!({ "worksheet": 1, "route": "extravascular", "subject": subject }),
+        );
+        assert_eq!(r["result"]["subjects"][0]["subject"], "1");
+    }
 }

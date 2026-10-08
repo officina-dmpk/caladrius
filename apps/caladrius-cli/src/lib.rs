@@ -348,6 +348,108 @@ fn csv_of(
     Ok(exported["csv"].as_str().unwrap_or_default().to_owned())
 }
 
+/// Commands whose answer has a CSV form without naming a table.
+const CSV_COMMANDS: [&str; 6] = [
+    "nca.run",
+    "fit.run",
+    "analysis.run",
+    "analysis.get",
+    "model.simulate",
+    "export.table",
+];
+
+/// The tables `export.table` knows, from its schema.
+fn known_tables() -> Vec<String> {
+    describe()
+        .into_iter()
+        .find(|c| c.id == "export.table")
+        .and_then(|c| {
+            c.params_schema["properties"]["table"]["enum"]
+                .as_array()
+                .cloned()
+        })
+        .map(|v| {
+            v.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Checks the combination of flags before anything runs, so a refusal never costs a run (and, with
+/// `--project`, never loses its result).
+fn check_flags(args: &RunArgs) -> Result<(), CliError> {
+    let format = args.format.unwrap_or(Format::Json);
+    if format == Format::Text {
+        return fail("`--format text` is only for `commands`; use json or csv");
+    }
+    if args.table.is_some() && format != Format::Csv {
+        return fail("--table needs --format csv");
+    }
+    if let Some(table) = &args.table {
+        let tables = known_tables();
+        if !tables.contains(table) {
+            return fail(format!(
+                "there is no table `{table}`; the tables are: {}",
+                tables.join(", ")
+            ));
+        }
+    }
+    if format == Format::Csv
+        && args.table.is_none()
+        && !CSV_COMMANDS.contains(&args.command.as_str())
+    {
+        return fail(format!(
+            "`{}` has no table to print; use --format json, or --table NAME to export a table of an analysis (the tables are: {})",
+            args.command,
+            known_tables().join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Refuses a parameter given twice, or given both whole and in part (`a` and `a.b`).
+fn check_duplicate_params(params: &[String]) -> Result<(), CliError> {
+    let mut seen: Vec<Vec<String>> = Vec::new();
+    for p in params {
+        let key = p.split_once('=').map_or(p.as_str(), |(k, _)| k);
+        let path: Vec<String> = key.split('.').map(str::to_owned).collect();
+        for earlier in &seen {
+            let n = earlier.len().min(path.len());
+            if earlier.get(..n) == path.get(..n) {
+                return fail(format!(
+                    "`--param {key}` conflicts with `--param {}`: give each parameter once",
+                    earlier.join(".")
+                ));
+            }
+        }
+        seen.push(path);
+    }
+    Ok(())
+}
+
+/// The notes an import prints: what was guessed, and the unit warnings.
+fn import_notes(imported: &Value) -> Vec<String> {
+    let mut notes: Vec<String> = imported["notes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|n| format!("note: {n}"))
+        .collect();
+    for w in imported["worksheet"]["unit_warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(m) = w["message"].as_str() {
+            notes.push(format!("warning: {m}"));
+        }
+    }
+    notes
+}
+
 fn run_command(args: &RunArgs, stdin: &mut dyn Read) -> Result<Output, CliError> {
     let Some(info) = describe().into_iter().find(|c| c.id == args.command) else {
         // The engine's own message lists the commands.
@@ -357,6 +459,8 @@ fn run_command(args: &RunArgs, stdin: &mut dyn Read) -> Result<Output, CliError>
             Ok(_) => fail("unknown command"),
         };
     };
+    check_flags(args)?;
+    check_duplicate_params(&args.params)?;
     // Parameters: the JSON object first, then each --param on top.
     let mut params = match &args.json {
         None => Map::new(),
@@ -395,32 +499,28 @@ fn run_command(args: &RunArgs, stdin: &mut dyn Read) -> Result<Output, CliError>
     }
     let mut imported_id = None;
     if let Some(csv) = &args.csv {
-        let bytes =
-            fs::read(csv).map_err(|e| CliError(format!("cannot read {}: {e}", csv.display())))?;
         let name = csv
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("data")
             .to_owned();
-        let imported = engine.import_csv(&name, &bytes)?;
-        for note in imported["notes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-        {
-            notes.push(format!("note: {note}"));
-        }
-        for w in imported["worksheet"]["unit_warnings"]
-            .as_array()
-            .into_iter()
-            .flatten()
-        {
-            if let Some(m) = w["message"].as_str() {
-                notes.push(format!("warning: {m}"));
+        if args.command == "data.import" {
+            // `data.import --csv FILE` is the import itself: the file is its `csv` parameter.
+            if params.contains_key("csv") {
+                return fail("give the CSV once: --csv FILE, or --param csv=...");
             }
+            let text = read_text(csv)?;
+            params.insert("csv".to_owned(), Value::String(text));
+            params
+                .entry("name".to_owned())
+                .or_insert_with(|| Value::String(name));
+        } else {
+            let bytes = fs::read(csv)
+                .map_err(|e| CliError(format!("cannot read {}: {e}", csv.display())))?;
+            let imported = engine.import_csv(&name, &bytes)?;
+            notes.extend(import_notes(&imported));
+            imported_id = Some(imported["worksheet"]["id"].clone());
         }
-        imported_id = Some(imported["worksheet"]["id"].clone());
     }
     if takes(&info, "worksheet") && !params.contains_key("worksheet") {
         if let Some(id) = default_worksheet(&engine, imported_id.as_ref()) {
@@ -429,16 +529,14 @@ fn run_command(args: &RunArgs, stdin: &mut dyn Read) -> Result<Output, CliError>
     }
     let params = Value::Object(params);
     let result = engine.execute(&args.command, params.clone())?;
-
-    let format = args.format.unwrap_or(Format::Json);
-    let stdout = match format {
-        Format::Json => to_json_text(&result)?,
-        Format::Csv => csv_of(&mut engine, &params, &result, args.table.as_deref())?,
-        Format::Text => return fail("`--format text` is only for `commands`; use json or csv"),
-    };
-    if format == Format::Json && args.table.is_some() {
-        return fail("--table needs --format csv");
+    if args.command == "data.import" {
+        notes.extend(import_notes(&result));
     }
+
+    let stdout = match args.format.unwrap_or(Format::Json) {
+        Format::Csv => csv_of(&mut engine, &params, &result, args.table.as_deref())?,
+        _ => to_json_text(&result)?,
+    };
     if let Some(path) = &args.project {
         if info.mutates || imported_id.is_some() {
             write_atomic(path, &engine.save_bytes()?)?;
@@ -457,6 +555,20 @@ pub fn run(args: &[String], stdin: &mut dyn Read) -> Result<Output, CliError> {
         Action::Commands(format) => list_commands(format),
         Action::Run(run) => run_command(&run, stdin),
     }
+}
+
+/// The command line as text. An argument that is not valid Unicode is refused with its position
+/// (`std::env::args` would panic on it).
+pub fn text_args(
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Result<Vec<String>, CliError> {
+    args.into_iter()
+        .enumerate()
+        .map(|(i, a)| {
+            a.into_string()
+                .map_err(|_| CliError(format!("argument {} is not valid text", i + 1)))
+        })
+        .collect()
 }
 
 /// The ids of the commands the CLI can run.
