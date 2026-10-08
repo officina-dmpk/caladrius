@@ -12,7 +12,9 @@
 
 mod engine;
 mod error;
+mod flags;
 mod float;
+mod initial;
 mod linalg;
 mod model;
 mod result;
@@ -24,6 +26,8 @@ use serde::{Deserialize, Serialize};
 
 pub use caladrius_models::ModelId;
 pub use error::FitError;
+pub use flags::FitFlag;
+pub use initial::initial_estimates;
 pub use model::{FitModel, Secondary};
 pub use result::{CurvePoint, FitResult, ObservationRow, TraceRow};
 
@@ -99,7 +103,7 @@ pub enum Criterion {
 }
 
 /// Options of a fit. The defaults are those of `AGENTS.md` section 6 (status `assumed`).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct FitOptions {
     /// Partial derivatives.
@@ -116,6 +120,49 @@ pub struct FitOptions {
     pub confidence_level: f64,
     /// Points of the smooth predicted curve (1000): 0 (no curve) or 2 to 1 000 000.
     pub n_curve: usize,
+    /// Parameters held at a given value, by name (not fitted; e.g. the infusion duration `dur`).
+    pub fixed: BTreeMap<String, f64>,
+    /// User bounds by fitted parameter (FIT-BND-01). Without them the generated bounds of
+    /// FIT-BND-03 apply: `v`, `cl`, `k`, `ka`, `dur` above 1e-6 times their initial estimate,
+    /// `tlag` >= 0, no upper bound.
+    pub bounds: BTreeMap<String, Bounds>,
+    /// Thresholds of the quality flags (FIT-FLG-01).
+    pub flags: FlagThresholds,
+}
+
+/// Lower and upper bound of one parameter; `None` is unbounded on that side.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Bounds {
+    /// Lower bound (inclusive).
+    pub lower: Option<f64>,
+    /// Upper bound (inclusive).
+    pub upper: Option<f64>,
+}
+
+/// Thresholds of the quality flags (FIT-FLG-01, status `assumed`); `None` turns a flag off.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FlagThresholds {
+    /// Flag a CV% above this value (50).
+    pub max_cv_percent: Option<f64>,
+    /// Flag an absolute correlation between two estimates above this value (0.95).
+    pub max_abs_correlation: Option<f64>,
+    /// Flag a condition number of the correlation matrix above this value (1e6).
+    pub max_condition_number: Option<f64>,
+    /// Flag fewer degrees of freedom than this (2).
+    pub min_degrees_of_freedom: Option<usize>,
+}
+
+impl Default for FlagThresholds {
+    fn default() -> Self {
+        Self {
+            max_cv_percent: Some(50.0),
+            max_abs_correlation: Some(0.95),
+            max_condition_number: Some(1e6),
+            min_degrees_of_freedom: Some(2),
+        }
+    }
 }
 
 impl Default for FitOptions {
@@ -128,6 +175,9 @@ impl Default for FitOptions {
             max_iterations: 50,
             confidence_level: 0.95,
             n_curve: 1000,
+            fixed: BTreeMap::new(),
+            bounds: BTreeMap::new(),
+            flags: FlagThresholds::default(),
         }
     }
 }
@@ -187,6 +237,7 @@ pub struct FitInput {
     /// Weighting scheme.
     pub weighting: Weighting,
     /// Initial estimates by parameter name; the fitted parameters are exactly the ones named.
+    /// Empty: generated from the data by [`initial_estimates`] (FIT-INI-01).
     pub initial: BTreeMap<String, f64>,
     /// Options.
     #[serde(default)]
@@ -197,6 +248,21 @@ pub struct FitInput {
 /// modification, FIT-ALG-01). Invalid input is an error; a fit that starts always returns a
 /// result with a status, its best iterate and its trace.
 pub fn run(input: &FitInput) -> Result<FitResult, FitError> {
+    if input.initial.is_empty() {
+        // FIT-INI-01: no initial estimates given, generate them from the data.
+        let initial = initial_estimates(
+            input.model,
+            input.dose,
+            &input.time,
+            &input.conc,
+            &input.options.fixed,
+        )?;
+        let generated = FitInput {
+            initial,
+            ..input.clone()
+        };
+        return run_model(&generated.model, &generated);
+    }
     run_model(&input.model, input)
 }
 
@@ -208,3 +274,5 @@ pub fn run_model(model: &dyn FitModel, input: &FitInput) -> Result<FitResult, Fi
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_outputs;

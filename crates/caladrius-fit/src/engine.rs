@@ -24,9 +24,21 @@ const MAX_ITERATIONS: usize = 100_000;
 const MAX_CURVE_POINTS: usize = 1_000_000;
 /// A weighted sum of squares at or below this fraction of Σ w·y² is an exact fit (rounding level).
 pub(crate) const EXACT_FIT: f64 = 1e-26;
+/// Generated lower bound of a positive parameter, relative to its initial estimate.
+const GENERATED_FLOOR: f64 = 1e-6;
 
 /// 1/x^power when x > 0 and the weight is finite (x below about 1e-154 under 1/x² is not), else
 /// `None` (FIT-WGT-02).
+/// Generated lower bound (FIT-BND-03, `assumed`): parameters that must be positive stay above 1e-6
+/// times their initial estimate, `tlag` stays >= 0, any other name is unbounded.
+fn generated_lower(name: &str, initial: f64) -> f64 {
+    match name {
+        "v" | "cl" | "k" | "ka" | "dur" => GENERATED_FLOOR * initial,
+        "tlag" => 0.0,
+        _ => f64::NEG_INFINITY,
+    }
+}
+
 pub(crate) fn weight_of(x: f64, power: i32) -> Option<f64> {
     let w = 1.0 / x.powi(power);
     (x > 0.0 && w.is_finite()).then_some(w)
@@ -44,6 +56,11 @@ pub(crate) struct Problem<'a> {
     pub names: Vec<String>,
     theta0: Vec<f64>,
     pub options: FitOptions,
+    /// Parameters held at a value.
+    pub fixed: BTreeMap<String, f64>,
+    /// Bounds of the fitted parameters (−∞, +∞ when absent).
+    pub lower: Vec<f64>,
+    pub upper: Vec<f64>,
 }
 
 fn invalid_option(option: &str, reason: &str) -> FitError {
@@ -149,6 +166,53 @@ impl<'a> Problem<'a> {
             .iter()
             .map(|n| input.initial.get(n).copied().unwrap_or(f64::NAN))
             .collect();
+        let fixed = &o.fixed;
+        if let Some((name, value)) = fixed
+            .iter()
+            .find(|(n, v)| input.initial.contains_key(*n) || !v.is_finite())
+        {
+            return Err(invalid_option(
+                "fixed",
+                &format!(
+                    "`{name}` = {value} must be finite and must not also have an initial estimate (a parameter is either fitted or fixed)"
+                ),
+            ));
+        }
+        if let Some(name) = o.bounds.keys().find(|n| !names.contains(n)) {
+            return Err(invalid_option(
+                "bounds",
+                &format!(
+                    "`{name}` is not a fitted parameter; give bounds for fitted parameters only"
+                ),
+            ));
+        }
+        let (mut lower, mut upper) = (Vec::new(), Vec::new());
+        for (name, &x) in names.iter().zip(&theta0) {
+            let user = o.bounds.get(name).copied().unwrap_or_default();
+            let lo = user.lower.unwrap_or_else(|| generated_lower(name, x));
+            let hi = user.upper.unwrap_or(f64::INFINITY);
+            if lo.is_nan()
+                || hi.is_nan()
+                || lo >= hi
+                || lo == f64::INFINITY
+                || hi == f64::NEG_INFINITY
+            {
+                return Err(invalid_option(
+                    "bounds",
+                    &format!("`{name}`: the lower bound {lo} must be below the upper bound {hi}"),
+                ));
+            }
+            if !(x >= lo && x <= hi) {
+                return Err(FitError::InitialOutsideBounds {
+                    parameter: name.clone(),
+                    value: x,
+                    lower: lo,
+                    upper: hi,
+                });
+            }
+            lower.push(lo);
+            upper.push(hi);
+        }
         let problem = Self {
             model,
             model_id: input.model.id().to_string(),
@@ -158,7 +222,10 @@ impl<'a> Problem<'a> {
             weighting: input.weighting,
             names,
             theta0,
-            options: *o,
+            fixed: fixed.clone(),
+            lower,
+            upper,
+            options: o.clone(),
         };
         let pred = problem
             .model
@@ -200,11 +267,28 @@ impl<'a> Problem<'a> {
         Ok(problem)
     }
 
+    /// Fixed and fitted parameters together.
     pub fn params(&self, theta: &[f64]) -> BTreeMap<String, f64> {
-        self.names
+        let mut all = self.fixed.clone();
+        all.extend(self.names.iter().cloned().zip(theta.iter().copied()));
+        all
+    }
+
+    /// θ projected on the bounds.
+    pub fn clamp(&self, theta: &[f64]) -> Vec<f64> {
+        theta
             .iter()
-            .cloned()
-            .zip(theta.iter().copied())
+            .zip(self.lower.iter().zip(&self.upper))
+            .map(|(x, (lo, hi))| x.max(*lo).min(*hi))
+            .collect()
+    }
+
+    /// Which parameters sit exactly on a bound.
+    pub fn on_bound(&self, theta: &[f64]) -> Vec<bool> {
+        theta
+            .iter()
+            .zip(self.lower.iter().zip(&self.upper))
+            .map(|(x, (lo, hi))| x <= lo || x >= hi)
             .collect()
     }
 
@@ -314,7 +398,45 @@ impl<'a> Problem<'a> {
         Some((scaled, norms, r))
     }
 
-    /// The minimisation (FIT-ALG-02 to 04, CNV-01 to 03), then the statistics (section 7).
+    /// The Gauss-Newton direction on the parameters `free` (indices), scattered back to all
+    /// parameters (0 for the others), with the decrease it predicts (‖J·δ‖²); `lambda` > 0 gives
+    /// the damped direction. `None` when the free system is singular.
+    fn direction(
+        &self,
+        columns: &[Vec<f64>],
+        pred: &[f64],
+        w: &[f64],
+        free: &[usize],
+        lambda: f64,
+    ) -> Option<(Vec<f64>, f64)> {
+        let subset: Vec<Vec<f64>> = free
+            .iter()
+            .filter_map(|&j| columns.get(j).cloned())
+            .collect();
+        let (a, norms, r) = self.scaled_system(&subset, pred, w)?;
+        let scaled = if lambda == 0.0 {
+            least_squares(&a, &r).map(|(d, _)| d)?
+        } else {
+            damped(&a, &r, lambda)?
+        };
+        let predicted: f64 = (0..a.rows())
+            .map(|i| {
+                (0..a.cols())
+                    .map(|j| a.at(i, j) * scaled.get(j).copied().unwrap_or(0.0))
+                    .sum::<f64>()
+                    .powi(2)
+            })
+            .sum();
+        let mut delta = vec![0.0; columns.len()];
+        for ((&j, d), c) in free.iter().zip(&scaled).zip(&norms) {
+            if let Some(slot) = delta.get_mut(j) {
+                *slot = d / c;
+            }
+        }
+        Some((delta, predicted))
+    }
+
+    /// The minimisation (FIT-ALG-02 to 04, CNV-01 to 03, BND-01), then the statistics (section 7).
     pub fn solve(&self) -> FitResult {
         let eps = self.options.convergence;
         let mut theta = self.theta0.clone();
@@ -333,6 +455,7 @@ impl<'a> Problem<'a> {
             halvings: 0,
             relative_decrease: None,
         }];
+        let p = theta.len();
         let mut lambda = 0.0;
         let mut previous_decrease: Option<f64> = None;
         let mut status = FitStatus::MaxIterations;
@@ -352,30 +475,47 @@ impl<'a> Problem<'a> {
                 status = FitStatus::NonFinite;
                 break;
             };
-            let Some((a, norms, r)) = self.scaled_system(&columns, &pred, &w) else {
+            // FIT-BND-01 active set: a parameter on a bound whose Gauss-Newton direction points
+            // outward is held there for this iteration.
+            let all: Vec<usize> = (0..p).collect();
+            let full = self.direction(&columns, &pred, &w, &all, 0.0);
+            let on_bound = self.on_bound(&theta);
+            let free: Vec<usize> = match &full {
+                Some((delta, _)) => all
+                    .iter()
+                    .copied()
+                    .filter(|&j| {
+                        let d = delta.get(j).copied().unwrap_or(0.0);
+                        let x = theta.get(j).copied().unwrap_or(0.0);
+                        let lo = self.lower.get(j).copied().unwrap_or(f64::NEG_INFINITY);
+                        let held = on_bound.get(j).copied().unwrap_or(false)
+                            && ((x <= lo && d < 0.0) || (x > lo && d > 0.0));
+                        !held
+                    })
+                    .collect(),
+                None => all.clone(),
+            };
+            if free.is_empty() {
+                // Every parameter is held on a bound: nothing can move.
+                status = FitStatus::Converged;
+                break;
+            }
+            let gn = if free.len() == p {
+                full
+            } else {
+                self.direction(&columns, &pred, &w, &free, 0.0)
+            };
+            if gn.is_none() && self.scaled_system(&columns, &pred, &w).is_none() {
                 status = FitStatus::Singular;
                 break;
-            };
-            let p = norms.len();
-            // Pure Gauss-Newton direction; ‖J·δ‖² is the decrease it predicts.
-            let gn = least_squares(&a, &r);
-            let predicted = gn.as_ref().map(|(d, _)| {
-                let jd: f64 = (0..a.rows())
-                    .map(|i| {
-                        (0..p)
-                            .map(|j| a.at(i, j) * d.get(j).copied().unwrap_or(0.0))
-                            .sum::<f64>()
-                            .powi(2)
-                    })
-                    .sum();
-                jd
-            });
+            }
+            let predicted = gn.as_ref().map(|(_, q)| *q);
             if self.options.criterion == Criterion::RelativeOffset {
-                let n = self.y.len();
+                let (n, pf) = (self.y.len(), free.len());
                 if let Some(q) = predicted {
-                    if n > p {
+                    if n > pf {
                         let offset =
-                            ((q / p as f64) / ((s_cur - q).max(0.0) / (n - p) as f64)).sqrt();
+                            ((q / pf as f64) / ((s_cur - q).max(0.0) / (n - pf) as f64)).sqrt();
                         if offset <= eps {
                             status = FitStatus::Converged;
                             break;
@@ -390,22 +530,24 @@ impl<'a> Problem<'a> {
                 let direction = if lam == 0.0 {
                     gn.as_ref().map(|(d, _)| d.clone())
                 } else {
-                    damped(&a, &r, lam)
+                    self.direction(&columns, &pred, &w, &free, lam)
+                        .map(|(d, _)| d)
                 };
-                if let Some(scaled_delta) = direction {
-                    let delta: Vec<f64> = scaled_delta
-                        .iter()
-                        .zip(&norms)
-                        .map(|(d, c)| d / c)
-                        .collect();
+                if let Some(delta) = direction {
                     let mut nu = 1.0;
                     let mut halvings = 0;
                     while nu >= MIN_STEP {
-                        let trial: Vec<f64> =
-                            theta.iter().zip(&delta).map(|(t, d)| t + nu * d).collect();
+                        // FIT-ALG-03 with the trial point projected on the bounds.
+                        let trial = self.clamp(
+                            &theta
+                                .iter()
+                                .zip(&delta)
+                                .map(|(t, d)| t + nu * d)
+                                .collect::<Vec<f64>>(),
+                        );
                         if let Some(pt) = self.predict(&trial) {
                             let weights_ok =
-                                !self.weighting.uses_predictions() || pt.iter().all(|f| *f > 0.0);
+                                !self.weighting.uses_predictions() || self.weights(&pt).is_some();
                             let s_trial = self.wrss(&pt, &w);
                             if weights_ok && s_trial < s_cur {
                                 accepted = Some((trial, pt, s_trial, nu, halvings));

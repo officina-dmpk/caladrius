@@ -19,6 +19,7 @@ name = "caladrius-fit"
 version = "0.1.0"
 dependencies = [
  "caladrius-models",
+ "caladrius-nca",
  "caladrius-testkit",
  "serde",
  "serde_json",

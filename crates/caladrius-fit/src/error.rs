@@ -89,6 +89,34 @@ pub enum FitError {
         )]
         time: f64,
     },
+    /// An initial estimate outside its bounds (FIT-BND-01).
+    InitialOutsideBounds {
+        /// The parameter.
+        parameter: String,
+        /// Its initial estimate.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        value: f64,
+        /// Lower bound.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        lower: f64,
+        /// Upper bound.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        upper: f64,
+    },
+    /// Initial estimates cannot be generated from the data (FIT-ERR-03).
+    InitialEstimatesUnavailable {
+        /// Why.
+        reason: String,
+    },
     /// Closed-form derivatives are not available for this model and parameterisation.
     AnalyticDerivativesUnavailable {
         /// The model id.
@@ -147,6 +175,19 @@ impl fmt::Display for FitError {
                 f,
                 "at the initial estimates the prediction for observation {} (time {time}) is not usable (not finite, or not positive for weights on predicted values); change the initial estimates",
                 index + 1
+            ),
+            Self::InitialOutsideBounds {
+                parameter,
+                value,
+                lower,
+                upper,
+            } => write!(
+                f,
+                "the initial estimate of `{parameter}` ({value}) lies outside its bounds [{lower}, {upper}]; move it inside or widen the bounds"
+            ),
+            Self::InitialEstimatesUnavailable { reason } => write!(
+                f,
+                "initial estimates cannot be generated: {reason}; enter initial estimates for the parameters"
             ),
             Self::AnalyticDerivativesUnavailable { model } => write!(
                 f,

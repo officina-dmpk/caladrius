@@ -388,6 +388,11 @@ fn a_far_start_under_predicted_value_weights_is_not_converged() {
     if r.status() == FitStatus::Converged {
         // Only acceptable if it actually moved to the solution.
         assert!(r.trace().len() > 1, "converged at the initial estimates");
-        assert!((r.get("estimate.v").unwrap() - 10.0).abs() < 1.0);
+        assert!(
+            (r.get("estimate.v").unwrap() - 10.0).abs() < 1.0,
+            "{:?} {:?}",
+            r.status(),
+            r.values()
+        );
     }
 }

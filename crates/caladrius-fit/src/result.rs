@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::FitStatus;
 use crate::engine::{EXACT_FIT, Problem};
+use crate::flags::{self, FitFlag};
 use crate::linalg::{Mat, inverse_gram_from_r, least_squares, symmetric_eigenvalues};
 use crate::stats::{f_quantile, student_t_quantile};
 
@@ -74,6 +75,9 @@ pub struct FitResult {
     observations: Vec<ObservationRow>,
     curve: Vec<CurvePoint>,
     trace: Vec<TraceRow>,
+    partials: Vec<Vec<f64>>,
+    #[serde(default)]
+    flags: Vec<FitFlag>,
 }
 
 impl FitResult {
@@ -116,6 +120,31 @@ impl FitResult {
     pub fn curve(&self) -> &[CurvePoint] {
         &self.curve
     }
+
+    /// ∂f(t_i)/∂θ_j at the solution, unweighted (FIT-OUT-08): `partials()[j][i]` for parameter j
+    /// of [`Self::parameters`] and observation i (empty if the model failed there).
+    pub fn partials(&self) -> &[Vec<f64>] {
+        &self.partials
+    }
+
+    /// The same, weighted: √w_i·∂f(t_i)/∂θ_j.
+    pub fn weighted_partials(&self) -> Vec<Vec<f64>> {
+        self.partials
+            .iter()
+            .map(|column| {
+                column
+                    .iter()
+                    .zip(&self.observations)
+                    .map(|(d, o)| o.weight.sqrt() * d)
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Quality flags (FIT-FLG-01): what to check; they never change a number.
+    pub fn flags(&self) -> &[FitFlag] {
+        &self.flags
+    }
 }
 
 /// Collects named values, keeping finite ones only.
@@ -138,7 +167,30 @@ pub(crate) fn build(
     mut status: FitStatus,
 ) -> FitResult {
     let names = &problem.names;
-    let (n, p) = (problem.y.len(), names.len());
+    // FIT-BND-02: parameters on a bound are reported with their value only; the statistics of the
+    // others are conditional on them.
+    let on_bound = problem.on_bound(&theta);
+    let free: Vec<usize> = (0..names.len())
+        .filter(|&j| !on_bound.get(j).copied().unwrap_or(false))
+        .collect();
+    let at_bound: Vec<(String, f64)> = names
+        .iter()
+        .enumerate()
+        .filter(|(j, _)| on_bound.get(*j).copied().unwrap_or(false))
+        .map(|(j, name)| {
+            let x = theta.get(j).copied().unwrap_or(f64::NAN);
+            let lo = problem.lower.get(j).copied().unwrap_or(f64::NEG_INFINITY);
+            let hi = problem.upper.get(j).copied().unwrap_or(f64::INFINITY);
+            (name.clone(), if x <= lo { lo } else { hi })
+        })
+        .collect();
+    if status == FitStatus::Converged && !at_bound.is_empty() {
+        status = FitStatus::AtBound;
+    }
+    let free_names: Vec<String> = free.iter().filter_map(|&j| names.get(j).cloned()).collect();
+    let free_theta: Vec<f64> = free.iter().filter_map(|&j| theta.get(j).copied()).collect();
+    let n = problem.y.len();
+    let p = free.len();
     let df = n.saturating_sub(p);
     let mut v = Values(BTreeMap::new());
     v.put("n", n as f64);
@@ -192,10 +244,18 @@ pub(crate) fn build(
         }
     }
 
-    // Jacobian at the solution, with the method of the fit (FIT-JAC-03).
-    let system = problem
-        .jacobian(&theta, &pred)
-        .and_then(|columns| problem.scaled_system(&columns, &pred, &weights));
+    // Jacobian at the solution, with the method of the fit (FIT-JAC-03); also the partial
+    // derivative table of FIT-OUT-08.
+    let partials = problem.jacobian(&theta, &pred).unwrap_or_default();
+    let free_columns: Vec<Vec<f64>> = free
+        .iter()
+        .filter_map(|&j| partials.get(j).cloned())
+        .collect();
+    let system = if free_columns.is_empty() {
+        None
+    } else {
+        problem.scaled_system(&free_columns, &pred, &weights)
+    };
     let factor = system.and_then(|(a, norms, _)| {
         let zero = vec![0.0; a.rows()];
         least_squares(&a, &zero).map(|(_, r)| (r, norms))
@@ -216,7 +276,19 @@ pub(crate) fn build(
                 }
             }
             if let (Some(s2), Some(inv)) = (s2, inverse_gram_from_r(&r)) {
-                statistics(problem, &theta, s2, df, &inv, &norms, &mut v);
+                statistics(
+                    problem,
+                    &free_names,
+                    &free_theta,
+                    &theta,
+                    &Scaled {
+                        s2,
+                        df,
+                        inv: &inv,
+                        norms: &norms,
+                    },
+                    &mut v,
+                );
             }
         }
     }
@@ -237,6 +309,19 @@ pub(crate) fn build(
             },
         )
         .collect();
+    let flags = flags::flags(
+        &problem.options.flags,
+        &flags::Inputs {
+            status,
+            last_step: trace
+                .last()
+                .and_then(|row| row.step.map(|step| (row.lambda, step))),
+            at_bound,
+            free: &free_names,
+            df,
+            get: &|name: &str| v.0.get(name).copied(),
+        },
+    );
     FitResult {
         status,
         parameters: names.clone(),
@@ -244,6 +329,8 @@ pub(crate) fn build(
         observations,
         curve: curve(problem, &theta),
         trace,
+        partials,
+        flags,
     }
 }
 
@@ -259,16 +346,23 @@ fn r_transpose_r(r: &Mat) -> Mat {
 }
 
 /// FIT-OUT-02 to 06 from (JᵀJ)⁻¹ of the scaled Jacobian.
-fn statistics(
-    problem: &Problem<'_>,
-    theta: &[f64],
+/// (JᵀJ)⁻¹ of the column-scaled Jacobian, its column norms, S² and the degrees of freedom.
+struct Scaled<'a> {
     s2: f64,
     df: usize,
-    inv_scaled: &Mat,
-    norms: &[f64],
+    inv: &'a Mat,
+    norms: &'a [f64],
+}
+
+fn statistics(
+    problem: &Problem<'_>,
+    names: &[String],
+    theta: &[f64],
+    theta_full: &[f64],
+    scaled: &Scaled<'_>,
     v: &mut Values,
 ) {
-    let names = &problem.names;
+    let (s2, df, inv_scaled, norms) = (scaled.s2, scaled.df, scaled.inv, scaled.norms);
     let p = names.len();
     let norm = |j: usize| norms.get(j).copied().unwrap_or(f64::NAN);
     let mut cov = Mat::zeros(p, p);
@@ -318,13 +412,19 @@ fn statistics(
             v.put("condition_number", max / min);
         }
     }
-    secondary(problem, theta, &cov, t, v);
+    secondary(problem, names, theta_full, &cov, t, v);
 }
 
 /// FIT-OUT-06: the secondary parameters the model defines ([`crate::FitModel::secondary`]), with
 /// standard errors by the delta method.
-fn secondary(problem: &Problem<'_>, theta: &[f64], cov: &Mat, t: f64, v: &mut Values) {
-    let names = &problem.names;
+fn secondary(
+    problem: &Problem<'_>,
+    names: &[String],
+    theta: &[f64],
+    cov: &Mat,
+    t: f64,
+    v: &mut Values,
+) {
     for quantity in problem
         .model
         .secondary(problem.dose, &problem.params(theta))

@@ -9,6 +9,8 @@ rust-version.workspace = true
 [dependencies]
 # The models being fitted (same layer, L0).
 caladrius-models = { path = "../caladrius-models" }
+# Terminal-phase selection for the initial estimates (FIT-INI-03, 04 refer to NCA-LZ-02 to 05).
+caladrius-nca = { path = "../caladrius-nca" }
 # Inputs, options and results are data (golden rule 4).
 serde = { version = "1.0.229", features = ["derive"] }
 
