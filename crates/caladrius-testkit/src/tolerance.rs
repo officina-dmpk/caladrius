@@ -52,6 +52,17 @@ impl Tolerance {
         abs: 0.0,
     };
 
+    /// Partial derivatives of the concentration of the two-compartment models against the 256-bit
+    /// central differences of `oracle/expected/models/pk2/model_pk2_deriv_*` (task T-032): relative
+    /// error at most 1e-12, the same as `MODEL_VALUES` (a new derivative constant must be at least
+    /// as strict). The grids leave out the entries whose condition number exceeds 1e3 (the zero
+    /// crossings of a derivative, where no double precision code can meet a relative tolerance),
+    /// and an expected zero (before the dose or the lag) must be returned as exactly zero.
+    pub const MODEL_DERIVATIVES: Tolerance = Tolerance::Relative {
+        rel: 1e-12,
+        abs: 0.0,
+    };
+
     /// Equality at the precision displayed in a reference export, with `decimals` decimal places.
     pub const fn displayed(decimals: u32) -> Tolerance {
         Tolerance::DisplayedDecimals { decimals }
@@ -195,6 +206,16 @@ mod tests {
         assert!(t.accepts(0.0, 0.0));
         assert!(!t.accepts(1e-300, 0.0));
         assert!(t.to_string().contains("1e-12"));
+    }
+
+    #[test]
+    fn model_derivatives_are_at_least_as_strict_as_model_values() {
+        assert_eq!(Tolerance::MODEL_DERIVATIVES, Tolerance::MODEL_VALUES);
+        let t = Tolerance::MODEL_DERIVATIVES;
+        assert!(t.accepts(-0.3 * (1.0 + 9e-13), -0.3));
+        assert!(!t.accepts(-0.3 * (1.0 + 2e-12), -0.3));
+        assert!(t.accepts(0.0, 0.0));
+        assert!(!t.accepts(1e-300, 0.0));
     }
 
     #[test]

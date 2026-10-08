@@ -19,14 +19,14 @@ use serde::Deserialize;
 use crate::compare::Table;
 use crate::oracle::{Dataset, OracleError, Profile, load_dataset, oracle_dir, parse_expected};
 
-fn read(path: &Path) -> Result<String, OracleError> {
+pub(crate) fn read(path: &Path) -> Result<String, OracleError> {
     fs::read_to_string(path).map_err(|e| OracleError::Io {
         path: path.display().to_string(),
         message: e.to_string(),
     })
 }
 
-fn json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, OracleError> {
+pub(crate) fn json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, OracleError> {
     let text = read(path)?;
     serde_json::from_str(&text).map_err(|e| OracleError::Json {
         path: path.display().to_string(),
@@ -34,7 +34,7 @@ fn json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, OracleError> {
     })
 }
 
-fn names_in(dir: &Path) -> Result<Vec<String>, OracleError> {
+pub(crate) fn names_in(dir: &Path) -> Result<Vec<String>, OracleError> {
     let entries = fs::read_dir(dir).map_err(|e| OracleError::Io {
         path: dir.display().to_string(),
         message: e.to_string(),
@@ -88,7 +88,13 @@ pub fn list_model_cases() -> Result<Vec<String>, OracleError> {
 
 /// Loads one model case and checks that its files agree.
 pub fn load_model_case(name: &str) -> Result<ModelCase, OracleError> {
-    let dir = oracle_dir().join("expected").join("models");
+    load_model_case_in(&oracle_dir().join("expected").join("models"), name)
+}
+
+/// Loads the model case `name` (`<name>.options.json` and `<name>.csv`) from `dir` and checks that
+/// its files agree. `load_model_case` reads `oracle/expected/models/`; the two-compartment cases
+/// of `oracle/expected/models/pk2/` use the same layout (`crate::pk2`).
+pub(crate) fn load_model_case_in(dir: &Path, name: &str) -> Result<ModelCase, OracleError> {
     let options_path = dir.join(format!("{name}.options.json"));
     let options: ModelOptions = json(&options_path)?;
     let here = options_path.display().to_string();

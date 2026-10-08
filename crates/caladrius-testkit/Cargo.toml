@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+# float_roundtrip: the parameters of the oracle options must read back as the doubles the expected
+# values were computed from (task T-032: 17-digit inputs).
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
 # Reads the .xls worksheets the reference software exports (pure Rust, MIT); test layer only.
 calamine = { version = "0.36.1", default-features = false }
