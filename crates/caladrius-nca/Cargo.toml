@@ -6,8 +6,14 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+# Options, inputs, results and errors are data (golden rule 4): they must serialize.
+serde = { version = "1.0.229", features = ["derive"] }
+
 [dev-dependencies]
 caladrius-testkit = { path = "../caladrius-testkit" }
+# Exact float round trip, for the serialization tests.
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
 
 [lints]
 workspace = true

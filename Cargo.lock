@@ -31,6 +31,8 @@ name = "caladrius-nca"
 version = "0.1.0"
 dependencies = [
  "caladrius-testkit",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
