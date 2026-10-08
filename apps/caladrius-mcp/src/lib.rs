@@ -20,7 +20,7 @@
 //! (`isError: true`) whose text is `<code>: <message>`. The server holds one [`Engine`]: the
 //! worksheets and analyses of a session persist between calls, as in the UI.
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 
 use caladrius_engine::{CommandInfo, Engine, describe};
 use serde_json::{Value, json};
@@ -28,6 +28,13 @@ use serde_json::{Value, json};
 /// Protocol versions this server speaks, newest first. The client's version is echoed back when
 /// it is in the list, else the newest is proposed (MCP lifecycle negotiation).
 pub const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// The longest line the server reads (a CSV can be large; a client that sends more without a
+/// newline is not a client).
+pub const MAX_LINE: usize = 64 * 1024 * 1024;
+
+/// The most requests accepted in one batch.
+pub const MAX_BATCH: usize = 100;
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
@@ -161,11 +168,9 @@ impl Server {
         if object.contains_key("result") || object.contains_key("error") {
             return None;
         }
-        let id = object.get("id").cloned();
-        let id_ok = matches!(
-            &id,
-            None | Some(Value::Null | Value::String(_) | Value::Number(_))
-        );
+        // No `id` key: a notification, which is never answered, however it is shaped.
+        let id = object.get("id").cloned()?;
+        let id_ok = matches!(&id, Value::Null | Value::String(_) | Value::Number(_));
         if !id_ok {
             return Some(error_response(
                 Value::Null,
@@ -175,21 +180,19 @@ impl Server {
         }
         let Some(method) = object.get("method").and_then(Value::as_str) else {
             return Some(error_response(
-                id.unwrap_or(Value::Null),
+                id,
                 INVALID_REQUEST,
                 "a request needs a string `method`",
             ));
         };
         if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
             return Some(error_response(
-                id.unwrap_or(Value::Null),
+                id,
                 INVALID_REQUEST,
                 "`jsonrpc` must be \"2.0\"",
             ));
         }
         let params = object.get("params").cloned().unwrap_or(Value::Null);
-        // No id: a notification (`notifications/initialized`, `notifications/cancelled`...).
-        let id = id?;
         let outcome: Result<Value, (i64, String)> = match method {
             "initialize" => Ok(self.initialize(&params)),
             "ping" => Ok(json!({})),
@@ -246,6 +249,15 @@ impl Server {
                         INVALID_REQUEST,
                         "an empty batch",
                     ))
+                } else if items.len() > MAX_BATCH {
+                    Some(error_response(
+                        Value::Null,
+                        INVALID_REQUEST,
+                        &format!(
+                            "a batch of {} requests is too many (at most {MAX_BATCH}); send them one by one",
+                            items.len()
+                        ),
+                    ))
                 } else {
                     let answers: Vec<Value> = items
                         .iter()
@@ -264,35 +276,90 @@ impl Server {
     }
 
     /// Reads lines from `input` until it ends and writes the answers to `output`, flushing each.
-    /// Bytes that are not UTF-8 are answered with a parse error. Returns when the input ends or
-    /// the output cannot be written.
-    pub fn serve<R: BufRead, W: Write>(
+    /// Bytes that are not UTF-8 are answered with a parse error; a line longer than [`MAX_LINE`]
+    /// bytes is answered with an error and skipped up to its end. A byte order mark on the first
+    /// line is ignored. Returns when the input ends or the output cannot be written.
+    pub fn serve<R: BufRead, W: Write>(&mut self, input: R, output: W) -> std::io::Result<()> {
+        self.serve_with_limit(input, output, MAX_LINE)
+    }
+
+    /// [`Server::serve`] with another longest line (the tests use a small one).
+    pub fn serve_with_limit<R: BufRead, W: Write>(
         &mut self,
         mut input: R,
         mut output: W,
+        max_line: usize,
     ) -> std::io::Result<()> {
         let mut buffer = Vec::new();
+        let mut first = true;
         loop {
             buffer.clear();
-            if input.read_until(b'\n', &mut buffer)? == 0 {
+            // Never read more than one line more a byte: a client that sends gigabytes without a
+            // newline must not exhaust the memory.
+            let limit = u64::try_from(max_line)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            let read = Read::take(&mut input, limit).read_until(b'\n', &mut buffer)?;
+            if read == 0 {
                 return Ok(());
             }
-            let answer = match std::str::from_utf8(&buffer) {
-                Ok(line) => self.handle_line(line),
-                Err(_) => Some(
+            let too_long = buffer.len() > max_line && buffer.last() != Some(&b'\n');
+            let answer = if too_long {
+                skip_line(&mut input)?;
+                Some(
                     error_response(
                         Value::Null,
-                        PARSE_ERROR,
-                        "parse error: the line is not valid UTF-8",
+                        INVALID_REQUEST,
+                        &format!(
+                            "the line is too long (more than {max_line} bytes) and was skipped"
+                        ),
                     )
                     .to_string(),
-                ),
+                )
+            } else {
+                let bytes = if first {
+                    buffer.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&buffer)
+                } else {
+                    &buffer
+                };
+                match std::str::from_utf8(bytes) {
+                    Ok(line) => self.handle_line(line),
+                    Err(_) => Some(
+                        error_response(
+                            Value::Null,
+                            PARSE_ERROR,
+                            "parse error: the line is not valid UTF-8",
+                        )
+                        .to_string(),
+                    ),
+                }
             };
+            first = false;
             if let Some(line) = answer {
                 output.write_all(line.as_bytes())?;
                 output.write_all(b"\n")?;
                 output.flush()?;
             }
+        }
+    }
+}
+
+/// Discards input up to and including the next newline (or the end of the input).
+fn skip_line<R: BufRead>(input: &mut R) -> std::io::Result<()> {
+    loop {
+        let (used, done) = {
+            let available = input.fill_buf()?;
+            if available.is_empty() {
+                return Ok(());
+            }
+            match available.iter().position(|b| *b == b'\n') {
+                Some(i) => (i + 1, true),
+                None => (available.len(), false),
+            }
+        };
+        input.consume(used);
+        if done {
+            return Ok(());
         }
     }
 }

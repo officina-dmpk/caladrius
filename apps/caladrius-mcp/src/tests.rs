@@ -263,7 +263,6 @@ fn malformed_text_gets_a_parse_error_and_the_server_carries_on() {
         "null",
         "[]",
         "[1,2]",
-        "[{}]",
         "true",
     ] {
         let answer = s.handle_line(line).expect(line);
@@ -440,4 +439,136 @@ fn serve_reads_lines_and_survives_bytes_that_are_not_text() {
     assert_eq!(answers[0]["id"], 1);
     assert_eq!(answers[1]["error"]["code"], PARSE_ERROR);
     assert_eq!(answers[2]["id"], 2);
+}
+
+#[test]
+fn a_message_without_an_id_is_a_notification_and_is_never_answered() {
+    let mut s = Server::new();
+    for message in [
+        json!({}),
+        json!({ "foo": 1 }),
+        json!({ "method": "ping" }),
+        json!({ "jsonrpc": "1.0", "method": "ping" }),
+        json!({ "jsonrpc": "2.0" }),
+        json!({ "jsonrpc": "2.0", "method": 5 }),
+        json!({ "jsonrpc": "2.0", "method": "tools/call", "params": { "name": "nope" } }),
+        json!({ "jsonrpc": "2.0", "method": "initialize" }),
+    ] {
+        assert_eq!(s.handle_line(&message.to_string()), None, "{message}");
+    }
+    // The same inside a batch: only the requests are answered.
+    let line = json!([
+        { "jsonrpc": "2.0", "method": "tools/call", "params": { "name": "nope" } },
+        { "method": "ping" },
+        { "jsonrpc": "2.0", "id": 1, "method": "ping" },
+    ])
+    .to_string();
+    let answer: Value = serde_json::from_str(&s.handle_line(&line).unwrap()).unwrap();
+    assert_eq!(answer.as_array().unwrap().len(), 1);
+    // A present id (even null) makes it a request, answered even when invalid.
+    let r = send(&mut s, json!({ "id": null, "method": "ping" }));
+    assert_eq!(r["error"]["code"], INVALID_REQUEST);
+    // A top-level value that is not an object cannot be a notification.
+    assert!(s.handle_line("5").is_some());
+}
+
+#[test]
+fn a_batch_is_limited() {
+    let mut s = Server::new();
+    let ping = |i: usize| json!({ "jsonrpc": "2.0", "id": i, "method": "ping" });
+    let at_limit: Vec<Value> = (0..MAX_BATCH).map(ping).collect();
+    let answer: Value =
+        serde_json::from_str(&s.handle_line(&json!(at_limit).to_string()).unwrap()).unwrap();
+    assert_eq!(answer.as_array().unwrap().len(), MAX_BATCH);
+    let over: Vec<Value> = (0..=MAX_BATCH).map(ping).collect();
+    let answer: Value =
+        serde_json::from_str(&s.handle_line(&json!(over).to_string()).unwrap()).unwrap();
+    assert_eq!(answer["error"]["code"], INVALID_REQUEST);
+    assert!(
+        answer["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("too many")
+    );
+}
+
+#[test]
+fn a_line_that_is_too_long_is_skipped_and_the_server_goes_on() {
+    let mut s = Server::new();
+    let ping = br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+    let mut input: Vec<u8> = Vec::new();
+    input.extend_from_slice(ping);
+    input.push(b'\n');
+    input.extend(std::iter::repeat_n(b'x', 1000));
+    input.push(b'\n');
+    input.extend_from_slice(ping);
+    input.push(b'\n');
+    // A last line that is too long and has no newline at all.
+    input.extend(std::iter::repeat_n(b'y', 500));
+    let mut output = Vec::new();
+    s.serve_with_limit(&input[..], &mut output, 200).unwrap();
+    let text = String::from_utf8(output).unwrap();
+    let answers: Vec<Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(answers.len(), 4, "{text}");
+    assert_eq!(answers[0]["id"], 1);
+    assert_eq!(answers[1]["error"]["code"], INVALID_REQUEST);
+    assert!(
+        answers[1]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("too long")
+    );
+    assert_eq!(answers[2]["id"], 1);
+    assert_eq!(answers[3]["error"]["code"], INVALID_REQUEST);
+
+    // A line exactly at the limit is read.
+    let exact = format!(
+        "{}{}",
+        r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#,
+        " ".repeat(60)
+    );
+    let mut output = Vec::new();
+    let mut input = exact.clone().into_bytes();
+    input.push(b'\n');
+    s.serve_with_limit(&input[..], &mut output, exact.len())
+        .unwrap();
+    assert!(String::from_utf8(output).unwrap().contains("\"id\":3"));
+}
+
+#[test]
+fn endless_input_without_a_newline_does_not_grow_the_memory() {
+    // 40 MiB of one line, limit 1 MiB: the server answers once and reaches the end of the input.
+    let mut s = Server::new();
+    let endless = std::io::BufReader::new(Read::take(std::io::repeat(b'z'), 40 * 1024 * 1024));
+    let mut output = Vec::new();
+    s.serve_with_limit(endless, &mut output, 1024 * 1024)
+        .unwrap();
+    let text = String::from_utf8(output).unwrap();
+    assert_eq!(text.lines().count(), 1, "{text}");
+    assert!(text.contains("too long"));
+}
+
+#[test]
+fn a_byte_order_mark_on_the_first_line_is_ignored() {
+    let mut s = Server::new();
+    let mut input: Vec<u8> = vec![0xef, 0xbb, 0xbf];
+    input.extend_from_slice(br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    input.push(b'\n');
+    input.extend_from_slice(&[0xef, 0xbb, 0xbf]);
+    input.extend_from_slice(br#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+    input.push(b'\n');
+    let mut output = Vec::new();
+    s.serve(&input[..], &mut output).unwrap();
+    let answers: Vec<Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(answers.len(), 2);
+    assert_eq!(answers[0]["result"], json!({}));
+    // Only the first line may carry one: a mark later is part of the text, hence a parse error.
+    assert_eq!(answers[1]["error"]["code"], PARSE_ERROR);
 }
