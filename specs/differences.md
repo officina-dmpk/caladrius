@@ -43,5 +43,17 @@ The engine's claims were checked independently and upheld; the oracle (`oracle/s
 - **What Caladrius does by default.** Forward differences with a relative increment of 0.001 (FIT-JAC-01, `assumed`, from `AGENTS.md` section 6). The iteration stops where the approximated gradient is zero, which is not where the true gradient is, so the estimates differ from the exact minimum by about the error of the increment times the size of the residuals.
 - **Measured (task T-029, 2026-10-09).** All 185 reference fits (95 of the older models, 90 of the T-029 ones) re-run with forward differences and the reference run's convergence settings: 40 of the 490 estimates differ from the reference by more than 1e-4 relative (31 on Indometh, 3 on Theoph, 6 on the lag model). Worst gap per dataset: Indometh 6.9e-4 (`inv_y`, subject 2, k), Theoph 1.4e-4, lag 1.8e-4, infusion 2.3e-5, zero-order 3.3e-5, five-point example 1.2e-5; worst WRSS gap 9.8e-4 (Indometh `inv_yhat`). Standard errors are further off, by 1.2e-3 to 3.5e-3 (FIT-JAC-03).
 - **Why it is not a tolerance to widen.** The contract tolerances compare two fits of the same objective computed the same way (AGENTS.md section 5); here the two sides solve slightly different problems (exact Jacobian against a 0.1 % finite difference). How the reference software forms its derivatives is open item OF-01. The engine offers both (`derivatives`), the oracle tests the exact one, and the tolerance note of `specs/fit.md` section 10 gives the margin on the exact one (about 14 times on estimates).
+- **Stopping rule (measured by the engine agent in task T-030, reproduced by the reviewer).** The stopping rule matters more than the derivatives. Estimates beyond 1e-4 of the reference, out of the 490 estimates of the 185 reference fits:
+
+  | setting | estimates beyond 1e-4 | worst gap |
+  |---|---|---|
+  | forward differences 1e-3, reference stopping rule (relative decrease 1e-10) | 40 | 6.9e-4 |
+  | forward differences 1e-5, reference stopping rule | 0 | 1.1e-5 |
+  | forward differences 1e-3, default stopping rule (relative decrease 1e-4) | 168 | 5.8e-3 |
+  | forward differences 1e-5, default stopping rule | 149 | 5.1e-3 |
+  | analytic derivatives, default stopping rule | 149 | 5.1e-3 |
+
+  So a default fit (forward differences, convergence 1e-4, 50 iterations) is accurate to about 5e-3 relative; with the tight stop, a finer increment (1e-5) or the exact derivatives bring it within 1e-4. The defaults are the `assumed` reference-software defaults of `AGENTS.md` section 6.
+- **Decision.** Open, as Q-014 in `board/QUESTIONS.md` (option 1: keep the defaults and state the accuracy of about 5e-3; option 2: default to analytic derivatives and a tighter stop, recorded as D-04). Option 1 is taken for v0.1.0, with no behaviour change before the tag; the human's answer decides v0.2.
 - **Status.** `assumed` (the default itself is `assumed`). No oracle case carries a `documented_differences` marker for it, because no test compares a forward-difference fit with the references' estimates at 1e-4; the claim is reproducible with the T-029 oracle files (the forward-difference groups of `crates/caladrius-fit/tests/oracle_fit_models.rs` only check convergence).
-- **Open.** Whether the default should be analytic where closed forms exist, or the increment smaller, is a decision for the orchestrator; nothing was changed.
+- **Open.** Q-014 (above). Closed forms exist for every v1 model in the (v, k) parameterisation since T-030, so option 2 is available without further engine work.
