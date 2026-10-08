@@ -14,3 +14,4 @@
 - 2026-10-08 T-012 (oracle): 14 edge cases, 2448 expected values, 88 engine tests (62 pass), 6 testkit cross-checks; conformance 3522/3760 (public 100%); decisions on replaced values and negatives -> T-013, T-014.
 - 2026-10-08 T-014 (oracle): documented-difference marker (options.json, testkit, conformance column), specs/differences.md D-01 (trailing negative never Clast); commit 18c6d73.
 - 2026-10-08 T-013 (engine): tlag, vss.obs/pred, vss.iv.last, aumcall.dn, auciv* family, PKNCA profile for replaced values (+ exclude_replaced option); 88/88 edge tests; conformance 3744/3744 + 16 documented; commit 46c0ce1; review approved.
+- 2026-10-08 T-015 (engine): quality flags (6 kinds, thresholds in NcaOptions::quality), no_positive_concentration rule, tlag reasons, exclude_replaced tests; 10 flag tests; commit 2b32db6; review approved.
