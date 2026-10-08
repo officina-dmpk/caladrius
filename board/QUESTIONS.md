@@ -132,3 +132,19 @@ What the loader assumes (all `assumed` until the first export is read): a table 
 Decision taken meanwhile: with no export in the folder, the private tests print a "SKIPPED" line with this explanation and pass; `cargo xtask conformance` prints private counts on the console when exports exist and writes them (counts only) into `docs/conformance.md` only with `--private`, because publishing a numeric comparison with the reference software is your decision (AGENTS.md section 2).
 
 Answer: _pending_.
+
+## Note on Q-008 (2026-10-08, reader): what the screenshots already answer
+
+No action needed. Reading the thirteen screenshots of `private/screenshots/` (allowed by `AGENTS.md` section 7) the reader can answer part of Q-008 in words, without numbers: (1) four calculation methods are offered (linear trapezoid with linear interpolation, log trapezoid, linear-up/log-down, mixed linear/log) and the one shown as selected is the linear trapezoid; (3) the λz rules page has a maximum number of points and an earliest start time, and an acceptance block (adjusted R², percent extrapolated AUC, span, number of samples, percent extrapolated AUC in a dosing interval), all blank, so no acceptance threshold is applied unless typed; the rule for values below the quantification limit is a separate project object that was not screenshotted, and the Tmax and C0 conventions were not shown (items 2, 4 and 5 stay open). A new point: the NCA setup also offers a weighting (user-defined, uniform, 1/Y, 1/(Y·Y)), uniform being selected; `specs/nca.md` has no weighted λz regression (open item UX-O-01 of `specs/ux.md`).
+
+Decision taken meanwhile: `specs/nca.md` keeps the PKNCA profile as the application default for the AUC method (lin-up/log-down) until the orchestrator decides; the observed default of the reference (linear trapezoid) is a candidate for the reference profile of section 2.2 and for the default of the application (open item O-06). Orchestrator: please say whether to update section 2.2 accordingly.
+
+Answer: _pending_.
+
+## Q-011 (2026-10-08, reader): a sample file for the import heuristic
+
+For `specs/ux.md` UX-IMP-01 and UX-O-02: the human reported a CSV with decimal commas that was imported with the comma taken as the separator. To tune the plausibility checks the reader needs the first ten rows of such a file, with the actual separator and decimal marks, but with every number replaced by a harmless one (nothing from `private/` may enter a versioned file). Alternatively describe in words what the file looked like (separators, header, how many columns).
+
+Decision taken meanwhile: the heuristic of UX-IMP-01 stays as written, tagged `assumed`; an import that is ambiguous is never executed silently.
+
+Answer: _pending_.

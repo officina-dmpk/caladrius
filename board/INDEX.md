@@ -26,9 +26,10 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-014 | Documented-difference marker in oracle/testkit/conformance; D-01 negative concentrations | oracle | done | T-012 |
 | T-015 | caladrius-nca quality flags (NCA-LZ-12b) and T-013 review follow-ups | engine | done | T-013 |
 | T-016 | specs/nca.md: PKNCA facts from T-012/T-013 (replaced values, IV first segments, AUMC tail, Tlag) | reader | done | T-013 |
-| T-017 | specs/models.md and specs/fit.md sync after the oracle (M5 fix, precision note, fit facts, tags) | reader | in progress | T-009, T-010, T-011 |
+| T-017 | specs/models.md and specs/fit.md sync after the oracle (M5 fix, precision note, fit facts, tags) | reader | done | T-009, T-010, T-011 |
 | T-018 | Arbitration of the 1/ŷ fit oracle cases (fixed points) and the F1 trace tolerance | oracle | done | T-009, T-011a |
 | T-019 | Private oracle infrastructure (feature private-oracle, export loader, private conformance counts) and exercise 1 NCA | oracle | blocked (exports) | T-013 |
 | T-020 | caladrius-project (data model) and caladrius-engine (command registry, schemas, history) | interface | in progress | T-011b |
 | T-021 | caladrius-cli and conformance extended to models and fit | interface | todo | T-020 |
 | T-022 | caladrius-mcp (MCP server over stdio) | interface | todo | T-020 |
+| T-023 | specs/nca.md: facts observed on the reference screen (default AUC method, λz weighting, empty acceptance criteria) | reader | in progress | T-016 |
