@@ -35,3 +35,51 @@ Decision taken meanwhile: keep the data and expected values in `oracle/`, list t
 Orchestrator note (2026-10-08): decision stands. Measured concentrations are facts, not code; R's GPL covers the package, PKNCA's AGPL covers its code, neither covers computed output. `oracle/` is not part of any published crate. To confirm by the human before the first public release.
 
 Answer (human): pending.
+
+## Q-005 (2026-10-08, reader): terms of the reference software's public documentation
+
+`AGENTS.md` section 6 asks the reader to check the documentation site's terms before using it. Result (details in `specs/sources.md` section 2): the legal notice shipped with the documentation says it is for use by the vendor's customers under the controlling licence agreement, that any other use is not authorised, and that no part may be reproduced, transmitted or translated without the licence agreement's permission or the vendor's written consent. The vendor website's own notice also forbids automated access and any other use of its material. Neither text gives permission for what this project would do (an automated agent reading the pages to write an independent open-source specification), and the licence agreement that applies (your university licence, see Q-002) is not visible to the reader. Read as written, the use is not allowed.
+
+Decision taken meanwhile: the reader stopped and did not use the reference documentation. `specs/nca.md` rests on the PKNCA documentation, peer-reviewed papers, a conference poster, and the public documentation of other NCA tools. Every convention of the reference software that these sources do not settle is tagged `assumed` and becomes a test for the private oracle (observed results), not a documented fact. Question Q-008 asks you to read a few default settings off your own screen.
+
+Disclosure: three web searches the reader ran to find the site returned tool-written summaries that quoted or paraphrased pages of the reference documentation and of forum threads about it (topics listed in `specs/sources.md` section 2.4). The reader did not open those pages and no rule depends on them, but the orchestrator may want to judge whether this matters for the clean-room record.
+
+What you can do: (a) check your university licence and the full text of the two notices, and tell the orchestrator if you authorise the reader to read the documentation; (b) read the pages yourself and answer targeted questions; or (c) do nothing, in which case the private exports settle the conventions.
+
+Orchestrator decision (2026-10-08): the reader's decision stands; the reference documentation is not used. The incidental search summaries are disclosed and no rule depends on them: acceptable for the clean-room record. Conventions specific to the reference software are settled by observed results (private oracle, Q-008), never by its documentation.
+
+Answer: _pending_.
+
+## Q-006 (2026-10-08, reader): vendor and product names in `specs/sources.md`
+
+`AGENTS.md` keeps "Phoenix", "WinNonlin" and "Certara" out of the docs except in a neutral compatibility statement and the trademark notice. `specs/sources.md` has to record the address of the documentation site it checked (a URL containing the vendor's name) for the terms-of-use record; `specs/nca.md` uses only "the reference software".
+
+Decision taken meanwhile: the vendor name appears in `specs/sources.md` only, inside the URLs of the terms check, as a provenance record. Strike or move it if you prefer.
+
+Orchestrator decision (2026-10-08): accepted, vendor name only inside the URLs of the terms-of-use record in `specs/sources.md`.
+
+Answer: _pending_.
+
+## Q-007 (2026-10-08, reader): published reference-software numbers
+
+An open-access paper (Kim et al., Transl Clin Pharmacol 2018, PMC6989226, licence CC BY-NC 3.0) prints a table comparing an R package with the reference software on one subject of the public theophylline data. The reader reproduced those printed values with the rules of `specs/nca.md` (hand check H3 in `specs/sources.md`). Two points need your decision, since `AGENTS.md` makes any published numeric comparison with the reference software yours: (a) may the statement "the rules reproduce the published table" stay in versioned files (`specs/sources.md` H3 and item O-14 of `specs/nca.md`) before you decide on publication? (b) the table's licence is non-commercial, which does not fit MIT OR Apache-2.0, so its numbers are not copied into `oracle/`; do you accept that, or want them used as a public test after checking the licence question?
+
+Decision taken meanwhile: no number from that paper is in any versioned file; the agreement statement stays; strike it if you prefer.
+
+Orchestrator decision (2026-10-08): accepted. No number from CC BY-NC material enters a versioned file; the agreement statement may stay. Publication of comparisons remains the human's decision.
+
+Answer: _pending_.
+
+## Q-008 (2026-10-08, reader): defaults to read off your own screen
+
+Observed results are an allowed source and cost no licence risk. Please look at the NCA setup of the reference software on your machine (do not open its install folder) and tell the orchestrator, in your words:
+
+1. the default AUC calculation method, and the list of methods it offers;
+2. the default rule for values below the limit of quantification, and the rules it offers;
+3. the default λz method, whether the point at Cmax or Tmax is left out of the automatic choice (for oral data and for IV bolus data), and any minimum adjusted R², span or similar acceptance setting;
+4. whether, for IV bolus data without a sample at time 0, the extrapolated C0 is added to the profile before the AUC is computed;
+5. what Tlag is for a profile that starts with zeros.
+
+Decision taken meanwhile: the public oracle uses PKNCA's defaults; the "reference profile" of `specs/nca.md` stays `assumed`.
+
+Answer: _pending_.
