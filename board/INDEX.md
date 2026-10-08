@@ -19,4 +19,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-009 | Oracle for models (closed-form grids) and fitting (R nls / nlsLM references) | oracle | todo | T-008 |
 | T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | todo | T-008, T-009 |
 | T-011 | caladrius-fit: weighted least squares, Gauss-Newton Levenberg-Hartley, full output set (to split) | engine | todo | T-010 |
-| T-012 | Oracle edge cases without public coverage (interior zeros, missing values, IV infusion, Tlag, dose-normalised, AUMC %%extrap) via synthetic PKNCA runs | oracle | todo | T-007 |
+| T-012 | Oracle edge cases without public coverage (interior zeros, missing values, IV infusion, Tlag, dose-normalised, AUMC %%extrap) via synthetic PKNCA runs | oracle | in progress | T-007 |
