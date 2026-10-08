@@ -327,7 +327,17 @@ fn every_fit_case_has_tests() {
         "spec_inv_yhat",
         "spec_inv_yhat2",
     ];
-    let names = caladrius_testkit::list_fit_cases().unwrap();
+    // The synthetic infusion, zero-order and lag cases of task T-029 are run by
+    // `oracle_fit_models.rs`, which has its own guard.
+    let names: Vec<String> = caladrius_testkit::list_fit_cases()
+        .unwrap()
+        .into_iter()
+        .filter(|n| {
+            !["fit_infusion_", "fit_zero_order_", "fit_lag_"]
+                .iter()
+                .any(|p| n.starts_with(p))
+        })
+        .collect();
     assert_eq!(names.len(), covered.len(), "{names:?}");
     for name in names {
         let short = name.strip_prefix("fit_").unwrap();

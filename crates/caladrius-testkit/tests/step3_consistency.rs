@@ -223,26 +223,47 @@ fn parameterisations_and_the_flip_flop_pair_give_identical_values() {
 
 // ---------------------------------------------------------------- fits
 
-fn model_fn(model: &str, d: f64, th: &[f64], t: f64) -> f64 {
+/// Concentration of a fitted model at `t`. `dur` is the fixed duration of the infusion and of the
+/// zero-order input (ignored by the other models). Textbook forms (`specs/models.md` MOD-IVI-01,
+/// MOD-AB0-01, MOD-AB1-01, MOD-AB1-05), written again here, valid for `t` after the lag.
+fn model_fn(model: &str, d: f64, dur: f64, th: &[f64], t: f64) -> f64 {
     match model {
         "pk1.iv_bolus" => d / th[0] * (-th[1] * t).exp(),
         "pk1.oral_1" => {
             let (v, k, ka) = (th[0], th[1], th[2]);
             d * ka / (v * (ka - k)) * ((-k * t).exp() - (-ka * t).exp())
         }
+        "pk1.iv_infusion" | "pk1.oral_0" => {
+            let (v, k) = (th[0], th[1]);
+            let r = d / dur;
+            if t <= dur {
+                r / (v * k) * (1.0 - (-k * t).exp())
+            } else {
+                r / (v * k) * (1.0 - (-k * dur).exp()) * (-k * (t - dur)).exp()
+            }
+        }
+        "pk1.oral_1_lag" => {
+            let (v, k, ka, tlag) = (th[0], th[1], th[2], th[3]);
+            assert!(
+                t > tlag,
+                "a sample at or before the lag has no smooth model"
+            );
+            let s = t - tlag;
+            d * ka / (v * (ka - k)) * ((-k * s).exp() - (-ka * s).exp())
+        }
         other => panic!("unknown model {other}"),
     }
 }
 
 /// Central-difference Jacobian row (an implementation independent of the analytic one in R).
-fn jacobian_row(model: &str, d: f64, th: &[f64], t: f64) -> Vec<f64> {
+fn jacobian_row(model: &str, d: f64, dur: f64, th: &[f64], t: f64) -> Vec<f64> {
     (0..th.len())
         .map(|j| {
             let h = 1e-6 * th[j];
             let (mut up, mut dn) = (th.to_vec(), th.to_vec());
             up[j] += h;
             dn[j] -= h;
-            (model_fn(model, d, &up, t) - model_fn(model, d, &dn, t)) / (2.0 * h)
+            (model_fn(model, d, dur, &up, t) - model_fn(model, d, dur, &dn, t)) / (2.0 * h)
         })
         .collect()
 }
@@ -280,11 +301,40 @@ fn invert(m: &[Vec<f64>]) -> Vec<Vec<f64>> {
     a.into_iter().map(|r| r[n..].to_vec()).collect()
 }
 
+/// Determinant by Gaussian elimination with partial pivoting.
+fn determinant(m: &[Vec<f64>]) -> f64 {
+    let n = m.len();
+    let mut a: Vec<Vec<f64>> = m.to_vec();
+    let mut det = 1.0;
+    for c in 0..n {
+        let pivot = (c..n)
+            .max_by(|&x, &y| a[x][c].abs().total_cmp(&a[y][c].abs()))
+            .unwrap();
+        if a[pivot][c] == 0.0 {
+            return 0.0;
+        }
+        if pivot != c {
+            a.swap(pivot, c);
+            det = -det;
+        }
+        det *= a[c][c];
+        for r in c + 1..n {
+            let f = a[r][c] / a[c][c];
+            let pivot_row = a[c].clone();
+            for (x, y) in a[r].iter_mut().zip(pivot_row) {
+                *x -= f * y;
+            }
+        }
+    }
+    det
+}
+
 fn parameter_names(model: &str) -> &'static [&'static str] {
-    if model == "pk1.iv_bolus" {
-        &["v", "k"]
-    } else {
-        &["v", "k", "ka"]
+    match model {
+        "pk1.iv_bolus" | "pk1.iv_infusion" | "pk1.oral_0" => &["v", "k"],
+        "pk1.oral_1" => &["v", "k", "ka"],
+        "pk1.oral_1_lag" => &["v", "k", "ka", "tlag"],
+        other => panic!("unknown model {other}"),
     }
 }
 
@@ -294,6 +344,7 @@ fn student_975(df: usize) -> f64 {
         3 => 3.1824463053,
         7 => 2.3646242510,
         9 => 2.2621571628,
+        10 => 2.2281388520,
         other => panic!("no tabulated quantile for {other} degrees of freedom"),
     }
 }
@@ -314,6 +365,7 @@ fn check_subject(case: &FitCase, subject: &str) {
     let profile = case.profile(subject).unwrap();
     let (t, y) = case.fitted_observations(profile);
     let d = profile.dose;
+    let dur = case.fixed.get("dur").copied().unwrap_or(f64::NAN);
     let (n, p) = (y.len(), th.len());
     assert_eq!(get("n") as usize, n);
     assert_eq!(get("p") as usize, p);
@@ -321,7 +373,7 @@ fn check_subject(case: &FitCase, subject: &str) {
     assert_eq!(get("df") as usize, df);
     let yhat: Vec<f64> = t
         .iter()
-        .map(|&x| model_fn(&case.model, d, &th, x))
+        .map(|&x| model_fn(&case.model, d, dur, &th, x))
         .collect();
     let w: Vec<f64> = y
         .iter()
@@ -390,7 +442,7 @@ fn check_subject(case: &FitCase, subject: &str) {
     // Weighted Jacobian, first-order optimality and covariance.
     let jac: Vec<Vec<f64>> = t
         .iter()
-        .map(|&x| jacobian_row(&case.model, d, &th, x))
+        .map(|&x| jacobian_row(&case.model, d, dur, &th, x))
         .collect();
     for j in 0..p {
         let gradient: f64 = (0..n).map(|i| jac[i][j] * w[i] * r[i]).sum();
@@ -503,14 +555,11 @@ fn check_subject(case: &FitCase, subject: &str) {
             get(&format!("correlation.{}.{}", names[a], names[b]))
         }
     };
-    let det = if p == 2 {
-        1.0 - corr(0, 1).powi(2)
-    } else {
-        1.0 + 2.0 * corr(0, 1) * corr(0, 2) * corr(1, 2)
-            - corr(0, 1).powi(2)
-            - corr(0, 2).powi(2)
-            - corr(1, 2).powi(2)
-    };
+    let det = determinant(
+        &(0..p)
+            .map(|a| (0..p).map(|b| corr(a, b)).collect())
+            .collect::<Vec<Vec<f64>>>(),
+    );
     close(
         &format!("{name} {subject} eigenvalue product"),
         ev.iter().product(),
@@ -581,7 +630,7 @@ fn check_subject(case: &FitCase, subject: &str) {
 #[test]
 fn every_reference_fit_is_a_stationary_point_with_the_documented_statistics() {
     let names = list_fit_cases().unwrap();
-    assert_eq!(names.len(), 15);
+    assert_eq!(names.len(), 30);
     let mut fits = 0;
     for name in names {
         let case = load_fit_case(&name).unwrap();
@@ -590,8 +639,9 @@ fn every_reference_fit_is_a_stationary_point_with_the_documented_statistics() {
             fits += 1;
         }
     }
-    // 12 Theoph subjects x 5 + 6 Indometh x 5 + 5 spec.
-    assert_eq!(fits, 12 * 5 + 6 * 5 + 5);
+    // 12 Theoph subjects x 5 + 6 Indometh x 5 + 5 spec; T-029: 6 subjects x 5 weightings for each
+    // of the synthetic infusion, zero-order and lag datasets.
+    assert_eq!(fits, 12 * 5 + 6 * 5 + 5 + 3 * 6 * 5);
 }
 
 /// Task T-018: every subject of every case has a fixed point (or a minimum). The first version of

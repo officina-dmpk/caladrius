@@ -184,6 +184,9 @@ struct FitOptions {
     subjects: Vec<String>,
     #[serde(default)]
     no_fixed_point: Vec<String>,
+    /// Parameters held at a given value, not fitted (for example `dur`).
+    #[serde(default)]
+    fixed: BTreeMap<String, f64>,
     n_values: usize,
 }
 
@@ -214,6 +217,9 @@ pub struct FitCase {
     pub subjects: Vec<String>,
     /// Subjects left out because the iteratively reweighted scheme has no fixed point for them.
     pub no_fixed_point: Vec<String>,
+    /// Parameters held at a given value in the reference fits and not fitted (the duration `dur`
+    /// of an infusion or of a zero-order input); the engine must be given the same values.
+    pub fixed: BTreeMap<String, f64>,
     /// `(subject, name)` to value, for the subjects in `subjects`.
     pub expected: Table,
     pub note: String,
@@ -316,6 +322,7 @@ pub fn load_fit_case(name: &str) -> Result<FitCase, OracleError> {
         options: options.fit_options,
         subjects: options.subjects,
         no_fixed_point: options.no_fixed_point,
+        fixed: options.fixed,
         expected,
         note: options.note,
     })
@@ -399,7 +406,9 @@ mod tests {
     #[test]
     fn every_fit_case_loads_and_is_complete() {
         let names = list_fit_cases().unwrap();
-        assert_eq!(names.len(), 15, "{names:?}");
+        // 15 cases of T-009/T-018 (Theoph, Indometh, the five-point example) and 15 of T-029
+        // (synthetic infusion, zero-order and lag profiles), five weightings each.
+        assert_eq!(names.len(), 30, "{names:?}");
         for name in names {
             let case = load_fit_case(&name).unwrap();
             assert!(!case.subjects.is_empty(), "{name}");
