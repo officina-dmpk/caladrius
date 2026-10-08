@@ -359,3 +359,35 @@ fn an_exact_fit_has_no_information_criteria_and_a_readable_trace() {
     let back: FitResult = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
     assert_eq!(back.trace(), r.trace());
 }
+
+#[test]
+fn a_far_start_under_predicted_value_weights_is_not_converged() {
+    // T-011a re-review: from (500, 3) the points with ŷ ~ 1e-17 carry weights ~ 1e16; no step
+    // decreases WRSS and the predicted gain is tiny relative to it, but this is not a minimum.
+    let times = [0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 24.0];
+    let conc: Vec<f64> = times
+        .iter()
+        .zip([1.02, 0.98, 1.01, 0.99, 1.03, 0.97, 1.0])
+        .map(|(t, noise): (&f64, f64)| 10.0 * (-0.4 * t).exp() * noise)
+        .collect();
+    let mut options = FitOptions {
+        derivatives: Derivatives::Analytic,
+        ..FitOptions::default()
+    };
+    options.max_iterations = 50;
+    let input = FitInput {
+        model: ModelId::IvBolus,
+        dose: 100.0,
+        time: times.to_vec(),
+        conc,
+        weighting: Weighting::InvYhat,
+        initial: BTreeMap::from([("v".to_string(), 500.0), ("k".to_string(), 3.0)]),
+        options,
+    };
+    let r = run(&input).unwrap();
+    if r.status() == FitStatus::Converged {
+        // Only acceptable if it actually moved to the solution.
+        assert!(r.trace().len() > 1, "converged at the initial estimates");
+        assert!((r.get("estimate.v").unwrap() - 10.0).abs() < 1.0);
+    }
+}

@@ -418,8 +418,11 @@ impl<'a> Problem<'a> {
                     if accepted.is_some() {
                         break;
                     }
-                    if lam == 0.0 && predicted.is_some_and(|q| q <= eps * s_cur) {
-                        // Nothing measurable is left to gain: the current point is the minimum.
+                    if lam == 0.0 && trace.len() > 1 && predicted.is_some_and(|q| q <= eps * s_cur)
+                    {
+                        // Nothing measurable is left to gain: the current point is the minimum. Only
+                        // after an accepted step: at the initial estimates a tiny predicted gain can
+                        // come from a few huge weights far from the solution (1/ŷ with ŷ ~ 1e-17).
                         at_minimum = true;
                         break;
                     }

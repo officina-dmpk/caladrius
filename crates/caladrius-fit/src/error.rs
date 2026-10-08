@@ -140,7 +140,7 @@ impl fmt::Display for FitError {
                 weighting,
             } => write!(
                 f,
-                "observation {} (time {time}) has concentration {value}, which has no weight under {weighting} (zero or negative); leave it out of the fit or choose another weighting",
+                "observation {} (time {time}) has concentration {value}, which has no weight under {weighting} (zero, negative, or too small to weight); leave it out of the fit or choose another weighting",
                 index + 1
             ),
             Self::UnusableInitialPrediction { index, time } => write!(
