@@ -1,8 +1,8 @@
 /target
 /target-*
-/private/
+/private/*
+!/private/README.md
 *.log
 *.tmp
 .DS_Store
 Thumbs.db
-!/private/README.md
