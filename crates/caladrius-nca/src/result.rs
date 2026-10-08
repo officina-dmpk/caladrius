@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::clean::{ProfilePoint, RemovedPoint};
+use crate::flags::QualityFlag;
 use crate::lambda_z::LambdaZCandidate;
 
 /// Why a parameter has no value (NCA-OUT-02). Never NaN, infinity or a stand-in zero.
@@ -124,6 +125,8 @@ pub struct NcaResult {
     profile: Vec<ProfilePoint>,
     removed: Vec<RemovedPoint>,
     lambda_z_candidates: Vec<LambdaZCandidate>,
+    #[serde(default)]
+    flags: Vec<QualityFlag>,
 }
 
 impl NcaResult {
@@ -132,12 +135,14 @@ impl NcaResult {
         profile: Vec<ProfilePoint>,
         removed: Vec<RemovedPoint>,
         lambda_z_candidates: Vec<LambdaZCandidate>,
+        flags: Vec<QualityFlag>,
     ) -> Self {
         Self {
             parameters,
             profile,
             removed,
             lambda_z_candidates,
+            flags,
         }
     }
 
@@ -175,5 +180,10 @@ impl NcaResult {
     /// selected one marked (NCA-OUT-01).
     pub fn lambda_z_candidates(&self) -> &[LambdaZCandidate] {
         &self.lambda_z_candidates
+    }
+
+    /// Quality flags of the result (NCA-LZ-12b): what to check; they never change a number.
+    pub fn flags(&self) -> &[QualityFlag] {
+        &self.flags
     }
 }

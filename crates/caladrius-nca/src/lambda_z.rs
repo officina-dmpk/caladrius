@@ -38,6 +38,9 @@ pub struct LambdaZCandidate {
     pub valid: bool,
     /// This fit gives the reported λz.
     pub selected: bool,
+    /// Points of the fit whose value was missing or BLQ and replaced by a number.
+    #[serde(default)]
+    pub replaced_points: usize,
 }
 
 impl LambdaZCandidate {
@@ -97,11 +100,19 @@ fn regress(points: &[(f64, f64)]) -> Option<LambdaZCandidate> {
         adj_r_squared,
         valid: lambda_z > 0.0 && lambda_z.is_finite(),
         selected: false,
+        replaced_points: 0,
     })
 }
 
 fn ln_points(points: &[&ProfilePoint]) -> Vec<(f64, f64)> {
     points.iter().map(|p| (p.time, p.conc.ln())).collect()
+}
+
+/// The fit of `points`, with the count of replaced values among them.
+fn fit_points(points: &[&ProfilePoint]) -> Option<LambdaZCandidate> {
+    let mut fit = regress(&ln_points(points))?;
+    fit.replaced_points = points.iter().filter(|p| p.is_replaced()).count();
+    Some(fit)
 }
 
 /// Terminal phase of the cleaned profile `points` (which may include a point inserted at the dose
@@ -112,6 +123,13 @@ pub(crate) fn terminal(
     options: &NcaOptions,
     tmax: Option<f64>,
 ) -> Result<Terminal, NcaError> {
+    // No measured positive value: nothing to fit, even if replaced values are positive (T-015).
+    if !points.iter().any(ProfilePoint::is_quantifiable) {
+        return Ok(Terminal {
+            selected: Err(NcReason::NoPositiveConcentration),
+            candidates: Vec::new(),
+        });
+    }
     match &options.lambda_z_selection.manual {
         Some(manual) => manual_fit(points, manual, options.lambda_z_selection.exclude_replaced),
         None => Ok(automatic(points, route, options, tmax)),
@@ -159,7 +177,7 @@ fn manual_fit(
             candidates: Vec::new(),
         });
     }
-    let Some(mut fit) = regress(&ln_points(&chosen)) else {
+    let Some(mut fit) = fit_points(&chosen) else {
         return Ok(Terminal {
             selected: Err(NcReason::TooFewPoints),
             candidates: Vec::new(),
@@ -210,9 +228,8 @@ fn automatic(
             candidates: Vec::new(),
         };
     }
-    let ln_eligible = ln_points(&eligible);
     let mut candidates: Vec<LambdaZCandidate> = (lz.min_points..=m)
-        .filter_map(|n| ln_eligible.get(m - n..).and_then(regress))
+        .filter_map(|n| eligible.get(m - n..).and_then(fit_points))
         .collect();
 
     let factor = lz.adj_r_squared_factor;

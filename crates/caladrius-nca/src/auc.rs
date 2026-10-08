@@ -84,8 +84,15 @@ pub(crate) fn areas(
     if points.iter().filter(|p| p.is_sample()).count() < 2 {
         return Areas::all(ParamValue::nc(NcReason::SinglePoint));
     }
-    // No positive concentration: zero area when every value is zero (NCA-DAT-09).
-    let Some(end) = points.iter().rposition(ProfilePoint::is_positive_sample) else {
+    // No measured positive concentration: zero area when every value is zero (NCA-DAT-09), not
+    // calculated otherwise, also when only replaced values are positive (T-015: no area is built
+    // from substituted values alone).
+    let end = points
+        .iter()
+        .any(ProfilePoint::is_quantifiable)
+        .then(|| points.iter().rposition(ProfilePoint::is_positive_sample))
+        .flatten();
+    let Some(end) = end else {
         return if points.iter().all(|p| p.conc == 0.0) {
             Areas::all(ParamValue::of(0.0))
         } else {

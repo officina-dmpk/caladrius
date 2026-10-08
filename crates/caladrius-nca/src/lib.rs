@@ -22,6 +22,7 @@ mod clean;
 mod derived;
 mod error;
 mod extrapolation;
+mod flags;
 mod float;
 mod lambda_z;
 mod observed;
@@ -40,10 +41,12 @@ use serde::{Deserialize, Serialize};
 
 pub use clean::{PointOrigin, ProfilePoint, RemovalReason, RemovedPoint};
 pub use error::NcaError;
+pub use flags::QualityFlag;
 pub use lambda_z::LambdaZCandidate;
 pub use options::{
     AucMethod, BlqAction, BlqPolicy, LambdaZManual, LambdaZOptions, LambdaZSelection,
-    LambdaZTieRule, MissingPolicy, NcaOptions, NegativePolicy, Route, StartPolicy, TmaxTie,
+    LambdaZTieRule, MissingPolicy, NcaOptions, NegativePolicy, QualityThresholds, Route,
+    StartPolicy, TmaxTie,
 };
 pub use result::{NcReason, NcaResult, ParamValue, Parameter};
 
@@ -131,7 +134,8 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
             .map_or(ParamValue::nc(NcReason::NonFinite), ParamValue::of),
         Err(reason) => ParamValue::nc(*reason),
     };
-    let span = fit(|c| c.time_last - c.time_first);
+    let span_ratio =
+        fit(|c| c.time_last - c.time_first).zip(half_life, |s, h| ParamValue::of(s / h));
     let adj_r_squared = match &terminal.selected {
         Ok(c) => c
             .adj_r_squared
@@ -220,10 +224,7 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         ("lambda.z.n.points", fit(|c| c.n_points as f64)),
         ("clast.pred", clast_pred),
         ("half.life", half_life),
-        (
-            "span.ratio",
-            span.zip(half_life, |s, h| ParamValue::of(s / h)),
-        ),
+        ("span.ratio", span_ratio),
         ("aucinf.obs", ext.aucinf_obs),
         ("aucinf.pred", ext.aucinf_pred),
         ("aumcinf.obs", ext.aumcinf_obs),
@@ -241,10 +242,24 @@ pub fn run(input: &NcaInput) -> Result<NcaResult, NcaError> {
         value,
     })
     .collect();
+    // NCA-LZ-12b: flags, computed from the final numbers and never changing them.
+    let flags = flags::flags(
+        &options.quality,
+        &flags::Inputs {
+            selected: terminal.selected.as_ref().ok(),
+            adj_r_squared,
+            span_ratio,
+            aucpext_obs: ext.aucpext_obs,
+            aucpext_pred: ext.aucpext_pred,
+            area_end: areas.end_time,
+            tlast: obs.tlast,
+        },
+    );
     Ok(NcaResult::new(
         parameters,
         profile,
         cleaned.removed,
         terminal.candidates,
+        flags,
     ))
 }

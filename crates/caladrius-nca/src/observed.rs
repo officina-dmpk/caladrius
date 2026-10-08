@@ -86,6 +86,11 @@ pub(crate) fn tlag(route: Route, before_blq: &[ProfilePoint]) -> ParamValue {
             return ParamValue::nc(NcReason::NotApplicableToRoute);
         }
     }
+    match before_blq.len() {
+        0 => return ParamValue::nc(NcReason::NoDataAfterCleaning),
+        1 => return ParamValue::nc(NcReason::SinglePoint),
+        _ => {}
+    }
     before_blq
         .windows(2)
         .find_map(|pair| match pair {

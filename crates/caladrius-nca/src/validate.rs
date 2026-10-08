@@ -3,7 +3,7 @@
 
 use crate::{
     BlqAction, BlqPolicy, LambdaZManual, LambdaZSelection, MissingPolicy, NcaError, NcaInput,
-    NcaOptions, NegativePolicy, Route,
+    NcaOptions, NegativePolicy, QualityThresholds, Route,
 };
 
 /// Checks `input`; `Ok` means every later step may assume: equal non-zero lengths, finite strictly
@@ -139,6 +139,29 @@ fn validate_options(options: &NcaOptions) -> Result<(), NcaError> {
                 lz.adj_r_squared_factor
             ),
         ));
+    }
+    validate_quality(&options.quality)
+}
+
+/// Quality thresholds (NCA-LZ-12b): a given threshold must be a finite number >= 0.
+fn validate_quality(q: &QualityThresholds) -> Result<(), NcaError> {
+    let thresholds = [
+        ("quality.min_adj_r_squared", q.min_adj_r_squared),
+        ("quality.min_span_ratio", q.min_span_ratio),
+        (
+            "quality.max_extrapolated_percent",
+            q.max_extrapolated_percent,
+        ),
+    ];
+    for (option, value) in thresholds {
+        if let Some(v) = value {
+            if !(v.is_finite() && v >= 0.0) {
+                return Err(invalid(
+                    option,
+                    format!("{v} must be a finite number >= 0, or null to turn the flag off"),
+                ));
+            }
+        }
     }
     Ok(())
 }

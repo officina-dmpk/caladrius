@@ -186,6 +186,8 @@ pub struct NcaOptions {
     pub tmax_tie: TmaxTie,
     /// How the terminal phase is chosen among the candidate point sets, or given by the user.
     pub lambda_z_selection: LambdaZSelection,
+    /// Thresholds of the quality flags (NCA-LZ-12b). Flags never change a number.
+    pub quality: QualityThresholds,
 }
 
 /// How the best candidate terminal phase is chosen (NCA-LZ-05, LZ-06; open item O-01).
@@ -233,6 +235,34 @@ pub struct LambdaZSelection {
     /// User-chosen points; when set, no automatic selection happens (NCA-LZ-08).
     pub manual: Option<LambdaZManual>,
     /// Keep BLQ or missing values that a policy replaced by a number out of the terminal phase
-    /// (the earlier NCA-LZ-02b reading). `false` (PKNCA, T-012): they are ordinary points.
+    /// (the earlier NCA-LZ-02b reading). `false` (PKNCA, T-012): they are ordinary points. It acts on
+    /// the terminal phase only: AUClast still ends at the last positive value after replacement.
     pub exclude_replaced: bool,
+}
+
+/// Thresholds of the quality flags (NCA-LZ-12b). `None` turns a flag off. The defaults are the
+/// PKNCA conventions recorded in NCA-LZ-12 (`min.hl.r.squared`, `min.span.ratio`,
+/// `max.aucinf.pext`, `min.hl.points`); status `assumed` for the reference profile.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct QualityThresholds {
+    /// Flag a terminal phase whose adjusted R² is below this value (0.9).
+    pub min_adj_r_squared: Option<f64>,
+    /// Flag a terminal phase whose span ratio (window length / half-life) is below this value (2).
+    pub min_span_ratio: Option<f64>,
+    /// Flag an AUC to infinity whose extrapolated percentage is above this value (20 %).
+    pub max_extrapolated_percent: Option<f64>,
+    /// Flag a terminal phase with fewer points than this (3); reachable by manual selection.
+    pub min_points: Option<usize>,
+}
+
+impl Default for QualityThresholds {
+    fn default() -> Self {
+        Self {
+            min_adj_r_squared: Some(0.9),
+            min_span_ratio: Some(2.0),
+            max_extrapolated_percent: Some(20.0),
+            min_points: Some(3),
+        }
+    }
 }
