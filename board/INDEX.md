@@ -17,7 +17,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-007 | specs/nca.md sync: oracle-confirmed tags (O-01, O-02, LZ-05 strict >, LZ-07), dose NC instead of error (DAT-11, 2.4, section 9) | reader | done | T-004c, T-005 |
 | T-008 | specs/models.md and specs/fit.md | reader | done | T-007 |
 | T-009 | Oracle for models (closed-form grids) and fitting (R nls / nlsLM references) | oracle | done | T-008 |
-| T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | to review | T-008, T-009 |
+| T-010 | caladrius-models: one-compartment closed-form models, derivatives, secondary parameters | engine | done | T-008, T-009 |
 | T-011 | caladrius-fit (umbrella, split into T-011a/b) | engine | split | T-010 |
 | T-011a | caladrius-fit core: WLS, Gauss-Newton Levenberg-Hartley, estimates, SE, CV%, WRSS, AIC/SBC | engine | to review | T-010 |
 | T-011b | caladrius-fit outputs: CI, matrices, condition numbers, trace, initial estimates, bounds | engine | todo | T-011a |
