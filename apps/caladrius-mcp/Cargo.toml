@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-mcp"
+description = "App layer: MCP server exposing the command registry to agents such as Apothicaire (empty placeholder until step 4)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

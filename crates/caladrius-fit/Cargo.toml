@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-fit"
+description = "Layer L0: weighted least-squares fitting of pharmacokinetic models, with diagnostics."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

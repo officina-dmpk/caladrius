@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-nca"
+description = "Layer L0: non-compartmental analysis (AUC rules, lambda_z, extrapolation, AUMC, MRT, CL/F, Vz/F, Vss)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

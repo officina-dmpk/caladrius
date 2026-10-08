@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-ui"
+description = "Layer L3: egui interface (empty placeholder: no UI framework dependency before step 5)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,38 @@
+# Caladrius workspace. Layers and their rules: AGENTS.md section 4, checked by `cargo xtask layers`.
+[workspace]
+resolver = "3"
+members = [
+    # L0 to L3: compile for wasm32-unknown-unknown (`cargo xtask wasm`).
+    "crates/caladrius-nca",
+    "crates/caladrius-models",
+    "crates/caladrius-fit",
+    "crates/caladrius-project",
+    "crates/caladrius-engine",
+    "crates/caladrius-ui",
+    # Test layer: oracles, tolerances, table comparison.
+    "crates/caladrius-testkit",
+    # Applications.
+    "apps/caladrius",
+    "apps/caladrius-cli",
+    "apps/caladrius-mcp",
+    # Developer tasks.
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+# Edition 2024 needs Rust 1.85.
+rust-version = "1.85"
+
+# Golden rule 6 (never crash). Each crate also starts with the same #![deny(...)] attribute.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unreachable = "deny"

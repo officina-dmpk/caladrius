@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-models"
+description = "Layer L0: closed-form pharmacokinetic model solutions (bolus, infusion, first- and zero-order absorption, lag time)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

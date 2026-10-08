@@ -13,3 +13,17 @@ Caladrius is an independent project and is not affiliated with, endorsed by or d
 ## License
 
 MIT OR Apache-2.0. Third-party data and assets are listed in `ATTRIBUTION.md`.
+
+## Build
+
+Requires Rust stable 1.85 or newer, installed with rustup (`rust-toolchain.toml` selects the stable channel). The WebAssembly check also needs the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`.
+
+```sh
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo xtask layers   # prints the layer table, fails if a crate depends on a higher layer
+cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-unknown
+```
+
+`cargo xtask` is an alias for the `xtask` crate (see `.cargo/config.toml`). The layers and their rules are in `AGENTS.md`, section 4.

@@ -1,0 +1,10 @@
+[package]
+name = "caladrius-project"
+description = "Layer L1: project model (worksheets, workflow objects, results) as pure serializable data."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
