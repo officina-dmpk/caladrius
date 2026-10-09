@@ -562,7 +562,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "caladrius"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-ui",
  "eframe",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-engine",
  "caladrius-testkit",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-fit",
  "caladrius-models",
@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-fit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-models",
  "caladrius-nca",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-engine",
  "caladrius-testkit",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-models"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-testkit",
  "serde",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-nca"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-testkit",
  "serde",
@@ -632,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-project"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-fit",
  "caladrius-models",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "calamine",
  "serde",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "caladrius-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-engine",
  "egui",
@@ -4265,7 +4265,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caladrius-fit",
  "caladrius-models",
