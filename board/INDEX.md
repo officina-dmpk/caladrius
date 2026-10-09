@@ -48,7 +48,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-036 | cargo xtask lint: forbidden names, private/ leaks, deny-lints header, tolerances once, board hygiene; CI step | interface | done | T-028 |
 | T-037 | README: sync the verified section with main (PR #1, external contribution) | orchestrator | done | T-034 |
 | T-038 | docs/screens: the application illustrated from the snapshot example (PR #2, external contribution) | orchestrator | done | T-034 |
-| T-040 | Default fit settings reach the exact minimum (Q-014 option 2); reference_conventions preset; D-04 | engine | to review | T-030 |
+| T-040 | Default fit settings reach the exact minimum (Q-014 option 2); reference_conventions preset; D-04 | engine | done | T-030 |
 | T-039 | cargo xtask review: the stated numbers confront the files that own them (PR #3, external contribution) | interface | done | T-036 |
 | T-041 | cargo xtask review follow-ups (strict can pass, pk2 drift rule, missing failure tests, .get indexing, line numbers) | interface | done | T-039 |
-| T-043 | Release workflow: binaries for Linux and Windows attached to every version tag; checkout@v5 | contributor-dsh | todo | T-028 |
+| T-043 | Release workflow: binaries for Linux and Windows attached to every version tag; checkout@v5 | contributor-dsh | done | T-028 |
