@@ -12,6 +12,7 @@
 //! to 8) and two compartments (`pk2.*`, section 11).
 
 mod curves;
+mod dosing;
 mod error;
 mod float;
 mod jacobian;
@@ -19,6 +20,8 @@ mod kernel;
 mod model;
 mod params;
 mod params2;
+mod regimen;
+mod steady;
 mod two;
 
 use std::collections::BTreeMap;
@@ -28,6 +31,7 @@ use serde::{Deserialize, Serialize};
 pub use error::ModelError;
 pub use jacobian::{DEFAULT_INCREMENT, Derivatives, Jacobian, jacobian};
 pub use model::ModelId;
+pub use regimen::{DoseEvent, MAX_REGULAR_DOSES, Regimen, is_regimen_parameter};
 
 use model::Input;
 
@@ -43,8 +47,15 @@ pub struct ModelInput {
     /// (first-order input); `dur` (infusion, zero-order input); `tlag` (lag models). Two
     /// compartments: exactly one set of MOD-2C-02 (`cl, vc, q, vp`, `k10, k12, k21, vc` or
     /// `a, b, alpha, beta`) instead of `v` and `cl` or `k`.
+    ///
+    /// A dosing regimen ([`Regimen`], `specs/models.md` section 12) is held here under reserved
+    /// names, written by [`ModelInput::with_regimen`] and read by [`ModelInput::regimen`]: `tau`
+    /// (steady state), `tau` and `n_doses` (n regular doses), `dose_time[i]`, `dose_amount[i]`,
+    /// `dose_dur[i]` (a schedule). Without them the input is a single dose.
     pub params: BTreeMap<String, f64>,
     /// Times since the dose, in any order, finite; a time before the dose (or the lag) gives 0.
+    /// With a regimen (below): times on the clock of the dose times for a schedule, since the
+    /// first dose for n regular doses, since the last dose (0 to tau) at steady state.
     pub times: Vec<f64>,
 }
 
@@ -56,6 +67,9 @@ pub struct ModelOutput {
     /// AUMC(0, t) per time; computed for the two-compartment models (empty for one compartment).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     aumc: Vec<f64>,
+    /// Steady state: R_C(s) = C_ss(s)/C_1(s) per time, `None` where C_1(s) = 0 (MOD-MD-08).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    accum_c: Vec<Option<f64>>,
     secondary: BTreeMap<String, f64>,
 }
 
@@ -86,15 +100,25 @@ impl ModelOutput {
     /// `mrt_system`, `mrt`, `c0`, `tmax_pred`, `cmax_pred`, `a_oral`, `b_oral` (first-order input
     /// with ka at least 1 % away from both exponents). `aumc[i]` is AUMC(0, t) at the i-th input
     /// time ([`ModelOutput::aumc`]). `None` when the model has no such quantity.
+    ///
+    /// With a regimen (MOD-MD-08 to 11): schedule or n doses, `auc_inf` is the sum of the doses
+    /// over CL; steady state, `cmax_ss`, `tmax_ss` (time since the dose, in [0, tau); `None` when
+    /// tau equals the input duration, the profile being flat), `cmin_ss`, `cav_ss`, `auc_tau_ss`,
+    /// `accum_cmax`, `accum_auc` (`None` when the single-dose area over the first interval is 0, a
+    /// lag of at least tau) and `accum_c[i]` (R_C at the i-th time, `None` where the single dose
+    /// gives 0). The single-dose profile quantities (`c0`, `cmax_pred`, `tmax_pred`, `mrt`,
+    /// `aumc_inf`, `rate`) are not given for a regimen.
     pub fn get(&self, name: &str) -> Option<f64> {
-        if let Some(index) = name
-            .strip_prefix("aumc[")
-            .and_then(|rest| rest.strip_suffix(']'))
-        {
-            return index
-                .parse::<usize>()
-                .ok()
-                .and_then(|i| self.aumc.get(i).copied());
+        let index = |prefix: &str| {
+            name.strip_prefix(prefix)
+                .and_then(|rest| rest.strip_suffix(']'))
+                .and_then(|i| i.parse::<usize>().ok())
+        };
+        if let Some(i) = index("aumc[") {
+            return self.aumc.get(i).copied();
+        }
+        if let Some(i) = index("accum_c[") {
+            return self.accum_c.get(i).copied().flatten();
         }
         self.secondary.get(name).copied()
     }
@@ -108,6 +132,9 @@ impl ModelOutput {
 /// Evaluates `input`. Parameters and times are checked first (MOD-GEN-04); the message of the
 /// error names what to fix.
 pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
+    if input.has_regimen() {
+        return dosing::run(input);
+    }
     if input.model.compartments() == 2 {
         return two::run(input);
     }
@@ -181,6 +208,7 @@ pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
         conc,
         auc,
         aumc: Vec::new(),
+        accum_c: Vec::new(),
         secondary,
     })
 }

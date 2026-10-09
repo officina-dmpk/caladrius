@@ -5,7 +5,9 @@
 //! bolus (FIT-JAC-02) and every two-compartment model in every parameter set (MOD-2C-17 to 19);
 //! for the other one-compartment models `Analytic` falls back to forward differences with the
 //! default increment (their closed forms live in `caladrius-fit`), and the result says which
-//! method was used.
+//! method was used. For an input with a dosing regimen `Analytic` is refused (no closed form is
+//! derived yet) and forward differences give one column per model parameter, none for the
+//! regimen.
 
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +48,13 @@ pub struct Jacobian {
 /// The derivatives of the concentrations of `input` with respect to each of its parameters.
 pub fn jacobian(input: &ModelInput, method: Derivatives) -> Result<Jacobian, ModelError> {
     let base = run(input)?;
+    // MOD-MD: no closed form is derived for a regimen yet (card T-049); differences work.
+    if input.has_regimen() && method == Derivatives::Analytic {
+        return Err(ModelError::DerivativesUnavailable {
+            model: input.model.id().to_string(),
+            reason: "they are not derived for a dosing regimen (`tau`, `n_doses` or a schedule); use forward differences".to_string(),
+        });
+    }
     match method {
         Derivatives::Analytic if input.model == ModelId::IvBolus => Ok(bolus(input, base.conc())),
         Derivatives::Analytic if input.model.compartments() == 2 => crate::two::jacobian(input),
@@ -66,7 +75,12 @@ pub fn jacobian(input: &ModelInput, method: Derivatives) -> Result<Jacobian, Mod
 fn forward(input: &ModelInput, base: &[f64], h: f64) -> Result<Jacobian, ModelError> {
     let mut parameters = Vec::new();
     let mut columns = Vec::new();
-    for (name, &theta) in &input.params {
+    // The regimen (dose times, amounts, interval) is data, not a fitted parameter: no column.
+    for (name, &theta) in input
+        .params
+        .iter()
+        .filter(|(name, _)| !crate::is_regimen_parameter(name))
+    {
         let step = if theta == 0.0 { h } else { h * theta.abs() };
         if !(theta + step).is_finite() {
             return Err(ModelError::Overflow {

@@ -120,6 +120,65 @@ pub enum ModelError {
         /// The model id.
         model: String,
     },
+    /// A dosing regimen whose parameters do not form a regimen (MOD-MD-11, 12): a name without
+    /// its partner, a schedule mixed with an interval, a gap in the numbering of the doses.
+    InvalidRegimen {
+        /// What is wrong and what to give instead.
+        problem: String,
+    },
+    /// A regimen parameter outside its domain (MOD-MD-12): `tau`, `n_doses`, `dose_time[i]`,
+    /// `dose_amount[i]`, `dose_dur[i]`.
+    RegimenOutOfDomain {
+        /// The parameter.
+        name: String,
+        /// The value given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        value: f64,
+        /// The domain and what the parameter is.
+        domain: String,
+    },
+    /// Steady state with an interval shorter than the input duration (MOD-MD-02 (f), MOD-MD-12).
+    IntervalShorterThanInput {
+        /// The interval given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        tau: f64,
+        /// The input duration.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        dur: f64,
+    },
+    /// A steady-state time outside the dosing interval [0, tau] (MOD-MD-02 (f), MOD-MD-12).
+    TimeOutsideInterval {
+        /// Position in `times`.
+        index: usize,
+        /// The time given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        time: f64,
+        /// The interval.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        tau: f64,
+    },
+    /// The requested derivatives do not exist for this input.
+    DerivativesUnavailable {
+        /// The model id.
+        model: String,
+        /// Why, and what to use instead.
+        reason: String,
+    },
 }
 
 /// The parameter sets of a two-compartment model, for the messages.
@@ -198,6 +257,28 @@ impl fmt::Display for ModelError {
             Self::DerivedOutOfRange { name, from, value } => write!(
                 f,
                 "the derived `{name}` = {from} = {value} is not a finite number > 0 (overflow or underflow); rescale the parameters (for example change the units)"
+            ),
+            Self::InvalidRegimen { problem } => write!(f, "dosing regimen: {problem}"),
+            Self::RegimenOutOfDomain {
+                name,
+                value,
+                domain,
+            } => write!(
+                f,
+                "dosing regimen: `{name}` = {value} is not {domain}; correct its value"
+            ),
+            Self::IntervalShorterThanInput { tau, dur } => write!(
+                f,
+                "the dosing interval `tau` = {tau} is shorter than the input duration `dur` = {dur}: at steady state each input would overlap the next one; give tau >= dur, or give the doses as a schedule (`dose_time[i]`, `dose_amount[i]`, `dose_dur[i]`), which allows the inputs to overlap"
+            ),
+            Self::TimeOutsideInterval { index, time, tau } => write!(
+                f,
+                "time {} = {time} is outside the dosing interval [0, tau = {tau}] of the steady state; give times since the last dose, from 0 to tau",
+                index + 1
+            ),
+            Self::DerivativesUnavailable { model, reason } => write!(
+                f,
+                "closed-form derivatives of {model} are unavailable: {reason}"
             ),
             Self::DegenerateExponents { model } => write!(
                 f,

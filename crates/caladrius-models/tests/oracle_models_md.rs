@@ -49,26 +49,45 @@
 //! branch of S-36 where that branch differs from the oracle (a documented difference of the engine,
 //! `specs/models.md` OM-17 (e)).
 
-use caladrius_models::{ModelId, ModelInput, run};
+use caladrius_models::{DoseEvent, ModelId, ModelInput, Regimen, run};
 use caladrius_testkit::{
-    MdCase, Table, Tolerance, compare_tables, dose_parameters, list_md_cases, load_md_case,
+    MdCase, RegimenKind, Table, Tolerance, compare_tables, list_md_cases, load_md_case,
     load_md_errors,
 };
 
-/// The one place where a regimen becomes a `ModelInput` (see the header).
+/// The one place where a regimen becomes a `ModelInput` (see the header): the oracle's regimen as
+/// the engine's `Regimen` type (T-049), written into the input by `ModelInput::with_regimen`.
 fn input_of(case: &MdCase) -> ModelInput {
     let name = &case.case.name;
-    let mut params = case.case.parameters.clone();
-    for (key, value) in dose_parameters(&case.regimen) {
-        params.insert(key, value);
-    }
+    let r = &case.regimen;
+    let regimen = match r.kind {
+        RegimenKind::Schedule => Regimen::Schedule {
+            doses: r
+                .records
+                .iter()
+                .map(|d| DoseEvent {
+                    time: d.time,
+                    amount: d.dose,
+                    dur: d.dur,
+                })
+                .collect(),
+        },
+        RegimenKind::Regular => Regimen::Regular {
+            tau: r.tau.unwrap_or_else(|| panic!("{name}: no tau")),
+            n_doses: r.n_doses.unwrap_or_else(|| panic!("{name}: no n_doses")),
+        },
+        RegimenKind::SteadyState => Regimen::SteadyState {
+            tau: r.tau.unwrap_or_else(|| panic!("{name}: no tau")),
+        },
+    };
     ModelInput {
         model: ModelId::from_id(&case.case.model)
             .unwrap_or_else(|| panic!("{name}: unknown model id {:?}", case.case.model)),
         dose: case.case.dose,
-        params,
+        params: case.case.parameters.clone(),
         times: case.case.times.clone(),
     }
+    .with_regimen(&regimen)
 }
 
 fn expected_of(case: &MdCase, quantity: &str) -> Table {
