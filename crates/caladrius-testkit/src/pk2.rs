@@ -167,10 +167,7 @@ pub fn load_pk2_errors() -> Result<Vec<Pk2ErrorCase>, OracleError> {
 /// Loads the error suite `name` of `dir` (`<name>.options.json` and `<name>.csv`) and checks that its
 /// table lists exactly its cases, all not available. The multiple-dosing suite of `crate::md` uses the
 /// same layout.
-pub(crate) fn load_error_suite(
-    dir: &Path,
-    name: &str,
-) -> Result<Vec<Pk2ErrorCase>, OracleError> {
+pub(crate) fn load_error_suite(dir: &Path, name: &str) -> Result<Vec<Pk2ErrorCase>, OracleError> {
     let options_path = dir.join(format!("{name}.options.json"));
     let here = options_path.display().to_string();
     let raw: RawErrors = json(&options_path)?;

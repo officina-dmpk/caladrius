@@ -35,8 +35,8 @@ pub use compare::{
     compare_tables_documented,
 };
 pub use md::{
-    DoseRecord, MD_ERRORS, MdCase, PrintedForm, Regimen, RegimenKind, dose_parameters, list_md_cases,
-    load_md_case, load_md_errors, md_dir,
+    DoseRecord, MD_ERRORS, MdCase, PrintedForm, Regimen, RegimenKind, dose_parameters,
+    list_md_cases, load_md_case, load_md_errors, md_dir,
 };
 pub use oracle::{OracleCase, OracleError, Profile, list_cases, load_case};
 pub use pk2::{

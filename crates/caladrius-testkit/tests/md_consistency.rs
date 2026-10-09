@@ -47,7 +47,10 @@ fn at(c: &MdCase, key: &str, quantity: &str) -> Option<f64> {
         .iter()
         .position(|&x| x == t)
         .unwrap_or_else(|| panic!("{}: no time {key}", c.case.name));
-    c.case.expected.get(&c.case.time_keys[i], quantity).flatten()
+    c.case
+        .expected
+        .get(&c.case.time_keys[i], quantity)
+        .flatten()
 }
 
 fn kind_of(c: &MdCase) -> &'static str {
@@ -204,9 +207,8 @@ fn the_oracle_has_its_expected_shape() {
                     "{model}: no schedule of {n} doses"
                 );
                 assert!(
-                    mine.iter()
-                        .any(|c| c.regimen.kind == RegimenKind::Regular
-                            && c.regimen.n_doses == Some(n as u32)),
+                    mine.iter().any(|c| c.regimen.kind == RegimenKind::Regular
+                        && c.regimen.n_doses == Some(n as u32)),
                     "{model}: no regular regimen of {n} doses"
                 );
             }
@@ -221,7 +223,10 @@ fn the_oracle_has_its_expected_shape() {
                 .find(|c| c.regimen.kind == RegimenKind::Schedule && c.regimen.records.len() == 10)
                 .unwrap();
             let times: Vec<f64> = n10.regimen.records.iter().map(|r| r.time).collect();
-            assert!(times.windows(2).any(|w| w[0] > w[1]), "{model}: sorted records");
+            assert!(
+                times.windows(2).any(|w| w[0] > w[1]),
+                "{model}: sorted records"
+            );
             assert!(n10.regimen.records.iter().any(|r| r.dose == 0.0));
         }
     }
@@ -278,7 +283,10 @@ fn the_oracle_has_its_expected_shape() {
         "lag",
         "domain",
     ] {
-        assert!(errors.iter().any(|e| e.group == group), "error group {group}");
+        assert!(
+            errors.iter().any(|e| e.group == group),
+            "error group {group}"
+        );
     }
     assert!(md_dir().join("model_md_errors.csv").is_file());
 }
@@ -424,7 +432,10 @@ fn the_derived_quantities_satisfy_their_identities() {
         let lag = p.get("tlag").copied().unwrap_or(0.0);
         match scalar(&c, "accum_auc") {
             Some(r) => assert!(r >= 1.0 - 1e-12 && lag < tau, "{name}"),
-            None => assert!(lag >= tau, "{name}: accum_auc not available although the lag is below tau"),
+            None => assert!(
+                lag >= tau,
+                "{name}: accum_auc not available although the lag is below tau"
+            ),
         }
         // the maximum is attained at every s only for a continuous input (tau equals the duration)
         let dur = p.get("dur").copied();
@@ -519,7 +530,11 @@ fn worked_example_p1_one_compartment_steady_state() {
     let b = "model_md_pk1_iv_bolus_ss_tau_6";
     digits("bolus Cmax,ss", g(b, "scalar", "cmax_ss"), 14.3101276069);
     digits("bolus Cmin,ss", g(b, "scalar", "cmin_ss"), 4.3101276069);
-    digits("bolus accumulation", g(b, "scalar", "accum_cmax"), 1.4310127607);
+    digits(
+        "bolus accumulation",
+        g(b, "scalar", "accum_cmax"),
+        1.4310127607,
+    );
     digits("bolus Cav,ss", g(b, "scalar", "cav_ss"), 8.3333333333);
     // infusion over 2 h
     let i = "model_md_pk1_iv_infusion_ss_tau_6";
@@ -576,7 +591,10 @@ fn worked_example_p2_two_compartment_steady_state() {
     // by an independent double-precision root finder, is 0.91580843457 (a gap of 6e-10, a question for the
     // reader: the section 12.2 digit string is a rounding of a coarser root).
     let tmax = g(o, "scalar", "tmax_ss").unwrap();
-    assert!((tmax - 0.9158084346).abs() < 1e-10 && (tmax - 0.9158084340).abs() < 1e-9, "{tmax}");
+    assert!(
+        (tmax - 0.9158084346).abs() < 1e-10 && (tmax - 0.9158084340).abs() < 1e-9,
+        "{tmax}"
+    );
     digits("oral Cmax,ss", g(o, "scalar", "cmax_ss"), 8.0267804471);
 }
 
@@ -585,7 +603,11 @@ fn worked_example_p3_schedules() {
     let b = load_md_case("model_md_pk1_iv_bolus_sched_n3").unwrap();
     digits("three boluses C(12)", at(&b, "t=12", "conc"), 8.6198625832);
     let i = load_md_case("model_md_pk1_iv_infusion_sched_n3").unwrap();
-    digits("two overlapping infusions C(4)", at(&i, "t=4", "conc"), 11.6513623821);
+    digits(
+        "two overlapping infusions C(4)",
+        at(&i, "t=4", "conc"),
+        11.6513623821,
+    );
 }
 
 #[test]
@@ -601,19 +623,35 @@ fn worked_example_p4_lag_at_steady_state_and_the_printed_branch() {
     let pf = g.printed_form.as_ref().unwrap();
     assert!(pf.differs_from_oracle);
     let i = pf.times_that_differ.iter().position(|&t| t == 0.0).unwrap();
-    assert!((pf.printed_values[i] - -123.17).abs() < 5e-3, "{}", pf.printed_values[i]);
+    assert!(
+        (pf.printed_values[i] - -123.17).abs() < 5e-3,
+        "{}",
+        pf.printed_values[i]
+    );
     // zero-order absorption, T = 2
     let z = load_md_case("model_md_pk1_oral_0_lag_conv_tau_2p5_tlag_1").unwrap();
-    digits("tau 2.5, tlag 1: C(0)", at(&z, "t=0", "conc"), 20.5207326577);
+    digits(
+        "tau 2.5, tlag 1: C(0)",
+        at(&z, "t=0", "conc"),
+        20.5207326577,
+    );
     let pf = z.printed_form.as_ref().unwrap();
     assert!(pf.differs_from_oracle);
     let i = pf.times_that_differ.iter().position(|&t| t == 0.0).unwrap();
-    digits("printed branch (tau 2.5, tlag 1)", Some(pf.printed_values[i]), 23.1500056096);
+    digits(
+        "printed branch (tau 2.5, tlag 1)",
+        Some(pf.printed_values[i]),
+        23.1500056096,
+    );
     let z = load_md_case("model_md_pk1_oral_0_lag_conv_tau_3_tlag_2").unwrap();
     digits("tau 3, tlag 2: C(0)", at(&z, "t=0", "conc"), 16.7766769428);
     let pf = z.printed_form.as_ref().unwrap();
     let i = pf.times_that_differ.iter().position(|&t| t == 0.0).unwrap();
-    digits("printed branch (tau 3, tlag 2)", Some(pf.printed_values[i]), 22.3117458968);
+    digits(
+        "printed branch (tau 3, tlag 2)",
+        Some(pf.printed_values[i]),
+        22.3117458968,
+    );
     // tau at least tlag + T: the printed form is exact
     let z = load_md_case("model_md_pk1_oral_0_lag_ss_tau_6_tlag_1").unwrap();
     digits("tau 6, tlag 1: C(0)", at(&z, "t=0", "conc"), 6.4729069939);

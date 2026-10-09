@@ -58,4 +58,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-046 | Second source for the compartmental specs (Bertrand and Mentré 2008): page citations, multiple dosing and steady state, later models | reader | done | T-035 |
 | T-047 | Oracle for multiple dosing and steady state (OM-16): superposition and steady-state grids, ODE cross-check, failing tests | oracle | done | T-046 |
 | T-048 | Release packaging: SHA256SUMS with LF only on Windows (follow-up of T-043) | contributor-dsh | done | T-043 |
-| T-049 | caladrius-models dosing regimens (schedules, steady state) for pk1 and pk2; xtask conformance for md/ | engine | in progress | T-047 |
+| T-049 | caladrius-models dosing regimens (schedules, steady state) for pk1 and pk2; xtask conformance for md/ | engine | to review | T-047 |
