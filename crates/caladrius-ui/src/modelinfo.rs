@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn the_models_match_the_engine_catalogue_and_its_parameters() {
-        // The catalogue of the engine lists the same six ids; the fitted parameters are the ones
+        // The catalogue of the engine lists the six pk1 ids (and the pk2 ones); the fitted parameters are the ones
         // the engine accepts besides `dur`.
         let described = caladrius_engine::describe();
         let schema = described
@@ -362,7 +362,14 @@ mod tests {
             .filter_map(|v| v.as_str())
             .collect();
         let ours: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
-        assert_eq!(ids, ours);
+        // `pk2.*` arrive in the UI with T-034b; tighten back to `assert_eq!(ids, ours)` then.
+        assert!(ours.iter().all(|id| ids.contains(id)));
+        let pk1: Vec<&str> = ids
+            .iter()
+            .copied()
+            .filter(|id| id.starts_with("pk1."))
+            .collect();
+        assert_eq!(pk1, ours);
         for m in MODELS {
             assert!(m.parameters.contains(&"v") && m.parameters.contains(&"k"));
             assert_eq!(
