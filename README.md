@@ -54,7 +54,7 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 | Specification | confirmed by oracle | documented, untested | assumed | observed |
 |---|---|---|---|---|
 | `specs/nca.md` | 44 | 15 | 12 | 5 |
-| `specs/models.md` | 37 | 4 | 9 | 0 |
+| `specs/models.md` | 37 | 13 | 11 | 0 |
 | `specs/fit.md` | 18 | 3 | 21 | 0 |
 | `specs/ux.md` | 0 | 12 | 26 | 0 |
 
@@ -73,7 +73,7 @@ The `assumed` rules are the ones that a reference comparison or a human decision
 [More screenshots of the application](docs/screens/) — import, NCA, fitting, simulation and the command
 palette. Every scene is drawn offscreen by `crates/caladrius-ui/examples/snapshot.rs`
 (`cargo run -p caladrius-ui --example snapshot`), through the application's own actions and engine
-commands; the interface holds no numerical code and reads no file itself.
+commands; the interface holds no numerical code and reads no file itself. In "More options" of the fit page, a `Preset` choice (the default settings or `reference_conventions`) fills the iteration settings with the values the engine holds; the fields stay editable and an edit reads "Custom".
 
 ## Conformance
 
