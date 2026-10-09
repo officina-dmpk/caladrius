@@ -355,14 +355,17 @@ fn spec_input(weighting: Weighting) -> FitInput {
         conc: vec![9.31, 7.92, 6.85, 4.31, 2.11],
         weighting,
         initial: BTreeMap::from([("v".to_string(), 12.0), ("k".to_string(), 0.15)]),
-        options: FitOptions::default(),
+        // The worked examples are stated with the assumed reference defaults, which are the
+        // preset `reference_conventions` since T-040 (Q-014 option 2, D-04).
+        options: FitOptions::reference_conventions(),
     }
 }
 
-/// The user-facing defaults of AGENTS.md section 6 and FIT-VOC-01.
+/// The assumed defaults of AGENTS.md section 6 (the preset `reference_conventions` since T-040)
+/// and FIT-VOC-01.
 #[test]
 fn default_options_are_the_documented_ones() {
-    let o = FitOptions::default();
+    let o = FitOptions::reference_conventions();
     assert_eq!(o.derivatives, Derivatives::ForwardDifference);
     assert_eq!(o.increment, 0.001);
     assert_eq!(o.criterion, Criterion::RelativeDecrease);
