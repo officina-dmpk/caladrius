@@ -18,6 +18,7 @@ pub mod app;
 pub mod fit;
 pub mod fitform;
 pub mod fitplots;
+pub mod fitpreset;
 pub mod fitresult;
 pub mod flow;
 pub mod fmt;
@@ -44,6 +45,8 @@ pub use app::{Action, Request, Selection, UiApp, UiState};
 #[cfg(test)]
 mod tests;
 pub use theme::{ThemeMode, Tokens};
+#[cfg(test)]
+mod tests_fitpreset;
 #[cfg(test)]
 mod tests_palette;
 #[cfg(test)]

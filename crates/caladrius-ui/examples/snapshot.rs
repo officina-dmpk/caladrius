@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use caladrius_ui::modelinfo::{Compartments, Input, ParameterSet};
 use caladrius_ui::{Action, Selection, ThemeMode, UiApp};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 const SIZE: (f32, f32) = (1500.0, 1280.0);
@@ -30,7 +31,7 @@ fn out_dir() -> PathBuf {
 
 /// The scenes whose page is longer than one screen are drawn on a taller canvas.
 fn size_of(name: &str) -> (f32, f32) {
-    if name.starts_with("35-") || name.starts_with("36-") {
+    if name.starts_with("35-") || name.starts_with("36-") || name.contains("more-options") {
         (SIZE.0, 2000.0)
     } else {
         SIZE
@@ -48,6 +49,11 @@ fn render(name: &str, mut app: UiApp) -> Result<(), String> {
             app
         });
     harness.run_steps(6);
+    // A scene named for "More options" shows the collapsed section open.
+    if name.contains("more-options") {
+        harness.get_by_label("More options").click_accesskit();
+        harness.run_steps(6);
+    }
     let image = harness.render()?;
     let path = out_dir().join(format!("{name}.png"));
     image.save(&path).map_err(|e| e.to_string())?;
@@ -402,6 +408,23 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     app.state.mode = ThemeMode::Dark;
     app.state.log_axis = true;
     scenes.push(("39-simulation-two-compartments-macro-dark", app));
+
+    // ---- the preset of the fit options (T-044) ----
+    scenes.push(("40-fit-more-options-preset", fit_app()));
+
+    let mut app = fit_app();
+    if let Some(page) = app.state.fit.as_mut() {
+        caladrius_ui::fitpreset::apply(&mut page.options, "reference_conventions");
+    }
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("41-fit-more-options-reference-dark", app));
+
+    let mut app = fit_app();
+    if let Some(page) = app.state.fit.as_mut() {
+        caladrius_ui::fitpreset::apply(&mut page.options, "reference_conventions");
+        page.set_option(&["max_iterations"], json!(80));
+    }
+    scenes.push(("42-fit-more-options-custom", app));
 
     scenes
 }

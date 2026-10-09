@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::app::Action;
 use crate::fit::{CRITERIA, DERIVATIVES, FitPage, WEIGHTINGS, defaults};
+use crate::fitpreset;
 use crate::fitresult;
 use crate::fmt;
 use crate::model::{Table, WorksheetInfo};
@@ -288,6 +289,7 @@ fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut 
         .id_salt("fit-more-options")
         .default_open(false)
         .show(ui, |ui| {
+            preset_choice(ui, tokens, page, changed);
             egui::Grid::new("fit-options-grid")
                 .num_columns(2)
                 .show(ui, |ui| {
@@ -398,4 +400,45 @@ fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut 
                 }
             }
         });
+}
+
+/// The preset of the iteration settings: choosing one fills the fields below with the engine's
+/// values; they stay editable and the choice then reads "Custom".
+fn preset_choice(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut bool) {
+    let presets = fitpreset::all();
+    if presets.is_empty() {
+        return;
+    }
+    let current = fitpreset::matching(&page.options).map(|p| p.id.as_str());
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Preset");
+        for preset in presets {
+            let selected = current == Some(preset.id.as_str());
+            if choice(ui, selected, &preset.label).clicked()
+                && !selected
+                && fitpreset::apply(&mut page.options, &preset.id)
+            {
+                *changed = true;
+            }
+        }
+        // No preset has these values: the person edited a field.
+        if current.is_none() {
+            choice(ui, true, fitpreset::CUSTOM);
+        }
+    });
+    ui.label(
+        RichText::new(fitpreset::sentence())
+            .small()
+            .color(tokens.colors.text_muted.color()),
+    );
+    ui.add_space(tokens.spacing.small);
+}
+
+/// One name of a choice; the selection is also told to assistive technology.
+fn choice(ui: &mut Ui, selected: bool, label: &str) -> egui::Response {
+    let response = ui.selectable_label(selected, label);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, label)
+    });
+    response
 }
