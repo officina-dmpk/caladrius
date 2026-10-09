@@ -543,3 +543,84 @@ fn a_numeric_subject_may_be_spelled_one_point_zero() {
         assert_eq!(v["result"]["subjects"][0]["subject"], "1", "{subject}");
     }
 }
+
+/// A pk2 profile simulated by `model.simulate` (public oracle parameters cl 2, vc 10, q 4, vp 8,
+/// dose 100) with a 1 % alternating error, written as a CSV file.
+fn pk2_csv_file(dir: &std::path::Path) -> String {
+    let sim = run_args(&[
+        "model.simulate",
+        "--param",
+        "model=pk2.iv_bolus",
+        "--param",
+        "dose=100",
+        "--param",
+        "params.cl=2",
+        "--param",
+        "params.vc=10",
+        "--param",
+        "params.q=4",
+        "--param",
+        "params.vp=8",
+        "--param",
+        "times=[0.1,0.25,0.5,1,2,3,4,6,8,12,16,24,36,48]",
+    ])
+    .unwrap();
+    let sim = json_out(&sim);
+    let times = sim["times"].as_array().unwrap();
+    let conc = sim["conc"].as_array().unwrap();
+    let mut csv = String::from("Subject,Time (h),Conc (mg/L),Dose (mg)\n");
+    for (i, (t, c)) in times.iter().zip(conc).enumerate() {
+        let noise = if i % 2 == 0 { 1.01 } else { 0.99 };
+        csv.push_str(&format!(
+            "A,{},{},100\n",
+            t.as_f64().unwrap(),
+            c.as_f64().unwrap() * noise
+        ));
+    }
+    let path = dir.join("pk2.csv");
+    fs::write(&path, csv).unwrap();
+    path.to_str().unwrap().to_owned()
+}
+
+#[test]
+fn a_pk2_fit_runs_from_the_command_line() {
+    let dir = scratch("pk2");
+    let file = pk2_csv_file(&dir);
+    let fit = run_args(&[
+        "fit.run",
+        "--csv",
+        &file,
+        "--param",
+        "model=pk2.iv_bolus",
+        "--param",
+        "initial.cl=1.6",
+        "--param",
+        "initial.vc=11",
+        "--param",
+        "initial.q=3.2",
+        "--param",
+        "initial.vp=9",
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    assert!(
+        fit.starts_with("parameter,estimate,se,cv_percent,ci_lo,ci_hi\n"),
+        "{fit}"
+    );
+    assert_eq!(fit.lines().count(), 5, "{fit}");
+    for name in ["cl", "vc", "q", "vp"] {
+        assert!(fit.contains(&format!("\n{name},")), "{name}: {fit}");
+    }
+    // Initial estimates are not generated for pk2: the refusal is one readable line.
+    let refused = failure(&[
+        "fit.initial_estimates",
+        "--csv",
+        &file,
+        "--param",
+        "model=pk2.iv_bolus",
+    ]);
+    assert!(refused.contains("fit_error"), "{refused}");
+    assert!(refused.contains("enter initial estimates"), "{refused}");
+}

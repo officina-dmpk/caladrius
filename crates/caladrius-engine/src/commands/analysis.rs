@@ -249,7 +249,7 @@ fn initial_property() -> (&'static str, Value) {
         "initial",
         crate::schema::described(
             json!({ "type": "object", "additionalProperties": number() }),
-            "Initial estimates by parameter name; the fitted parameters are exactly those named. Empty: generated from the data (see fit.initial_estimates).",
+            "Initial estimates by parameter name; the fitted parameters are exactly those named. Empty: generated from the data (not for pk2: give every parameter).",
         ),
     )
 }
@@ -257,7 +257,7 @@ fn initial_property() -> (&'static str, Value) {
 pub(crate) const FIT_RUN: CommandDef = CommandDef {
     id: "fit.run",
     title: "Fit a model to a profile",
-    description: "Weighted least-squares fit (Gauss-Newton with the Levenberg and Hartley modification) of a one-compartment model to the profile of one subject; stores the result in an analysis object. The result has the status (converged or why not), estimates with standard error, CV% and confidence intervals, diagnostics, observed and predicted values, the smooth curve, the trace, and quality flags. A fit that cannot start is an error and stores nothing.",
+    description: "Weighted least-squares fit (Gauss-Newton with the Levenberg and Hartley modification) of a one- or two-compartment model to the profile of one subject; stores the result in an analysis object. The result has the status (converged or why not), estimates with standard error, CV% and confidence intervals, diagnostics, observed and predicted values, the smooth curve, the trace, and quality flags. A fit that cannot start is an error and stores nothing.",
     mutates: true,
     params: || {
         let mut props = spec_properties();
@@ -306,7 +306,7 @@ fn fit_initial_estimates(engine: &mut Engine, params: Value) -> Result<Value, Co
 pub(crate) const FIT_INITIAL_ESTIMATES: CommandDef = CommandDef {
     id: "fit.initial_estimates",
     title: "Initial estimates from the data",
-    description: "Estimates the starting values of a model's parameters from one subject's profile (log-linear regression, curve stripping, terminal phase). Reads only: nothing is stored. A zero-order input model needs its duration among `fixed`.",
+    description: "Estimates the starting values of a model's parameters from one subject's profile (log-linear regression, curve stripping, terminal phase). Reads only: nothing is stored. A zero-order input model needs its duration among `fixed`. Refused for pk2: give the initial values.",
     mutates: false,
     params: || {
         root(
@@ -460,7 +460,7 @@ fn model_simulate(engine: &mut Engine, params: Value) -> Result<Value, CommandEr
 pub(crate) const MODEL_SIMULATE: CommandDef = CommandDef {
     id: "model.simulate",
     title: "Evaluate a model on a time grid",
-    description: "Concentration and AUC of a one-compartment model at the given times (a list, or a regular grid), and its secondary parameters (half-life, clearance, AUC to infinity, MRT, predicted Cmax and Tmax...). Nothing is stored unless `store` is true (with `analysis`, that simulation is updated instead of a new one being created), so it can be called at every change of a parameter for a live curve.",
+    description: "Concentration and AUC of a one- or two-compartment model at the given times (a list, or a regular grid), and its secondary parameters (half-life, clearance, AUC to infinity, MRT, predicted Cmax and Tmax...). Nothing is stored unless `store` is true (with `analysis`, that simulation is updated instead of a new one being created), so it can be called at every change of a parameter for a live curve.",
     mutates: false,
     params: || {
         root(
@@ -473,7 +473,7 @@ pub(crate) const MODEL_SIMULATE: CommandDef = CommandDef {
                         "params",
                         crate::schema::described(
                             json!({ "type": "object", "additionalProperties": number() }),
-                            "Parameters by name: `v`; exactly one of `cl` and `k`; `ka`, `dur`, `tlag` as the model needs.",
+                            "Parameters by name: pk1 `v` and one of `cl`, `k`; pk2 one set (see model); `ka`, `dur`, `tlag` as needed.",
                         ),
                     ),
                     ("times", array_of(number())),

@@ -154,10 +154,14 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
             ],
         }),
         "ModelId" => {
-            let ids: Vec<&str> = ModelId::ALL.iter().map(ModelId::id).collect();
+            let ids: Vec<&str> = ModelId::ALL
+                .iter()
+                .chain(ModelId::TWO_COMPARTMENT.iter())
+                .map(ModelId::id)
+                .collect();
             described(
                 one_of_strings(&ids),
-                "One-compartment model: route and input (see `describe` of the model catalogue).",
+                "Route and input. pk1: v and cl or k. pk2 (two compartments): one set of cl,vc,q,vp or k10,k12,k21,vc or a,b,alpha,beta (a, b need the dose).",
             )
         }
         "Weighting" => one_of_strings(&["uniform", "inv_y", "inv_y2", "inv_yhat", "inv_yhat2"]),

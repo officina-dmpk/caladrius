@@ -572,3 +572,74 @@ fn a_byte_order_mark_on_the_first_line_is_ignored() {
     // Only the first line may carry one: a mark later is part of the text, hence a parse error.
     assert_eq!(answers[1]["error"]["code"], PARSE_ERROR);
 }
+
+#[test]
+fn a_pk2_fit_runs_over_mcp_and_its_initial_estimates_are_refused_readably() {
+    let mut s = Server::new();
+    // The tool schema lists the two-compartment ids.
+    let list = send(
+        &mut s,
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    );
+    let fit_run = list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "fit_run")
+        .unwrap();
+    assert!(
+        fit_run["inputSchema"]
+            .to_string()
+            .contains("pk2.oral_1_lag")
+    );
+    // A pk2 profile from model_simulate (public oracle parameters), 1 % alternating error.
+    let times = [
+        0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 36.0, 48.0,
+    ];
+    let sim = call(
+        &mut s,
+        2,
+        "model_simulate",
+        json!({ "model": "pk2.iv_bolus", "dose": 100,
+                "params": { "cl": 2, "vc": 10, "q": 4, "vp": 8 }, "times": times }),
+    );
+    assert_eq!(sim["result"]["isError"], false, "{sim}");
+    let conc = sim["result"]["structuredContent"]["conc"]
+        .as_array()
+        .unwrap();
+    let mut csv = String::from("time,conc,dose\n");
+    for (i, (t, c)) in times.iter().zip(conc).enumerate() {
+        let noise = if i % 2 == 0 { 1.01 } else { 0.99 };
+        csv.push_str(&format!("{t},{},100\n", c.as_f64().unwrap() * noise));
+    }
+    let r = call(
+        &mut s,
+        3,
+        "data_import",
+        json!({ "name": "pk2", "csv": csv }),
+    );
+    let id = r["result"]["structuredContent"]["worksheet"]["id"].clone();
+    let fit = call(
+        &mut s,
+        4,
+        "fit_run",
+        json!({ "worksheet": id, "model": "pk2.iv_bolus",
+                "initial": { "cl": 1.6, "vc": 11, "q": 3.2, "vp": 9 } }),
+    );
+    assert_jsonrpc(&fit);
+    assert_eq!(fit["result"]["isError"], false, "{fit}");
+    let ok = &fit["result"]["structuredContent"]["result"]["outcome"]["ok"];
+    assert_eq!(ok["status"], "converged", "{ok}");
+    assert!(ok["values"]["estimate.cl"].as_f64().is_some());
+    // No automatic initial estimates for pk2: a tool error that says what to do.
+    let r = call(
+        &mut s,
+        5,
+        "fit_initial_estimates",
+        json!({ "worksheet": id, "model": "pk2.iv_bolus" }),
+    );
+    assert_eq!(r["result"]["isError"], true);
+    let text = r["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.starts_with("fit_error: "), "{text}");
+    assert!(text.contains("enter initial estimates"), "{text}");
+}
