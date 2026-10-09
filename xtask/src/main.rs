@@ -11,6 +11,7 @@ mod conformance;
 mod console;
 mod error;
 mod layers;
+mod lint;
 mod wasm;
 mod workspace;
 
@@ -24,6 +25,8 @@ usage: cargo xtask <task>
 
 tasks:
   layers       print the layer table and check the dependency rules between crates
+  lint         check the mechanical rules of AGENTS.md (names, private/, deny lints, tolerances, board);
+               one `file:line rule message` per finding, exit 1 on any (exceptions: xtask/lint_allow.toml)
   wasm         cargo check the L0 to L3 crates for wasm32-unknown-unknown
   conformance  run caladrius-nca on every oracle case and write docs/conformance.md
                (`conformance --private` also writes the counts of the private oracle into it)
@@ -33,6 +36,7 @@ tasks:
 #[derive(Debug, PartialEq, Eq)]
 enum Task {
     Layers,
+    Lint,
     Wasm,
     /// `private`: also write the counts of the private oracle into `docs/conformance.md`.
     Conformance {
@@ -47,6 +51,7 @@ fn parse_task(args: &[OsString]) -> std::result::Result<Task, String> {
         [] => Err("missing task".to_owned()),
         [task] => match task.to_str() {
             Some("layers") => Ok(Task::Layers),
+            Some("lint") => Ok(Task::Lint),
             Some("wasm") => Ok(Task::Wasm),
             Some("conformance") => Ok(Task::Conformance { private: false }),
             Some("help" | "-h" | "--help") => Ok(Task::Help),
@@ -73,6 +78,7 @@ fn main() -> ExitCode {
     };
     let outcome: Result<()> = match task {
         Task::Layers => layers::run(),
+        Task::Lint => lint::run(),
         Task::Wasm => wasm::run(),
         Task::Conformance { private } => conformance::run(private),
         Task::Help => {
@@ -101,6 +107,7 @@ mod tests {
     #[test]
     fn known_tasks_are_recognised() {
         assert_eq!(parse(&["layers"]), Ok(Task::Layers));
+        assert_eq!(parse(&["lint"]), Ok(Task::Lint));
         assert_eq!(parse(&["wasm"]), Ok(Task::Wasm));
         assert_eq!(
             parse(&["conformance"]),
@@ -122,6 +129,10 @@ mod tests {
         assert_eq!(
             parse(&["layers", "--fast"]),
             Err("unexpected argument `--fast`".to_owned())
+        );
+        assert_eq!(
+            parse(&["lint", "--fix"]),
+            Err("unexpected argument `--fix`".to_owned())
         );
         assert_eq!(
             parse(&["layers", "--private"]),

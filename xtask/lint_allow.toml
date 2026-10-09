@@ -1,0 +1,128 @@
+# Accepted exceptions of `cargo xtask lint`. Each entry names a rule, a file and a reason; `contains`
+# restricts it to the lines holding that text (otherwise the whole file is accepted for that rule).
+# An entry that matches nothing is a finding (`allow-unused`): remove it when the reason is gone.
+
+# ---- forbidden-name: the neutral compatibility statement and the legal notices ----
+
+[[allow]]
+rule = "forbidden-name"
+file = "AGENTS.md"
+contains = "Project name"
+reason = "The contract states the rule itself: the names are allowed only in a neutral compatibility statement and the README trademark notice."
+
+[[allow]]
+rule = "forbidden-name"
+file = "README.md"
+contains = "is not affiliated with"
+reason = "The trademark notice of the README (AGENTS.md first paragraph): independence statement and trademark attribution."
+
+[[allow]]
+rule = "forbidden-name"
+file = "board/QUESTIONS.md"
+contains = "keeps \"Phoenix\""
+reason = "Q-006 quotes the AGENTS.md rule to ask whether a legal notice may be cited."
+
+[[allow]]
+rule = "forbidden-name"
+file = "specs/sources.md"
+contains = "onlinehelp.certara.com"
+reason = "Legal-notice entries (documentation host and the notice page): the only pages opened on the vendor site, recorded as sources."
+
+[[allow]]
+rule = "forbidden-name"
+file = "specs/sources.md"
+contains = "certara.com/legal"
+reason = "Legal-notice entry: the vendor website's legal notice, recorded as a source."
+
+[[allow]]
+rule = "forbidden-name"
+file = "board/tasks/T-036.md"
+reason = "The card of the lint describes the forbidden-name rule and quotes the names."
+
+[[allow]]
+rule = "forbidden-name"
+file = "xtask/lint_allow.toml"
+reason = "This file names the forbidden names in the `contains` filters of the entries above."
+
+[[allow]]
+rule = "forbidden-name"
+file = "xtask/src/lint/forbidden.rs"
+reason = "The rule's own list of names and its fixtures."
+
+[[allow]]
+rule = "forbidden-name"
+file = "xtask/src/lint/mod.rs"
+contains = "WinNonlin"
+reason = "Fixture of the sorting test (the rule has to find something to sort)."
+
+# ---- private-reference: fixtures of the rule ----
+
+[[allow]]
+rule = "private-reference"
+file = "xtask/src/lint/private.rs"
+reason = "Fixtures of the rule: invented file names under private/."
+
+# ---- board-index: rows without a card ----
+
+[[allow]]
+rule = "board-index"
+file = "board/INDEX.md"
+contains = "T-000 "
+reason = "T-000 is the orchestrator's bootstrap step (contract, roles, board); it has no card, its record is the first LOG entry."
+
+# ---- tolerance-literal: bounds that are not engine tolerances ----
+# AGENTS.md section 5: the engine tolerances are the constants of caladrius-testkit. The bounds below
+# are either derived from a testkit constant, measure an identity (round trip, limit, finite
+# difference, closed form against recurrence), or are guards at machine precision.
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-fit/tests/common/mod.rs"
+contains = "1e-9"
+reason = "AIC/SBC identity check: the statistic must follow its formula to 1e-9 (arithmetic identity); the oracle comparison itself uses n * Tolerance::FIT_WEIGHTED_SS, plus 1e-9 for rounding of the printed value."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-fit/tests/oracle_fit.rs"
+contains = "1e-9"
+reason = "Same identity as in common/mod.rs (formula to 1e-9) and the iteration-trace check against the printed R trace (7 decimals, 1e-9 relative, justified in the comment above it); not an engine tolerance."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-fit/tests/oracle_fit.rs"
+contains = "wrss\").unwrap() < 1e-12"
+reason = "Perfect-data fit: the residual sum of squares must vanish; a zero-target guard at machine precision, not a relative tolerance."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-fit/tests/oracle_fit_models.rs"
+contains = "1e-6 * (1e-3 + numeric.abs())"
+reason = "Property test: closed-form derivative against a central finite difference; the bound is the finite-difference error, not an engine tolerance (T-032 style)."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-fit/tests/oracle_fit_tight.rs"
+contains = "5e-8"
+reason = "Hand recurrence against R values printed with 7 decimals: half a unit of the last printed digit, as documented in the test."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-models/tests/oracle_models.rs"
+reason = "Property tests of caladrius-models (limits ka = k and ka - k small, midpoint rule against exact values, 1e-8 h infusion against the bolus, exact zero at t = 0): the bounds belong to the property, not to the engine tolerance Tolerance::MODEL_VALUES, which the oracle comparisons use."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-models/tests/oracle_models_2c.rs"
+reason = "T-032 property tests of the two-compartment models (limit convergence, short infusion against the bolus, lag shift, exact zero at t = 0): explained in the file header as not engine tolerances; the oracle comparisons use Tolerance::MODEL_VALUES."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-nca/tests/flags.rs"
+contains = "0.6370368"
+reason = "Quality-flag example: a value printed in the spec to 7 decimals, compared to 1e-6 (the NCA tolerance NCA_VS_PKNCA is 1e-6 relative); candidate to move to the testkit constant."
+
+[[allow]]
+rule = "tolerance-literal"
+file = "crates/caladrius-nca/tests/units.rs"
+contains = "1e-12 * b.abs()"
+reason = "Unit conversion factors compared at machine precision (same quantity computed by two exact routes), not an oracle comparison."

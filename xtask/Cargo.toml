@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Caladrius developer tasks: `cargo xtask layers`, `cargo xtask wasm` and `cargo xtask conformance`."
+description = "Caladrius developer tasks: `cargo xtask layers`, `lint`, `wasm` and `conformance`."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
