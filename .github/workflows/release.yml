@@ -68,7 +68,9 @@ jobs:
           Copy-Item docs/conformance.md "$staging/docs"
           $files = "caladrius.exe", "caladrius-cli.exe", "caladrius-mcp.exe", "LICENSE-MIT", "LICENSE-APACHE", "README.md", "docs/conformance.md"
           $sums = $files | ForEach-Object { "$((Get-FileHash "$staging/$_").Hash.ToLower())  $_" }
-          $sums -join "`n" | Set-Content "$staging/SHA256SUMS"
+          # LF only, no BOM, no trailing CR: set -NoNewline equivalent, so that `sha256sum -c` accepts every line on Linux and under Git Bash.
+          $content = ($sums -join "`n") + "`n"
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) "$staging/SHA256SUMS"), $content, [System.Text.UTF8Encoding]::new($false))
           Compress-Archive $staging "caladrius-$env:GITHUB_REF_NAME-${{ matrix.target }}.${{ matrix.archive }}"
 
       - name: Attach the archive to the release
