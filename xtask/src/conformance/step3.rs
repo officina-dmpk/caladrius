@@ -1,12 +1,15 @@
 //! The model and fit cases of the conformance table (`oracle/expected/models/`, its two-compartment
-//! subdirectory `pk2/`, and `oracle/expected/fit/`), compared the way
-//! `crates/caladrius-models/tests/oracle_models.rs`, `oracle_models_2c.rs` and
-//! `crates/caladrius-fit/tests/oracle_fit.rs` do, with the tolerances of `caladrius-testkit`.
+//! subdirectory `pk2/`, its multiple-dosing subdirectory `md/`, and `oracle/expected/fit/`),
+//! compared the way `crates/caladrius-models/tests/oracle_models.rs`, `oracle_models_2c.rs`,
+//! `oracle_models_md.rs` and `crates/caladrius-fit/tests/oracle_fit.rs` do, with the tolerances of
+//! `caladrius-testkit`.
 //!
 //! A model case counts one row per expected value, grouped by quantity (`conc`, `auc`, `aumc`, then
 //! each secondary parameter). A two-compartment derivative case counts one row per expected
-//! partial derivative, grouped by parameter (`d_cl`, ...), against the closed-form Jacobian. The
-//! two-compartment error suite counts one row per input the engine must refuse, grouped by the
+//! partial derivative, grouped by parameter (`d_cl`, ...), against the closed-form Jacobian. A
+//! multiple-dosing case runs its regimen (schedule, n doses or steady state) and counts its rows the
+//! same way, the accumulation by time `accum_c` after `conc` and `auc`. Each error suite (two
+//! compartments, multiple dosing) counts one row per input the engine must refuse, grouped by the
 //! oracle's groups: validated when the engine refuses it with a message holding the expected
 //! words. A model id the engine does not know is an error line of its case, with nothing
 //! validated, not an abort of the run. A fit case counts one row per expected value of every fitted
@@ -19,11 +22,13 @@ use caladrius_fit::{
     Criterion, Derivatives, FitInput, FitOptions, FitResult, FitStatus, Weighting, run as run_fit,
 };
 use caladrius_models::{
-    Derivatives as ModelDerivatives, ModelId, ModelInput, ModelOutput, jacobian, run as run_model,
+    Derivatives as ModelDerivatives, DoseEvent, ModelId, ModelInput, ModelOutput, Regimen,
+    jacobian, run as run_model,
 };
 use caladrius_testkit::{
-    FitCase, ModelCase, Pk2ErrorCase, Pk2Kind, Tolerance, list_fit_cases, list_model_cases,
-    list_pk2_cases, load_fit_case, load_model_case, load_pk2_case, load_pk2_errors,
+    FitCase, MdCase, ModelCase, Pk2ErrorCase, Pk2Kind, RegimenKind, Tolerance, list_fit_cases,
+    list_md_cases, list_model_cases, list_pk2_cases, load_fit_case, load_md_case, load_md_errors,
+    load_model_case, load_pk2_case, load_pk2_errors,
 };
 
 use super::{CaseReport, Count, Kind};
@@ -36,7 +41,8 @@ fn oracle_error(e: caladrius_testkit::OracleError) -> XtaskError {
 // ---------------------------------------------------------------- models
 
 /// The reports of every model case: the one-compartment cases, then the two-compartment value and
-/// derivative cases, each in the order of the file names, then the two-compartment error suite.
+/// derivative cases, each in the order of the file names, then the two-compartment error suite,
+/// then the multiple-dosing cases in the order of the file names and their error suite.
 pub(super) fn model_reports() -> Result<Vec<CaseReport>> {
     let mut out = Vec::new();
     for name in list_model_cases().map_err(oracle_error)? {
@@ -52,7 +58,17 @@ pub(super) fn model_reports() -> Result<Vec<CaseReport>> {
     }
     out.push(evaluate_errors(
         PK2_ERRORS_CASE,
+        "pk2.* (inputs to refuse)",
         &load_pk2_errors().map_err(oracle_error)?,
+    ));
+    for name in list_md_cases().map_err(oracle_error)? {
+        let loaded = load_md_case(&name).map_err(oracle_error)?;
+        out.push(evaluate_md(&loaded));
+    }
+    out.push(evaluate_errors(
+        MD_ERRORS_CASE,
+        "pk1.*, pk2.* regimens (inputs to refuse)",
+        &load_md_errors().map_err(oracle_error)?,
     ));
     Ok(out)
 }
@@ -60,8 +76,12 @@ pub(super) fn model_reports() -> Result<Vec<CaseReport>> {
 /// Name of the two-compartment error suite in the table (its file name).
 const PK2_ERRORS_CASE: &str = caladrius_testkit::pk2::PK2_ERRORS;
 
-/// The grid quantities of a model case, reported first and in this order.
-const GRID_QUANTITIES: [&str; 3] = ["conc", "auc", "aumc"];
+/// Name of the multiple-dosing error suite in the table (its file name).
+const MD_ERRORS_CASE: &str = caladrius_testkit::MD_ERRORS;
+
+/// The grid quantities of a model case, reported first and in this order (`aumc` for two
+/// compartments, `accum_c` for a steady state).
+const GRID_QUANTITIES: [&str; 4] = ["conc", "auc", "aumc", "accum_c"];
 
 /// The value the engine gives for one expected row of a model case.
 fn model_actual(case: &ModelCase, output: &ModelOutput, group: &str, name: &str) -> Option<f64> {
@@ -73,6 +93,7 @@ fn model_actual(case: &ModelCase, output: &ModelOutput, group: &str, name: &str)
         "conc" => output.conc().get(index).copied(),
         "auc" => output.auc().get(index).copied(),
         "aumc" => output.aumc().get(index).copied(),
+        "accum_c" => output.get(&format!("accum_c[{index}]")),
         _ => None,
     }
 }
@@ -134,7 +155,50 @@ fn evaluate_model(case: &ModelCase) -> CaseReport {
     let Some(model) = ModelId::from_id(&case.model) else {
         return not_run(case, unknown_model(case));
     };
-    let output = match run_model(&model_input(case, model)) {
+    evaluate_input(case, &model_input(case, model))
+}
+
+/// The regimen of a multiple-dosing case as the engine's type.
+fn regimen_of(case: &MdCase) -> std::result::Result<Regimen, String> {
+    let r = &case.regimen;
+    let missing = |what: &str| format!("the regimen of the case has no {what}");
+    Ok(match r.kind {
+        RegimenKind::Schedule => Regimen::Schedule {
+            doses: r
+                .records
+                .iter()
+                .map(|d| DoseEvent {
+                    time: d.time,
+                    amount: d.dose,
+                    dur: d.dur,
+                })
+                .collect(),
+        },
+        RegimenKind::Regular => Regimen::Regular {
+            tau: r.tau.ok_or_else(|| missing("tau"))?,
+            n_doses: r.n_doses.ok_or_else(|| missing("n_doses"))?,
+        },
+        RegimenKind::SteadyState => Regimen::SteadyState {
+            tau: r.tau.ok_or_else(|| missing("tau"))?,
+        },
+    })
+}
+
+/// A multiple-dosing case: the model case run with its regimen.
+fn evaluate_md(loaded: &MdCase) -> CaseReport {
+    let case = &loaded.case;
+    let Some(model) = ModelId::from_id(&case.model) else {
+        return not_run(case, unknown_model(case));
+    };
+    match regimen_of(loaded) {
+        Ok(regimen) => evaluate_input(case, &model_input(case, model).with_regimen(&regimen)),
+        Err(e) => not_run(case, e),
+    }
+}
+
+/// Runs `input` and counts the expected rows of `case` against its output.
+fn evaluate_input(case: &ModelCase, input: &ModelInput) -> CaseReport {
+    let output = match run_model(input) {
         Ok(o) => o,
         Err(e) => return not_run(case, e.to_string()),
     };
@@ -225,7 +289,7 @@ fn refused_as_expected(c: &Pk2ErrorCase) -> std::result::Result<(), String> {
 
 /// The error suite: one row per input to refuse, grouped by the oracle's groups in the order they
 /// first appear.
-fn evaluate_errors(name: &str, cases: &[Pk2ErrorCase]) -> CaseReport {
+fn evaluate_errors(name: &str, details: &str, cases: &[Pk2ErrorCase]) -> CaseReport {
     let mut parameters: Vec<(String, Count)> = Vec::new();
     let mut errors = Vec::new();
     for c in cases {
@@ -251,7 +315,7 @@ fn evaluate_errors(name: &str, cases: &[Pk2ErrorCase]) -> CaseReport {
     CaseReport {
         kind: Kind::Model,
         name: name.to_owned(),
-        details: vec!["pk2.* (inputs to refuse)".to_owned()],
+        details: vec![details.to_owned()],
         parameters,
         errors,
     }
@@ -488,20 +552,29 @@ mod tests {
     #[test]
     fn every_model_case_is_fully_validated() {
         let reports = model_reports().unwrap();
-        // 21 one-compartment cases, 107 + 64 two-compartment cases and the error suite.
-        assert_eq!(reports.len(), 21 + 107 + 64 + 1);
+        // 21 one-compartment cases, 107 + 64 two-compartment cases and their error suite, 246
+        // multiple-dosing cases and their error suite.
+        assert_eq!(reports.len(), 21 + 107 + 64 + 1 + 246 + 1);
         for r in reports {
             let t = total(&r);
             assert!(r.errors.is_empty(), "{}: {:?}", r.name, r.errors);
             let names: Vec<&str> = r.parameters.iter().map(|(n, _)| n.as_str()).collect();
             if r.name == PK2_ERRORS_CASE {
                 assert_eq!(t.expected, 80, "{}", r.name);
+            } else if r.name == MD_ERRORS_CASE {
+                assert_eq!(t.expected, 41, "{}", r.name);
+            } else if r.name.starts_with("model_md_") {
+                // conc and auc first, then accum_c for a steady state.
+                assert_eq!(names.get(..2), Some(&["conc", "auc"][..]), "{}", r.name);
+                if r.name.contains("_ss_") {
+                    assert_eq!(names.get(2), Some(&"accum_c"), "{}", r.name);
+                }
             } else if r.name.starts_with("model_pk2_deriv_") {
                 assert!(names.iter().all(|n| n.starts_with("d_")), "{}", r.name);
             } else {
                 // The grid quantities come first: conc and auc, then aumc for two compartments.
                 let first: &[&str] = if r.name.starts_with("model_pk2_") {
-                    &GRID_QUANTITIES
+                    &GRID_QUANTITIES[..3]
                 } else {
                     &GRID_QUANTITIES[..2]
                 };
@@ -541,6 +614,40 @@ mod tests {
     }
 
     #[test]
+    fn multiple_dosing_quantities_are_mapped_and_a_wrong_value_is_caught() {
+        let mut loaded = load_md_case("model_md_pk1_oral_1_lag_ss_tlag_0p5_tau_6").unwrap();
+        let get = |r: &CaseReport, n: &str| {
+            r.parameters
+                .iter()
+                .find(|(name, _)| name == n)
+                .map(|(_, c)| *c)
+                .unwrap()
+        };
+        let r = evaluate_md(&loaded);
+        assert!(r.errors.is_empty(), "{:?}", r.errors);
+        for n in ["conc", "auc", "accum_c", "cmax_ss", "tmax_ss", "accum_auc"] {
+            assert!(get(&r, n).expected > 0, "{n}");
+            assert_eq!(get(&r, n).validated, get(&r, n).expected, "{n}");
+        }
+        // A lag 1e-9 off moves the concentrations far outside 1e-12.
+        if let Some(v) = loaded.case.parameters.get_mut("tlag") {
+            *v *= 1.0 + 1e-9;
+        }
+        let r = evaluate_md(&loaded);
+        assert!(get(&r, "conc").validated < get(&r, "conc").expected);
+        // A regimen the engine refuses is an error line with nothing validated.
+        loaded.regimen.tau = Some(-1.0);
+        let r = evaluate_md(&loaded);
+        assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+        assert!(r.errors[0].contains("tau"), "{:?}", r.errors);
+        assert_eq!(total(&r).validated, 0);
+        // The error suite: every input refused for its reason.
+        let errors = evaluate_errors(MD_ERRORS_CASE, "md", &load_md_errors().unwrap());
+        assert!(errors.errors.is_empty(), "{:?}", errors.errors);
+        assert_eq!(total(&errors).validated, 41);
+    }
+
+    #[test]
     fn an_unknown_model_id_is_an_error_line_not_an_abort() {
         for name in ["model_pk2_iv_bolus_base", "model_pk2_deriv_iv_bolus_base"] {
             let mut case = load_pk2_case(name).unwrap().case;
@@ -560,7 +667,7 @@ mod tests {
     #[test]
     fn an_input_the_engine_accepts_is_not_a_validated_refusal() {
         let mut cases = load_pk2_errors().unwrap();
-        let r = evaluate_errors("errors", &cases);
+        let r = evaluate_errors("errors", "inputs to refuse", &cases);
         assert_eq!(total(&r).validated, total(&r).expected);
         // Make the first case valid: it is now accepted, so it fails, with an error line.
         let first = cases.first_mut().unwrap();
@@ -571,7 +678,7 @@ mod tests {
         first.model = "pk2.iv_bolus".to_owned();
         first.dose = 100.0;
         first.times = vec![1.0];
-        let r = evaluate_errors("errors", &cases);
+        let r = evaluate_errors("errors", "inputs to refuse", &cases);
         assert_eq!(total(&r).validated + 1, total(&r).expected);
         assert!(
             r.errors.iter().any(|e| e.contains("accepted")),

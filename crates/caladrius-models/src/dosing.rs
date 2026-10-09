@@ -28,11 +28,7 @@ struct Terms {
 }
 
 impl Terms {
-    fn new(
-        model: ModelId,
-        params: &BTreeMap<String, f64>,
-        dose: f64,
-    ) -> Result<Terms, ModelError> {
+    fn new(model: ModelId, params: &BTreeMap<String, f64>, dose: f64) -> Result<Terms, ModelError> {
         let input = model.input();
         if model.compartments() == 2 {
             let p = params2::resolve(model, params, dose)?;
@@ -60,7 +56,11 @@ impl Terms {
     }
 
     fn combine(&self, each: impl Fn(f64) -> f64) -> f64 {
-        self.modes.iter().map(|&(w, rate)| w * each(rate)).sum::<f64>() / self.volume
+        self.modes
+            .iter()
+            .map(|&(w, rate)| w * each(rate))
+            .sum::<f64>()
+            / self.volume
     }
 
     /// Concentration and area of one dose at `t` on the clock of the dose times.
@@ -198,9 +198,7 @@ pub(crate) fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
             secondary.insert("auc_inf".to_string(), f64::from(*n_doses) * dose / terms.cl);
             (conc, auc, Vec::new())
         }
-        Regimen::SteadyState { tau } => {
-            steady_state(&terms, &single, input, *tau, &mut secondary)?
-        }
+        Regimen::SteadyState { tau } => steady_state(&terms, &single, input, *tau, &mut secondary)?,
     };
     let overflow = |what: String| Err(ModelError::Overflow { what });
     for (t, (c, a)) in input.times.iter().zip(conc.iter().zip(&auc)) {
@@ -312,14 +310,25 @@ fn steady_state(
         }
     };
     let cmax = conc_at(peak);
-    let trough = if terms.input == Input::Bolus { tau } else { 0.0 };
+    let trough = if terms.input == Input::Bolus {
+        tau
+    } else {
+        0.0
+    };
     let mut put = |name: &str, value: f64| {
         secondary.insert(name.to_string(), value);
     };
     put("cmax_ss", cmax);
     if unique {
         let shifted = peak + phi;
-        put("tmax_ss", if shifted >= tau { shifted - tau } else { shifted });
+        put(
+            "tmax_ss",
+            if shifted >= tau {
+                shifted - tau
+            } else {
+                shifted
+            },
+        );
     }
     put("cmin_ss", conc_at(trough));
     let auc_tau = dose / terms.cl;
@@ -465,8 +474,7 @@ mod tests {
             ],
         };
         let r = run_model(
-            &input(ModelId::IvInfusion, &[("v", 10.0), ("cl", 2.0)], &[4.0])
-                .with_regimen(&overlap),
+            &input(ModelId::IvInfusion, &[("v", 10.0), ("cl", 2.0)], &[4.0]).with_regimen(&overlap),
         )
         .unwrap();
         printed(r.conc()[0], 11.6513623821);
@@ -517,24 +525,27 @@ mod tests {
     /// Worked example P2 (two compartments, τ = 12).
     #[test]
     fn p2_two_compartment_steady_state() {
-        let p = [("a", 50.0 / 9.0), ("b", 40.0 / 9.0), ("alpha", 1.0), ("beta", 0.1)];
+        let p = [
+            ("a", 50.0 / 9.0),
+            ("b", 40.0 / 9.0),
+            ("alpha", 1.0),
+            ("beta", 0.1),
+        ];
         let ss = Regimen::SteadyState { tau: 12.0 };
-        let bolus = run_model(&input(ModelId::Pk2IvBolus, &p, &[0.0, 12.0]).with_regimen(&ss))
-            .unwrap();
+        let bolus =
+            run_model(&input(ModelId::Pk2IvBolus, &p, &[0.0, 12.0]).with_regimen(&ss)).unwrap();
         printed(bolus.conc()[0], 11.9156464045);
         printed(bolus.conc()[1], 1.9156464045);
         let mut oral = p.to_vec();
         oral.push(("ka", 2.0));
-        let r = run_model(
-            &input(ModelId::Pk2Oral1, &oral, &[0.0, 1.0, 4.0, 12.0]).with_regimen(&ss),
-        )
-        .unwrap();
-        for (c, e) in r.conc().iter().zip([
-            2.0165022370,
-            8.0084039847,
-            4.6858678966,
-            2.0165022370,
-        ]) {
+        let r =
+            run_model(&input(ModelId::Pk2Oral1, &oral, &[0.0, 1.0, 4.0, 12.0]).with_regimen(&ss))
+                .unwrap();
+        for (c, e) in r
+            .conc()
+            .iter()
+            .zip([2.0165022370, 8.0084039847, 4.6858678966, 2.0165022370])
+        {
             printed(*c, e);
         }
         // The true root (T-047 question 4): 0.9158084346, not the printed 0.9158084340.
@@ -557,8 +568,7 @@ mod tests {
         .to_string();
         assert!(e.contains("`tau` = 1.5") && e.contains("schedule"), "{e}");
         let e = run_model(
-            &input(ModelId::IvBolus, &[("v", 10.0), ("cl", 2.0)], &[1.0, 2.0])
-                .with_regimen(&ss),
+            &input(ModelId::IvBolus, &[("v", 10.0), ("cl", 2.0)], &[1.0, 2.0]).with_regimen(&ss),
         )
         .unwrap_err()
         .to_string();
@@ -571,8 +581,7 @@ mod tests {
             }],
         };
         let e = run_model(
-            &input(ModelId::IvBolus, &[("v", 10.0), ("cl", 2.0)], &[1.0])
-                .with_regimen(&with_dur),
+            &input(ModelId::IvBolus, &[("v", 10.0), ("cl", 2.0)], &[1.0]).with_regimen(&with_dur),
         )
         .unwrap_err()
         .to_string();
@@ -616,12 +625,74 @@ mod tests {
         )
         .unwrap();
         let default = run_model(
-            &input(ModelId::Oral0, &[("v", 10.0), ("cl", 2.0), ("dur", 2.0)], &times)
-                .with_regimen(&doses(None)),
+            &input(
+                ModelId::Oral0,
+                &[("v", 10.0), ("cl", 2.0), ("dur", 2.0)],
+                &times,
+            )
+            .with_regimen(&doses(None)),
         )
         .unwrap();
         assert_eq!(own.conc(), default.conc());
         assert_eq!(own.get("dur"), None);
         assert_eq!(default.get("dur"), Some(2.0));
+    }
+}
+
+#[cfg(test)]
+mod derivative_tests {
+    use crate::{Derivatives, ModelError, ModelId, ModelInput, Regimen, jacobian};
+
+    /// MOD-MD (card T-049): no closed-form derivative is derived for a regimen; `Analytic` is a
+    /// readable refusal (never a silent fallback), forward differences give one column per model
+    /// parameter and none for the regimen.
+    #[test]
+    fn analytic_derivatives_of_a_regimen_are_refused_readably() {
+        let cases = [
+            (ModelId::IvBolus, vec![("v", 10.0), ("cl", 2.0)]),
+            (
+                ModelId::Pk2Oral1,
+                vec![
+                    ("cl", 2.0),
+                    ("vc", 10.0),
+                    ("q", 4.0),
+                    ("vp", 8.0),
+                    ("ka", 2.0),
+                ],
+            ),
+        ];
+        for (model, p) in cases {
+            let input = ModelInput {
+                model,
+                dose: 100.0,
+                params: p.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+                times: vec![0.5, 3.0],
+            }
+            .with_regimen(&Regimen::SteadyState { tau: 6.0 });
+            let e = jacobian(&input, Derivatives::Analytic).unwrap_err();
+            assert!(
+                matches!(&e, ModelError::DerivativesUnavailable { model: m, .. } if m == model.id()),
+                "{e:?}"
+            );
+            let message = e.to_string();
+            assert!(
+                message.contains("unavailable")
+                    && message.contains("regimen")
+                    && message.contains("forward differences"),
+                "{message}"
+            );
+            let j = jacobian(
+                &input,
+                Derivatives::ForwardDifference {
+                    increment: crate::DEFAULT_INCREMENT,
+                },
+            )
+            .unwrap();
+            let names: Vec<&str> = p.iter().map(|(n, _)| *n).collect();
+            let mut sorted = names.clone();
+            sorted.sort_unstable();
+            assert_eq!(j.parameters, sorted, "{model:?}");
+            assert!(j.columns.iter().flatten().all(|x| x.is_finite()));
+        }
     }
 }

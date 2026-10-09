@@ -1724,3 +1724,39 @@ fn a_simulation_that_stores_is_a_change_of_the_project_in_the_history_and_a_live
     ok(&mut e, "project.new", json!({}));
     assert_eq!(e.revision(), 3);
 }
+
+/// A dosing regimen travels in `params` (card T-049): the steady state of `model.simulate` is the
+/// model crate's, and the derived quantities come back with the secondary parameters.
+#[test]
+fn simulation_takes_a_dosing_regimen_in_its_parameters() {
+    let mut e = Engine::new();
+    let params = json!({ "model": "pk1.oral_1", "dose": 100,
+                         "params": { "v": 10, "cl": 2, "ka": 1, "tau": 6 }, "times": [0, 1, 6] });
+    let r = ok(&mut e, "model.simulate", params);
+    let direct = caladrius_models::run(
+        &caladrius_models::ModelInput {
+            model: caladrius_models::ModelId::Oral1,
+            dose: 100.0,
+            params: [
+                ("v".to_owned(), 10.0),
+                ("cl".to_owned(), 2.0),
+                ("ka".to_owned(), 1.0),
+            ]
+            .into(),
+            times: vec![0.0, 1.0, 6.0],
+        }
+        .with_regimen(&caladrius_models::Regimen::SteadyState { tau: 6.0 }),
+    )
+    .unwrap();
+    let conc: Vec<f64> = serde_json::from_value(r["conc"].clone()).unwrap();
+    assert_eq!(conc, direct.conc());
+    assert_eq!(r["secondary"]["cmax_ss"].as_f64(), direct.get("cmax_ss"));
+    // A time outside the interval is refused with what to fix.
+    let refused = err(
+        &mut e,
+        "model.simulate",
+        json!({ "model": "pk1.iv_bolus", "dose": 100,
+                "params": { "v": 10, "cl": 2, "tau": 6 }, "times": [7] }),
+    );
+    assert!(refused.message.contains("tau = 6"), "{}", refused.message);
+}

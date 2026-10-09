@@ -473,7 +473,7 @@ pub(crate) const MODEL_SIMULATE: CommandDef = CommandDef {
                         "params",
                         crate::schema::described(
                             json!({ "type": "object", "additionalProperties": number() }),
-                            "Parameters by name: pk1 `v` and one of `cl`, `k`; pk2 one set (see model); `ka`, `dur`, `tlag` as needed.",
+                            "Parameters by name: pk1 `v` and one of `cl`, `k`; pk2 one set (see model); `ka`, `dur`, `tlag` as needed. Optional regimen: `tau` (steady state, times since the last dose), `tau` and `n_doses` (times since the first dose), or a schedule `dose_time[i]`, `dose_amount[i]`, `dose_dur[i]`.",
                         ),
                     ),
                     ("times", array_of(number())),

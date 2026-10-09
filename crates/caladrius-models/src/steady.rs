@@ -20,11 +20,7 @@ use crate::two::{GL_NODES, GL_WEIGHTS};
 
 /// h(z) = (1 − g(z))/z for z >= 0, with h(0) = 1/2.
 fn h(z: f64) -> f64 {
-    if z == 0.0 {
-        0.5
-    } else {
-        one_minus_g(z) / z
-    }
+    if z == 0.0 { 0.5 } else { one_minus_g(z) / z }
 }
 
 /// (g(x) − g(y))/(y − x) for 0 <= x <= y, minus the mean of g′ over [x, y], always > 0: the mean
@@ -112,9 +108,7 @@ impl Steady {
                 let f = self.first_order(rate);
                 let decay = (-f.a * u).exp();
                 let u_decay = if decay == 0.0 { 0.0 } else { u * decay };
-                self.dose
-                    * self.ka
-                    * (u_decay * g(f.delta * u) / f.den_a + f.k * (-f.b * u).exp())
+                self.dose * self.ka * (u_decay * g(f.delta * u) / f.den_a + f.k * (-f.b * u).exp())
             }
         }
     }
@@ -148,9 +142,7 @@ impl Steady {
                     let to_end = t - u1;
                     let d = du.min(to_end);
                     // The last input building up, R·(1 − e^(−λv))/λ, and the earlier doses, K2·e^(−λv).
-                    let build = r
-                        * d
-                        * (u1 * g(rate * u1) + (-rate * u1).exp() * d * h(rate * d));
+                    let build = r * d * (u1 * g(rate * u1) + (-rate * u1).exp() * d * h(rate * d));
                     let mut total = build + k2 * exp_area(rate, u1, d);
                     if du > to_end {
                         total += k1 * exp_area(rate, 0.0, du - to_end);
@@ -168,8 +160,7 @@ impl Steady {
                     0.0
                 } else {
                     du * decay
-                        * (du * g_drop(f.a * du, f.b * du)
-                            + u1 * g(f.delta * u1) * g(f.b * du))
+                        * (du * g_drop(f.a * du, f.b * du) + u1 * g(f.delta * u1) * g(f.b * du))
                 };
                 self.dose * self.ka * (built / f.den_a + f.k * exp_area(f.b, u1, du))
             }
@@ -288,7 +279,13 @@ mod tests {
 
     #[test]
     fn the_drop_of_g_is_continuous_across_its_two_forms() {
-        for (x, y) in [(0.5, 1.5), (4.0, 5.0), (8.0, 10.0), (40.0, 50.0), (0.0, 1.0)] {
+        for (x, y) in [
+            (0.5, 1.5),
+            (4.0, 5.0),
+            (8.0, 10.0),
+            (40.0, 50.0),
+            (0.0, 1.0),
+        ] {
             let quadrature = {
                 let len = y - x;
                 let (center, half) = (x + len / 2.0, len / 2.0);

@@ -122,6 +122,12 @@ pub enum FitError {
         /// The model id.
         model: String,
     },
+    /// Closed-form derivatives were asked for a model with a dosing regimen among its parameters
+    /// (`tau`, `n_doses`, a schedule), for which none is derived yet (card T-049).
+    RegimenDerivativesUnavailable {
+        /// The model id.
+        model: String,
+    },
     /// An option outside its domain.
     InvalidOption {
         /// Option name.
@@ -196,6 +202,10 @@ impl fmt::Display for FitError {
             Self::AnalyticDerivativesUnavailable { model } => write!(
                 f,
                 "closed-form derivatives are available in the (v, k) parameterisation only (v, k and the input parameters of the model), not for {model} with these parameters; use forward differences or give `k` instead of `cl`"
+            ),
+            Self::RegimenDerivativesUnavailable { model } => write!(
+                f,
+                "closed-form derivatives of {model} are unavailable for a dosing regimen (`tau`, `n_doses` or a schedule among the parameters); use forward differences or `auto`"
             ),
             Self::InvalidOption { option, reason } => write!(f, "option `{option}`: {reason}"),
         }

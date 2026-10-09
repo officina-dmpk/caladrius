@@ -403,3 +403,32 @@ fn a_far_start_under_predicted_value_weights_is_not_converged() {
     // Whatever the status, the result is never worse than the start (T-011b review).
     assert!(wrss <= start, "{:?}: {wrss} > {start}", r.status());
 }
+
+/// A dosing regimen among the fixed parameters (here two doses 24 h apart, of which only the first
+/// has been given at the observed times): closed-form derivatives are refused with a message that
+/// names the regimen, and forward differences fit it as the single dose.
+#[test]
+fn analytic_derivatives_are_refused_for_a_regimen() {
+    let mut input = spec(Weighting::Uniform, true);
+    input.options.fixed = BTreeMap::from([("tau".to_string(), 24.0), ("n_doses".to_string(), 2.0)]);
+    let e = run(&input).unwrap_err();
+    assert!(
+        matches!(&e, FitError::RegimenDerivativesUnavailable { model } if model == "pk1.iv_bolus"),
+        "{e:?}"
+    );
+    let message = e.to_string();
+    assert!(
+        message.contains("unavailable") && message.contains("forward differences"),
+        "{message}"
+    );
+    input.options.derivatives = Derivatives::ForwardDifference;
+    let regimen = run(&input).unwrap();
+    let mut single = spec(Weighting::Uniform, true);
+    single.options.derivatives = Derivatives::ForwardDifference;
+    let single = run(&single).unwrap();
+    // The same minimum, to rounding (the regimen sums kernels of volume 1, divided by V after).
+    for name in ["estimate.v", "estimate.k", "wrss"] {
+        let (a, b) = (regimen.get(name).unwrap(), single.get(name).unwrap());
+        assert!((a - b).abs() <= 1e-10 * b.abs(), "{name}: {a} against {b}");
+    }
+}

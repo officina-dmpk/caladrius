@@ -1,4 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code: helpers panic on purpose
+#![allow(non_snake_case)] // generated case modules keep the oracle's names (`..._tau_eq_T`)
 //! Multiple-dosing and steady-state oracle (task T-047, open item OM-16): `caladrius-models` against
 //! exact values (`oracle/expected/models/md/`, produced by `oracle/scripts/models_md.R`: plain sums
 //! of the single-dose closed forms of `specs/models.md` in 256-bit arithmetic, cross-checked against
@@ -113,8 +114,9 @@ fn check(case_name: &str, quantity: &str) {
         !expected.is_empty(),
         "{case_name}: nothing expected for {quantity}"
     );
-    let output = run(&input_of(&loaded))
-        .unwrap_or_else(|e| panic!("{case_name}: unsupported dosing: the engine refuses the regimen: {e}"));
+    let output = run(&input_of(&loaded)).unwrap_or_else(|e| {
+        panic!("{case_name}: unsupported dosing: the engine refuses the regimen: {e}")
+    });
     let mut actual = Table::new();
     match quantity {
         "conc" | "auc" | "accum_c" => {
@@ -271,15 +273,21 @@ fn errors_domain() {
 
 fn run_case(name: &str) -> (MdCase, caladrius_models::ModelOutput) {
     let loaded = load_md_case(name).unwrap();
-    let output = run(&input_of(&loaded))
-        .unwrap_or_else(|e| panic!("{name}: unsupported dosing: the engine refuses the regimen: {e}"));
+    let output = run(&input_of(&loaded)).unwrap_or_else(|e| {
+        panic!("{name}: unsupported dosing: the engine refuses the regimen: {e}")
+    });
     (loaded, output)
 }
 
 /// MOD-MD-07: a regular regimen of one dose is the single dose.
 #[test]
 fn one_regular_dose_is_the_single_dose() {
-    for model in ["pk1.iv_bolus", "pk1.oral_1_lag", "pk2.oral_0", "pk2.iv_infusion"] {
+    for model in [
+        "pk1.iv_bolus",
+        "pk1.oral_1_lag",
+        "pk2.oral_0",
+        "pk2.iv_infusion",
+    ] {
         let name = format!("model_md_{}_regular_n1", model.replace('.', "_"));
         let (loaded, output) = run_case(&name);
         let mut input = input_of(&loaded);
@@ -321,13 +329,21 @@ fn the_engine_follows_the_shift_rule_not_the_printed_branch() {
     let mut examined = 0;
     for name in list_md_cases().unwrap() {
         let loaded = load_md_case(&name).unwrap();
-        let Some(printed) = loaded.printed_form.clone().filter(|p| p.differs_from_oracle) else {
+        let Some(printed) = loaded
+            .printed_form
+            .clone()
+            .filter(|p| p.differs_from_oracle)
+        else {
             continue;
         };
         let output = run(&input_of(&loaded)).unwrap_or_else(|e| {
             panic!("{name}: unsupported dosing: the engine refuses the regimen: {e}")
         });
-        for (t, value) in printed.times_that_differ.iter().zip(&printed.printed_values) {
+        for (t, value) in printed
+            .times_that_differ
+            .iter()
+            .zip(&printed.printed_values)
+        {
             let i = loaded
                 .case
                 .times

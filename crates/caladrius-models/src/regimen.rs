@@ -73,12 +73,14 @@ const DOSE_DUR: &str = "dose_dur";
 
 /// The field and the index of a schedule name such as `dose_time[3]`.
 fn indexed(name: &str) -> Option<(&'static str, &str)> {
-    [DOSE_TIME, DOSE_AMOUNT, DOSE_DUR].into_iter().find_map(|field| {
-        name.strip_prefix(field)
-            .and_then(|rest| rest.strip_prefix('['))
-            .and_then(|rest| rest.strip_suffix(']'))
-            .map(|index| (field, index))
-    })
+    [DOSE_TIME, DOSE_AMOUNT, DOSE_DUR]
+        .into_iter()
+        .find_map(|field| {
+            name.strip_prefix(field)
+                .and_then(|rest| rest.strip_prefix('['))
+                .and_then(|rest| rest.strip_suffix(']'))
+                .map(|index| (field, index))
+        })
 }
 
 /// Whether `name` is one of the reserved names of a regimen (`tau`, `n_doses`, `dose_time[i]`,

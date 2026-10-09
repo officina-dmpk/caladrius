@@ -274,16 +274,20 @@ impl<'a> Problem<'a> {
         }
         // FIT-JAC-01, JAC-02: `analytic` is refused without closed forms (never replaced); `auto`
         // is resolved here, once, so the iterations and the result use one method.
+        let start = problem.params(&problem.theta0);
         let closed_forms = problem
             .model
-            .analytic_derivatives(
-                problem.dose,
-                &problem.params(&problem.theta0),
-                &problem.time,
-                &problem.names,
-            )
+            .analytic_derivatives(problem.dose, &start, &problem.time, &problem.names)
             .is_some();
+        let regimen = start
+            .keys()
+            .any(|name| caladrius_models::is_regimen_parameter(name));
         problem.options.derivatives = match (o.derivatives, closed_forms) {
+            (Derivatives::Analytic, false) if regimen => {
+                return Err(FitError::RegimenDerivativesUnavailable {
+                    model: problem.model_id.clone(),
+                });
+            }
             (Derivatives::Analytic, false) => {
                 return Err(FitError::AnalyticDerivativesUnavailable {
                     model: problem.model_id.clone(),
