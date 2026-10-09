@@ -16,7 +16,7 @@
 //! affected until the engine and the interface cards for two compartments land.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -161,15 +161,24 @@ pub struct Pk2ErrorCase {
 
 /// Loads the error suite and checks that its table lists exactly its cases, all not available.
 pub fn load_pk2_errors() -> Result<Vec<Pk2ErrorCase>, OracleError> {
-    let dir = pk2_dir();
-    let options_path = dir.join(format!("{PK2_ERRORS}.options.json"));
+    load_error_suite(&pk2_dir(), PK2_ERRORS)
+}
+
+/// Loads the error suite `name` of `dir` (`<name>.options.json` and `<name>.csv`) and checks that its
+/// table lists exactly its cases, all not available. The multiple-dosing suite of `crate::md` uses the
+/// same layout.
+pub(crate) fn load_error_suite(
+    dir: &Path,
+    name: &str,
+) -> Result<Vec<Pk2ErrorCase>, OracleError> {
+    let options_path = dir.join(format!("{name}.options.json"));
     let here = options_path.display().to_string();
     let raw: RawErrors = json(&options_path)?;
     let inconsistent = |message: String| OracleError::Inconsistent {
         path: here.clone(),
         message,
     };
-    if raw.case != PK2_ERRORS {
+    if raw.case != name {
         return Err(inconsistent(format!("case field is {:?}", raw.case)));
     }
     if raw.n_values != raw.cases.len() {
@@ -179,7 +188,7 @@ pub fn load_pk2_errors() -> Result<Vec<Pk2ErrorCase>, OracleError> {
             raw.cases.len()
         )));
     }
-    let csv_path = dir.join(format!("{PK2_ERRORS}.csv"));
+    let csv_path = dir.join(format!("{name}.csv"));
     let table = parse_expected(&csv_path.display().to_string(), &read(&csv_path)?)?;
     if table.len() != raw.cases.len() {
         return Err(inconsistent(format!(

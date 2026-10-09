@@ -15,11 +15,13 @@
 //! - [`naive`]: independent, deliberately simple computations (second implementation for cross-checks).
 //! - [`naive2c`]: the same for the two-compartment models (task T-032), in double precision.
 //! - [`pk2`]: loaders for the two-compartment oracle (`oracle/expected/models/pk2/`): values, derivatives, error cases.
+//! - [`md`]: loaders for the multiple-dosing and steady-state oracle (`oracle/expected/models/md/`, task T-047): schedules, regular regimens, steady state, error cases.
 //!
 //! Nothing here panics: loaders return [`oracle::OracleError`], comparisons return a
 //! [`compare::Report`] whose [`compare::Report::into_result`] a test can unwrap.
 
 pub mod compare;
+pub mod md;
 pub mod naive;
 pub mod naive2c;
 pub mod oracle;
@@ -31,6 +33,10 @@ pub mod tolerance;
 pub use compare::{
     DocumentedDifference, Mismatch, MismatchKind, Report, Skipped, Table, compare_tables,
     compare_tables_documented,
+};
+pub use md::{
+    DoseRecord, MD_ERRORS, MdCase, PrintedForm, Regimen, RegimenKind, dose_parameters, list_md_cases,
+    load_md_case, load_md_errors, md_dir,
 };
 pub use oracle::{OracleCase, OracleError, Profile, list_cases, load_case};
 pub use pk2::{
