@@ -57,6 +57,21 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 
 The `assumed` rules are the ones that a reference comparison or a human decision still has to settle (for example the fit defaults of `AGENTS.md` section 6); none is presented as settled.
 
+## The application
+
+<table>
+<tr>
+<td width="33%"><img src="docs/screens/import-french-csv.png" alt="Import preview of a French CSV"><br><sub><b>Import.</b> A French export (semicolons, decimal commas) read before anything is stored: roles, units and the reading of each value are shown, and the other possible reading is named.</sub></td>
+<td width="33%"><img src="docs/screens/nca-linear.png" alt="NCA page with the linear plot"><br><sub><b>NCA.</b> Parameters, quality flags and the terminal-phase candidates on one page; the range is chosen automatically and every point can be added to or taken out of the regression.</sub></td>
+<td width="33%"><img src="docs/screens/fit-two-compartments-results.png" alt="Two-compartment fit results"><br><sub><b>Fit.</b> Two compartments, three parameter sets, the fitted curve and the residuals; estimates with standard error, CV% and both intervals, one sentence per flag.</sub></td>
+</tr>
+</table>
+
+[More screenshots of the application](docs/screens/) — import, NCA, fitting, simulation and the command
+palette. Every scene is drawn offscreen by `crates/caladrius-ui/examples/snapshot.rs`
+(`cargo run -p caladrius-ui --example snapshot`), through the application's own actions and engine
+commands; the interface holds no numerical code and reads no file itself.
+
 ## Conformance
 
 `cargo xtask conformance` runs `caladrius-nca` on every case of `oracle/expected/`, `caladrius-models` on every case of `oracle/expected/models/` (relative error 1e-12) and `caladrius-fit` on every case of `oracle/expected/fit/` (1e-4 on estimates and statistics, 1e-6 on the residual sum of squares), and regenerates `docs/conformance.md` (never edit it by hand). A value counts as validated only if the engine computes the parameter and it is within the tolerance of the expected value. The file ends with one floor line per parameter per case (validated and expected rows). The task fails and leaves the file unchanged if a parameter validates fewer values, loses expected rows, gains unvalidated rows or disappears, if a floor line is malformed, or if a non-empty previous file holds no floor. Floors can only go up. The file is written to a temporary file then renamed.
