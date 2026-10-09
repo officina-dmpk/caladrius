@@ -16,7 +16,7 @@ MIT OR Apache-2.0. Third-party data and assets are listed in `ATTRIBUTION.md`.
 
 ## Build
 
-Requires Rust stable 1.85 or newer, installed with rustup (`rust-toolchain.toml` selects the stable channel). The WebAssembly check also needs the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`.
+Requires Rust stable 1.85 or newer, installed with rustup (`rust-toolchain.toml` selects the stable channel). The WebAssembly check also needs the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`. Prebuilt binaries for Linux and Windows are attached to each release: <https://github.com/officina-dmpk/caladrius/releases>.
 
 ```sh
 cargo build --workspace

@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Runs before the builds, so that both platforms attach to a release that already exists.
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # A published release (v0.1.0) keeps its notes; a new tag gets a draft named after it.
+      - name: Ensure the tag has a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --notes ""
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      # Reads rust-toolchain.toml. No test suite: CI already ran it on the commit.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p caladrius -p caladrius-cli -p caladrius-mcp
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          staging="caladrius-$GITHUB_REF_NAME"
+          mkdir -p "$staging/docs"
+          cp target/release/caladrius target/release/caladrius-cli target/release/caladrius-mcp "$staging/"
+          cp LICENSE-MIT LICENSE-APACHE README.md "$staging/"
+          cp docs/conformance.md "$staging/docs/"
+          (cd "$staging" && sha256sum caladrius caladrius-cli caladrius-mcp LICENSE-MIT LICENSE-APACHE README.md docs/conformance.md > SHA256SUMS)
+          tar -czf "$staging-${{ matrix.target }}.${{ matrix.archive }}" "$staging"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $staging = "caladrius-$env:GITHUB_REF_NAME"
+          New-Item -ItemType Directory "$staging/docs" | Out-Null
+          Copy-Item target/release/caladrius.exe, target/release/caladrius-cli.exe, target/release/caladrius-mcp.exe $staging
+          Copy-Item LICENSE-MIT, LICENSE-APACHE, README.md $staging
+          Copy-Item docs/conformance.md "$staging/docs"
+          $files = "caladrius.exe", "caladrius-cli.exe", "caladrius-mcp.exe", "LICENSE-MIT", "LICENSE-APACHE", "README.md", "docs/conformance.md"
+          $sums = $files | ForEach-Object { "$((Get-FileHash "$staging/$_").Hash.ToLower())  $_" }
+          $sums -join "`n" | Set-Content "$staging/SHA256SUMS"
+          Compress-Archive $staging "caladrius-$env:GITHUB_REF_NAME-${{ matrix.target }}.${{ matrix.archive }}"
+
+      - name: Attach the archive to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" "caladrius-$GITHUB_REF_NAME-${{ matrix.target }}.${{ matrix.archive }}" --clobber
