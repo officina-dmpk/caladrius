@@ -24,6 +24,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo xtask layers   # prints the layer table, fails if a crate depends on a higher layer
 cargo xtask lint     # contract checks: forbidden names, private/ leaks, deny-lints headers, tolerances once, board hygiene (exceptions in xtask/lint_allow.toml)
+cargo xtask review   # the figures this README and the specs state, confronted with the files that own them (read-only; --strict also fails on a note)
 cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-unknown
 ```
 

@@ -49,3 +49,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-037 | README: sync the verified section with main (PR #1, external contribution) | orchestrator | done | T-034 |
 | T-038 | docs/screens: the application illustrated from the snapshot example (PR #2, external contribution) | orchestrator | done | T-034 |
 | T-040 | Default fit settings reach the exact minimum (Q-014 option 2); reference_conventions preset; D-04 | engine | todo | T-030 |
+| T-039 | cargo xtask review: the stated numbers confront the files that own them (PR #3, external contribution) | interface | to review | T-036 |

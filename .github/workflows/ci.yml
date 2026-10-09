@@ -25,6 +25,7 @@ jobs:
       - run: cargo test --workspace
       - run: cargo xtask layers
       - run: cargo xtask lint
+      - run: cargo xtask review
       - run: cargo xtask wasm
       - name: Conformance table is up to date
         run: |

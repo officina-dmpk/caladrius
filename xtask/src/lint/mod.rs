@@ -107,7 +107,7 @@ pub fn run() -> Result<()> {
 }
 
 /// Lists the files with git (tracked, plus untracked files that are not ignored) and reads the text ones.
-fn load_tree(root: &Path) -> Result<Tree> {
+pub fn load_tree(root: &Path) -> Result<Tree> {
     let tracked = git_files(root, &["--cached"])?;
     let candidates = git_files(root, &["--cached", "--others", "--exclude-standard"])?;
     let mut files = BTreeMap::new();
