@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caladrius and Apothicaire, explained</title>
+<meta name="description" content="A guided, plain-language tour of Caladrius (a verified pharmacokinetic engine in Rust) and Apothicaire (a local AI assistant that is not allowed to calculate). Self-contained: no network, no library.">
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1d2126; --muted: #5d6671; --line: #d9d4c9;
+    --accent: #0f6e8c; --accent-ink: #ffffff; --ok: #2a7f4f; --bad: #b4382c; --warn: #b7791f;
+    --soft: #eef4f6; --shade: rgba(15,110,140,0.18); --mono: ui-monospace, Consolas, "Cascadia Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15181c; --panel: #1d2227; --ink: #e8e6e1; --muted: #a2a9b1; --line: #343b43;
+      --accent: #5fb6d3; --accent-ink: #0d1316; --ok: #6fcf97; --bad: #ef7f72; --warn: #e2b04a;
+      --soft: #232b31; --shade: rgba(95,182,211,0.22);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15181c; --panel: #1d2227; --ink: #e8e6e1; --muted: #a2a9b1; --line: #343b43;
+    --accent: #5fb6d3; --accent-ink: #0d1316; --ok: #6fcf97; --bad: #ef7f72; --warn: #e2b04a;
+    --soft: #232b31; --shade: rgba(95,182,211,0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 Georgia, "Times New Roman", serif; }
+  body { padding: 0 16px 64px; }
+  header { max-width: 900px; margin: 0 auto; padding: 40px 0 8px; }
+  header h1 { font-size: 2rem; margin: 0 0 6px; line-height: 1.15; }
+  header p { color: var(--muted); margin: 0; }
+  nav { max-width: 900px; margin: 18px auto 0; display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; background: var(--bg); padding: 10px 0; z-index: 2; border-bottom: 1px solid var(--line); }
+  nav a { font: 14px/1.2 system-ui, sans-serif; text-decoration: none; color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: var(--panel); }
+  nav a:hover { border-color: var(--accent); }
+  main { max-width: 900px; margin: 0 auto; }
+  section { margin-top: 48px; }
+  h2 { font-size: 1.45rem; margin: 0 0 10px; }
+  h3 { font-size: 1.1rem; margin: 22px 0 6px; }
+  p { margin: 0 0 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 14px 0; }
+  .note { border-left: 4px solid var(--warn); padding-left: 12px; color: var(--muted); font-size: 0.95rem; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  code, .mono { font-family: var(--mono); font-size: 0.9em; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font: 13px system-ui, sans-serif; fill: var(--ink); }
+  svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  svg .box.ai { stroke: var(--warn); stroke-dasharray: 5 3; }
+  svg .box.hard { stroke: var(--accent); stroke-width: 2; }
+  svg .arrow { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#head); }
+  svg .label { fill: var(--muted); font-size: 12px; }
+  svg .title { font-weight: 700; }
+  svg .sub { fill: var(--muted); font-size: 11.5px; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 18px; font: 14px system-ui, sans-serif; margin: 10px 0; }
+  .controls label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+  .controls output { color: var(--ink); font-family: var(--mono); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  button { font: 14px system-ui, sans-serif; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button.ghost { background: var(--panel); color: var(--accent); border: 1px solid var(--line); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .stat { background: var(--soft); border-radius: 10px; padding: 10px 12px; font: 14px system-ui, sans-serif; color: var(--muted); }
+  .stat b { display: block; font: 700 1.2rem var(--mono); color: var(--ink); margin-top: 2px; }
+  table { border-collapse: collapse; width: 100%; font: 15px/1.4 system-ui, sans-serif; margin: 10px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { font-family: var(--mono); white-space: nowrap; }
+  .steps { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .step { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--panel); opacity: 0.45; transition: opacity .25s, border-color .25s; }
+  .step.on { opacity: 1; border-color: var(--accent); }
+  .step .who { font: 600 12px system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .step pre { margin: 6px 0 0; white-space: pre-wrap; font-family: var(--mono); font-size: 0.85rem; background: var(--soft); padding: 8px 10px; border-radius: 6px; }
+  mark.bad { background: transparent; color: var(--bad); text-decoration: underline wavy var(--bad); font-weight: 700; }
+  mark.ok { background: transparent; color: var(--ok); font-weight: 700; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+  dt { font-weight: 700; } dd { margin: 0; }
+  @media (max-width: 600px) { dl { grid-template-columns: 1fr; } dt { margin-top: 8px; } }
+  footer { max-width: 900px; margin: 56px auto 0; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Caladrius and Apothicaire, explained</h1>
+  <p>A guided tour in plain words. Caladrius is a calculation engine for pharmacokinetics. Apothicaire is a local AI assistant that uses it and is not allowed to calculate. This page is self-contained: it loads nothing from the network.</p>
+</header>
+<nav>
+  <a href="#picture">1. One picture</a>
+  <a href="#pk">2. What is measured</a>
+  <a href="#checks">3. How the engine is checked</a>
+  <a href="#gate">4. An AI that may not calculate</a>
+  <a href="#numbers">5. The benchmark</a>
+  <a href="#build">6. How it is built</a>
+  <a href="#words">7. Words</a>
+</nav>
+<main>
+
+<section id="picture">
+  <h2>1. The project in one picture</h2>
+  <p>A person asks a question about a drug concentration profile. The AI reads the question and the data. It decides which calculation is needed and asks Caladrius to run it. Caladrius returns numbers with units. The AI explains them. A deterministic check then reads the answer and rejects any number that did not come from Caladrius or from the person.</p>
+  <div class="card">
+    <svg viewBox="0 0 900 360" role="img" aria-label="Flow from the user to the AI, to the engine and back, with the oracle checking the engine">
+      <defs><marker id="head" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--muted)"/></marker></defs>
+      <rect class="box" x="20" y="140" width="130" height="70" rx="35"/>
+      <text x="85" y="170" text-anchor="middle" class="title">Person</text>
+      <text x="85" y="190" text-anchor="middle" class="sub">asks, in French or English</text>
+
+      <rect x="190" y="40" width="300" height="290" rx="14" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="205" y="62" class="label">Apothicaire, on one consumer PC</text>
+      <rect class="box ai" x="215" y="85" width="250" height="70" rx="10"/>
+      <text x="340" y="112" text-anchor="middle" class="title">Language model</text>
+      <text x="340" y="132" text-anchor="middle" class="sub">the only part that can be wrong</text>
+      <rect class="box" x="215" y="175" width="115" height="56" rx="10"/>
+      <text x="272" y="199" text-anchor="middle">Memory</text>
+      <text x="272" y="216" text-anchor="middle" class="sub">OptChat tree</text>
+      <rect class="box hard" x="350" y="175" width="115" height="56" rx="10"/>
+      <text x="407" y="199" text-anchor="middle">Number gate</text>
+      <text x="407" y="216" text-anchor="middle" class="sub">no AI inside</text>
+      <text x="340" y="275" text-anchor="middle" class="sub">every number in the answer is traced</text>
+      <text x="340" y="292" text-anchor="middle" class="sub">to a tool result or to the person's message</text>
+
+      <rect x="540" y="40" width="340" height="150" rx="14" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <text x="555" y="62" class="label">Caladrius, written in Rust</text>
+      <rect class="box hard" x="565" y="85" width="290" height="36" rx="10"/>
+      <text x="710" y="108" text-anchor="middle">Commands: nca_run, fit_run, compare...</text>
+      <rect class="box hard" x="565" y="135" width="290" height="40" rx="10"/>
+      <text x="710" y="160" text-anchor="middle">Engine: NCA, models, weighted fit</text>
+
+      <rect class="box" x="565" y="240" width="290" height="80" rx="10"/>
+      <text x="710" y="266" text-anchor="middle" class="title">Independent calculations</text>
+      <text x="710" y="286" text-anchor="middle" class="sub">PKNCA, R nls and nlsLM, closed forms in 256-bit</text>
+      <text x="710" y="304" text-anchor="middle" class="sub">48,955 expected values, stated tolerances</text>
+
+      <path class="arrow" d="M150,175 L215,120"/>
+      <path class="arrow" d="M465,100 L565,100"/>
+      <text x="515" y="92" text-anchor="middle" class="label">asks</text>
+      <path class="arrow" d="M565,160 L465,135"/>
+      <text x="515" y="160" text-anchor="middle" class="label">numbers, units</text>
+      <path class="arrow" d="M340,155 L340,175"/>
+      <path class="arrow" d="M407,155 L407,175"/>
+      <path class="arrow" d="M350,231 L150,195"/>
+      <text x="250" y="250" text-anchor="middle" class="label">checked answer</text>
+      <path class="arrow" d="M710,240 L710,175" stroke-dasharray="4 3"/>
+      <text x="760" y="212" class="label">checks</text>
+    </svg>
+  </div>
+  <p>Two kinds of boxes matter. The dashed box is a language model: it can misread, invent or round. The solid blue boxes are ordinary programs with tests: given the same input they always give the same output. The design puts the one unreliable part between reliable ones.</p>
+</section>
+
+<section id="pk">
+  <h2>2. What is measured: a concentration curve and four numbers</h2>
+  <p>After a dose, the concentration of a drug in blood rises, peaks and falls. Pharmacokinetics turns that curve into a few numbers. Move the sliders. The curve below is a toy drawn by this page for illustration only; in the real tools every number comes from the Caladrius engine, never from a page or from an AI.</p>
+  <div class="card">
+    <div class="controls">
+      <label>Half-life (hours) <output id="o-t12">6.0</output><input id="t12" type="range" min="1" max="14" step="0.5" value="6"></label>
+      <label>Absorption speed (per hour) <output id="o-ka">1.2</output><input id="ka" type="range" min="0.2" max="3" step="0.1" value="1.2"></label>
+      <label>Dose (mg) <output id="o-dose">100</output><input id="dose" type="range" min="25" max="400" step="25" value="100"></label>
+      <label>View <span><button class="ghost" id="lin">linear</button> <button class="ghost" id="log">semi-log</button></span></label>
+    </div>
+    <svg id="plot" viewBox="0 0 900 420" role="img" aria-label="Concentration against time"></svg>
+    <div class="stats">
+      <div class="stat">Cmax, the peak<b id="s-cmax"></b></div>
+      <div class="stat">Tmax, when the peak happens<b id="s-tmax"></b></div>
+      <div class="stat">AUC, the shaded area<b id="s-auc"></b></div>
+      <div class="stat">Clearance, dose over AUC<b id="s-cl"></b></div>
+    </div>
+  </div>
+  <p><b>Cmax and Tmax</b> are read from the points: the highest measured concentration and its time. <b>AUC</b>, the area under the curve, is the total exposure; it is built from trapezoids between the measured points, then extended to infinity with the slope of the tail. <b>The slope of the tail</b> is found by fitting a straight line to the last points of the semi-log view; it gives the half-life. <b>Clearance</b>, the volume of blood cleaned per hour, is the dose divided by the AUC. Each of these has rules: which points enter the tail, what to do with a value below the detection limit, which trapezoid rule to use. Caladrius writes down every such rule in <code>specs/</code>, with its source and a status.</p>
+  <p>This is called <b>non-compartmental analysis</b> (NCA): no model of the body, only arithmetic on the data. The other half of Caladrius fits <b>compartmental models</b>, where the body is one or two tanks with pipes, and the parameters of the tanks are found by least squares.</p>
+</section>
+
+<section id="checks">
+  <h2>3. How the engine is checked</h2>
+  <p>"Verified" has one narrow meaning in this project: a number produced by Caladrius equals a number produced by an independent program, within a stated tolerance, on a stated case. The independent numbers are called the <b>oracle</b>. They are produced by scripts that anyone can rerun, and the comparison is a command that regenerates a table and fails if any count goes down.</p>
+  <div class="card">
+    <svg viewBox="0 0 900 230" role="img" aria-label="Oracle scripts produce expected values; the engine is compared with them; the conformance table can only improve">
+      <rect class="box" x="20" y="40" width="230" height="70" rx="10"/>
+      <text x="135" y="66" text-anchor="middle" class="title">Oracle scripts (R)</text>
+      <text x="135" y="86" text-anchor="middle" class="sub">PKNCA, nls, nlsLM, Rmpfr 256-bit</text>
+      <rect class="box" x="20" y="140" width="230" height="56" rx="10"/>
+      <text x="135" y="164" text-anchor="middle" class="title">Public data</text>
+      <text x="135" y="182" text-anchor="middle" class="sub">Theoph, Indometh, synthetic profiles</text>
+      <path class="arrow" d="M135,140 L135,110"/>
+      <rect class="box" x="335" y="40" width="230" height="70" rx="10"/>
+      <text x="450" y="66" text-anchor="middle" class="title">Expected values</text>
+      <text x="450" y="86" text-anchor="middle" class="sub">CSV files, versions recorded</text>
+      <path class="arrow" d="M250,75 L335,75"/>
+      <rect class="box hard" x="335" y="140" width="230" height="56" rx="10"/>
+      <text x="450" y="164" text-anchor="middle" class="title">Caladrius engine</text>
+      <text x="450" y="182" text-anchor="middle" class="sub">same inputs, same cases</text>
+      <rect class="box" x="650" y="70" width="230" height="96" rx="10"/>
+      <text x="765" y="96" text-anchor="middle" class="title">Conformance table</text>
+      <text x="765" y="116" text-anchor="middle" class="sub">48,955 of 48,955 values</text>
+      <text x="765" y="134" text-anchor="middle" class="sub">tolerance 1e-6, 1e-12 or 1e-4 by kind</text>
+      <text x="765" y="152" text-anchor="middle" class="sub">floors can only go up</text>
+      <path class="arrow" d="M565,75 L650,105"/>
+      <path class="arrow" d="M565,168 L650,135"/>
+    </svg>
+  </div>
+  <h3>What is checked, and against what</h3>
+  <table>
+    <tr><th>Calculation</th><th>Independent program</th><th>Tolerance</th><th>What is not covered</th></tr>
+    <tr><td>NCA (AUC, half-life, clearance, volumes, lag time, flags)</td><td>PKNCA, an open-source R package</td><td class="num">1e-6</td><td>Steady state in NCA, partial AUC, urine data, sparse sampling</td></tr>
+    <tr><td>One- and two-compartment model curves, single and multiple doses, steady state</td><td>Closed formulas evaluated with 256-bit arithmetic, cross-checked with a matrix exponential and an ODE solver</td><td class="num">1e-12</td><td>Any commercial program's output; user-written models</td></tr>
+    <tr><td>Least-squares fit: estimates and every statistic</td><td>R <code>nls</code> and <code>nlsLM</code>, two different optimisers</td><td class="num">1e-4</td><td>Two-compartment fits (no reference fit yet); real, non-synthetic profiles for the infusion and lag models</td></tr>
+    <tr><td>The commercial reference software</td><td>One private coursework exercise</td><td class="num">counts only</td><td>Everything else. Nothing from it is in the repository</td></tr>
+  </table>
+  <h3>The time the oracle was wrong</h3>
+  <p>On nine fits with a particular weighting, the engine and the first R script disagreed. The easy move is to widen the tolerance until the test passes. The project instead wrote the disagreement down as a documented difference and investigated. The engine's points were checked by hand and upheld; the R script had accepted degenerate solutions. The script was corrected, its cases regenerated, and a second, naive re-computation of every statistic was added so that the same class of error would be caught next time. The lesson stated in the README: the oracle is not infallible, and a tolerance is never loosened to hide a disagreement.</p>
+</section>
+
+<section id="gate">
+  <h2>4. An AI that is not allowed to calculate</h2>
+  <p>Apothicaire runs a 27-billion-parameter language model on one 12 GB graphics card. The model is good at reading a question and choosing a tool. It is bad at arithmetic, unit conversion and copying long numbers. So the rule is simple: it may never write a pharmacokinetic number that it did not receive. Press <b>Next</b> to follow one question through the system.</p>
+  <div class="card">
+    <div class="steps" id="steps">
+      <div class="step"><div class="who">Person</div><pre>Compare the AUC of my two analyses: by how much do they differ, in value and in percent?</pre></div>
+      <div class="step"><div class="who">Language model, thinking</div><pre>Two analyses exist (linear and lin-up/log-down). I must not subtract myself. Call the engine's compare tool.</pre></div>
+      <div class="step"><div class="who">Tool call to Caladrius</div><pre>analysis_compare { a: 2, b: 3 }</pre></div>
+      <div class="step"><div class="who">Caladrius, tool result</div><pre>auclast   a: 76985.0 ng·h/mL   b: 76102.0 ng·h/mL
+          difference: -883.0 ng·h/mL   relative: -1.147 %</pre></div>
+      <div class="step"><div class="who">Language model, first draft (the morning run, before the compare tool existed)</div><pre>The two AUC are 76985 and 76102 ng·h/mL. The difference is <mark class="bad">883</mark> ng·h/mL, that is <mark class="bad">1.16 %</mark>.</pre></div>
+      <div class="step"><div class="who">Number gate, deterministic</div><pre>883     not found in any tool result or user message  <mark class="bad">reject</mark>
+1.16    not found in any tool result or user message  <mark class="bad">reject</mark>
+(the model did the subtraction itself: 883 is right by luck, 1.16 is rounded wrongly)
+→ regenerate once with the list of rejected numbers</pre></div>
+      <div class="step"><div class="who">Language model, with the compare tool (the afternoon run)</div><pre>Linear 76985 ng·h/mL, lin-up/log-down 76102 ng·h/mL: difference <mark class="ok">-883.0</mark> ng·h/mL, <mark class="ok">-1.147 %</mark> (engine values).</pre></div>
+      <div class="step"><div class="who">Number gate</div><pre>76985, 76102, -883.0, -1.147   all found in tool results  <mark class="ok">pass</mark></pre></div>
+    </div>
+    <p style="margin-top:12px"><button id="next">Next</button> <button class="ghost" id="reset">Start again</button></p>
+  </div>
+  <p>The gate is a short Python program. It extracts every number from the answer and looks for it, as a string with a small rounding allowance, in the tool results and in the person's messages. It knows nothing about pharmacokinetics. That is the point: a check that cannot be argued with. What the gate cannot see is a right number quoted for the wrong parameter; a second, separate check reads the label before each number and compares with the engine's value for that label.</p>
+</section>
+
+<section id="numbers">
+  <h2>5. The benchmark, in numbers</h2>
+  <p>Caladrius simulated 25 exercises (different routes, units, two with values below the detection limit). Each exercise is a scripted conversation of 8 questions in French, 200 turns in all. The same run was done twice on 9 October 2026: once with six tools, once after the engine gained a <code>compare</code> command exposed as a seventh tool.</p>
+  <table>
+    <tr><th>What is counted</th><th>Six tools</th><th>Seven tools</th></tr>
+    <tr><td>Numbers in the first drafts that came from nowhere</td><td class="num bad">76 / 932</td><td class="num ok">0 / 926</td></tr>
+    <tr><td>Where they were</td><td>all in the "compare" question</td><td>nowhere</td></tr>
+    <tr><td>Numbers in the answers shown, after the gate's one regeneration</td><td class="num">0 / 827</td><td class="num">0 / 926</td></tr>
+    <tr><td>Turns judged fully correct by the second check</td><td class="num">168 / 175</td><td class="num">170 / 175</td></tr>
+    <tr><td>Valid tool calls</td><td class="num">112 / 114</td><td class="num">160 / 160</td></tr>
+    <tr><td>Time per turn</td><td class="num">10.1 s</td><td class="num">10.4 s</td></tr>
+  </table>
+  <p class="note">What these numbers are not. One run each, one sampling: these are counts, not rates with an interval. The exercises are synthetic, single-subject, and the questions are scripted. The second check's label table was adjusted after reading the answers, so its figure is not out-of-sample. The remaining failures are listed one by one in the Apothicaire README. The next step is a fresh set of exercises that the scoring rules have never seen.</p>
+</section>
+
+<section id="build">
+  <h2>6. How it is built</h2>
+  <p><b>By AI agents, under a contract.</b> The code is written by coding agents (Claude Code, with a DeepSeek agent as a second contributor). They work from a written contract, <code>AGENTS.md</code>, and a task board. The human answers questions, reviews, and decides what is published. The contract's main rules: reproduce behaviour from textbooks and public documentation, never from the commercial software's code (clean room); no change without a test; the conformance counts can only go up; never crash on bad input.</p>
+  <p><b>In Rust.</b> Not for speed. The compiler forces every "this value may be missing" case to be handled where it occurs, the linter forbids the patterns that crash, and the result is one file with no runtime to install, on Windows, Linux and a Mac, and in a browser through WebAssembly. The layer rules (numerical code may not depend on the interface; the interface holds no numerical code) are checked by a command in the continuous integration.</p>
+  <p><b>Every analysis is a command.</b> The desktop window, the command line and the AI all call the same command with the same parameters and get the same result. Nothing is computed twice in two places.</p>
+  <p><b>With a memory that forgets nothing.</b> OptChat, an idea by Victor Taelin: the whole conversation stays on disk; the model sees recent messages verbatim and older ones merged into summary lines, arranged as a tree, so a long session fits in a bounded context.</p>
+</section>
+
+<section id="words">
+  <h2>7. Words</h2>
+  <dl>
+    <dt>DMPK</dt><dd>Drug metabolism and pharmacokinetics: what the body does to a drug.</dd>
+    <dt>NCA</dt><dd>Non-compartmental analysis: parameters computed from the measured points without a model of the body.</dd>
+    <dt>AUC</dt><dd>Area under the concentration-time curve: total exposure.</dd>
+    <dt>λz, half-life</dt><dd>The slope of the terminal part of the curve on a log scale, and the time for the concentration to halve.</dd>
+    <dt>Clearance</dt><dd>The volume of blood cleaned of the drug per unit of time; dose divided by AUC.</dd>
+    <dt>Compartment</dt><dd>A tank in a simplified model of the body; one or two tanks with pipes between them.</dd>
+    <dt>Fit, weighted least squares</dt><dd>Finding the model parameters that bring the curve closest to the points, giving some points more weight.</dd>
+    <dt>Oracle</dt><dd>An independent program that produces the expected values the engine is compared with.</dd>
+    <dt>Tolerance</dt><dd>The largest relative difference still counted as agreement, stated once per kind of calculation.</dd>
+    <dt>Conformance table</dt><dd>The regenerated list of how many expected values the engine matches, per case; it can only improve.</dd>
+    <dt>MCP</dt><dd>Model Context Protocol: an open way for an AI to call tools; Caladrius exposes every command through it.</dd>
+    <dt>Number gate</dt><dd>The deterministic check that rejects any number in an answer not found in a tool result or in the person's message.</dd>
+    <dt>Ternary model</dt><dd>A language model whose weights take three values, so a 27-billion-parameter model fits in a few gigabytes.</dd>
+    <dt>Clean room</dt><dd>Reproducing behaviour from public sources without ever looking at the original program's code.</dd>
+  </dl>
+</section>
+</main>
+<footer>
+  Caladrius, MIT OR Apache-2.0. Code and validation report: <span class="mono">github.com/officina-dmpk/caladrius</span>. The curve in section 2 is a one-compartment oral model with first-order absorption drawn by this page; it is an illustration, not an output of the engine.
+</footer>
+<script>
+(function () {
+  // Section 2: toy one-compartment oral curve. Illustration only.
+  var V = 50; // litres, fixed
+  var svg = document.getElementById('plot');
+  var logView = false;
+  var ids = ['t12', 'ka', 'dose'];
+  function val(id) { return parseFloat(document.getElementById(id).value); }
+  function fmt(x, d) { return Number(x).toFixed(d); }
+  function conc(t, D, ka, ke) {
+    if (Math.abs(ka - ke) < 1e-6) return D * ka * t * Math.exp(-ke * t) / V;
+    return D * ka / (V * (ka - ke)) * (Math.exp(-ke * t) - Math.exp(-ka * t));
+  }
+  function draw() {
+    var t12 = val('t12'), ka = val('ka'), D = val('dose');
+    var ke = Math.LN2 / t12;
+    document.getElementById('o-t12').textContent = fmt(t12, 1);
+    document.getElementById('o-ka').textContent = fmt(ka, 1);
+    document.getElementById('o-dose').textContent = fmt(D, 0);
+    var tmax = Math.abs(ka - ke) < 1e-6 ? 1 / ke : Math.log(ka / ke) / (ka - ke);
+    var cmax = conc(tmax, D, ka, ke);
+    var auc = D / (V * ke);
+    var cl = V * ke;
+    document.getElementById('s-cmax').textContent = fmt(cmax, 3) + ' mg/L';
+    document.getElementById('s-tmax').textContent = fmt(tmax, 2) + ' h';
+    document.getElementById('s-auc').textContent = fmt(auc, 1) + ' mg·h/L';
+    document.getElementById('s-cl').textContent = fmt(cl, 2) + ' L/h';
+
+    var W = 900, H = 420, L = 70, R = 20, T = 20, B = 50;
+    var tEnd = 36;
+    var yMax = logView ? Math.log10(cmax * 1.5) : cmax * 1.15;
+    var yMin = logView ? Math.log10(Math.max(conc(tEnd, D, ka, ke), cmax / 1000)) : 0;
+    function X(t) { return L + (t / tEnd) * (W - L - R); }
+    function Y(c) { var v = logView ? Math.log10(Math.max(c, 1e-9)) : c; return T + (1 - (v - yMin) / (yMax - yMin)) * (H - T - B); }
+    var path = '', area = 'M' + X(0) + ',' + Y(logView ? Math.pow(10, yMin) : 0);
+    for (var i = 0; i <= 360; i++) {
+      var t = tEnd * i / 360, c = conc(t, D, ka, ke);
+      var p = X(t) + ',' + Y(c);
+      path += (i ? ' L' : 'M') + p; area += ' L' + p;
+    }
+    area += ' L' + X(tEnd) + ',' + Y(logView ? Math.pow(10, yMin) : 0) + ' Z';
+    var samples = [0.5, 1, 2, 4, 6, 8, 12, 24, 36];
+    var dots = samples.map(function (t) {
+      return '<circle cx="' + X(t) + '" cy="' + Y(conc(t, D, ka, ke)) + '" r="4.5" fill="var(--accent)"/>';
+    }).join('');
+    var tail = '';
+    if (logView) {
+      tail = '<line x1="' + X(8) + '" y1="' + Y(conc(8, D, ka, ke)) + '" x2="' + X(36) + '" y2="' + Y(conc(36, D, ka, ke)) + '" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4"/>' +
+        '<text x="' + (X(22)) + '" y="' + (Y(conc(22, D, ka, ke)) - 12) + '" fill="var(--bad)">terminal slope: half-life ' + fmt(t12, 1) + ' h</text>';
+    }
+    var grid = '';
+    for (var g = 0; g <= tEnd; g += 6) grid += '<line x1="' + X(g) + '" y1="' + T + '" x2="' + X(g) + '" y2="' + (H - B) + '" stroke="var(--line)" stroke-dasharray="2 4"/><text x="' + X(g) + '" y="' + (H - B + 20) + '" text-anchor="middle" class="sub">' + g + ' h</text>';
+    var yl = logView ? 'log concentration (mg/L)' : 'concentration (mg/L)';
+    svg.innerHTML =
+      grid +
+      '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" stroke="var(--muted)"/>' +
+      '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" stroke="var(--muted)"/>' +
+      '<text x="' + (W - R) + '" y="' + (H - 8) + '" text-anchor="end" class="sub">time after the dose</text>' +
+      '<text x="' + (L - 8) + '" y="' + (T + 8) + '" text-anchor="end" class="sub" transform="rotate(-90 ' + (L - 8) + ' ' + (T + 8) + ')">' + yl + '</text>' +
+      (logView ? '' : '<path d="' + area + '" fill="var(--shade)"/>') +
+      '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
+      dots + tail +
+      (logView ? '' : '<line x1="' + X(tmax) + '" y1="' + Y(cmax) + '" x2="' + X(tmax) + '" y2="' + (H - B) + '" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="' + (X(tmax) + 6) + '" y="' + (Y(cmax) - 8) + '" fill="var(--warn)">Cmax at Tmax</text><text x="' + X(14) + '" y="' + Y(cmax * 0.25) + '" class="sub">AUC: the shaded area</text>');
+  }
+  ids.forEach(function (id) { document.getElementById(id).addEventListener('input', draw); });
+  document.getElementById('lin').addEventListener('click', function () { logView = false; draw(); });
+  document.getElementById('log').addEventListener('click', function () { logView = true; draw(); });
+  draw();
+
+  // Section 4: step through one question.
+  var steps = Array.prototype.slice.call(document.querySelectorAll('#steps .step'));
+  var k = 0;
+  function show() { steps.forEach(function (s, i) { s.classList.toggle('on', i < k); }); }
+  document.getElementById('next').addEventListener('click', function () { k = Math.min(steps.length, k + 1); show(); if (k > 0) steps[k - 1].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); });
+  document.getElementById('reset').addEventListener('click', function () { k = 0; show(); });
+  show();
+})();
+</script>
+</body>
+</html>

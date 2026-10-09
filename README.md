@@ -50,6 +50,8 @@ flowchart LR
 
 **How it is built, and what went wrong.** The code is written by AI coding agents (Claude Code, with a DeepSeek agent as a second contributor) working under a written contract, `AGENTS.md`, with a task board in `board/` and a human who answers questions and decides what is published. The rules that matter most: no code is ever copied from the commercial software (clean room, textbooks and public documentation only); no change without a test; the conformance counts can only go up. The honest part is in the validation section below: one of the reference scripts was wrong once and the engine was right, and the repository records how that was found and fixed rather than hiding it in a tolerance.
 
+**A guided tour.** `docs/explainer.html` is a self-contained page (no network, no library) that walks through the same story with a diagram, a toy concentration curve you can move, one question followed through the number gate, and a glossary. Download it and open it in a browser.
+
 **Sources, tools and credits.** Everything the project stands on, with its license, is listed in `ATTRIBUTION.md` and `specs/sources.md`; the short version:
 
 - Pharmacokinetics: Gabrielsson and Weiner, *Pharmacokinetic and Pharmacodynamic Data Analysis*; Gibaldi and Perrier, *Pharmacokinetics*; Rowland and Tozer, *Clinical Pharmacokinetics and Pharmacodynamics*; Bertrand and Mentré (2008) for the compartmental closed forms.

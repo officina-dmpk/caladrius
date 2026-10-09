@@ -61,3 +61,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-049 | caladrius-models dosing regimens (schedules, steady state) for pk1 and pk2; xtask conformance for md/ | engine | done | T-047 |
 | T-050 | specs sync after the multiple-dosing oracle and engine (decisions, D-05, confirmed tags, OM-16/17) | reader | todo | T-049 |
 | T-051 | Superposition cost: early exit for exhausted doses (O(doses x times) today) | engine | todo | T-049 |
+| T-052 | Plain-words README introduction and self-contained explainer page (docs/explainer.html) | orchestrator | done | T-049 |
