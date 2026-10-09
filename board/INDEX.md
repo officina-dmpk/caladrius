@@ -56,3 +56,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-045 | docs/validation.md: validation report (versions, methods, coverage, differences, limits, reproduction) | contributor-dsh | done | T-040 |
 | T-044 | Fit page: preset choice (Caladrius default / reference conventions) in More options | interface | in progress | T-040 |
 | T-046 | Second source for the compartmental specs (Bertrand and Mentré 2008): page citations, multiple dosing and steady state, later models | reader | done | T-035 |
+| T-047 | Oracle for multiple dosing and steady state (OM-16): superposition and steady-state grids, ODE cross-check, failing tests | oracle | todo | T-046 |
