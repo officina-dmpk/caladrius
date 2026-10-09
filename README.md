@@ -2,7 +2,69 @@
 
 Open-source pharmacokinetic analysis in Rust: non-compartmental analysis, individual compartmental models, weighted least-squares fitting and plots, with a native desktop UI (egui) and a WebAssembly demo. Every analysis is a command with a stable id, so the same calculations are available from the UI, the command line and an MCP server for agents. Caladrius is the calculation layer of Apothicaire, a local DMPK assistant.
 
-Status (2026-10-09): NCA, one- and two-compartment models and weighted least-squares fitting are checked against PKNCA, exact closed forms and R `nls`/`nlsLM` at stated tolerances (what is covered, and what is not, is in the section "What is verified, and what is not"); the conformance table holds 32036 of 32036 values (`docs/conformance.md`). A CLI and an MCP server expose every command, and the desktop UI (step 5) covers the NCA, fit and simulation pages, project files, the command palette and settings. `v0.1.0` is tagged; the two-compartment work above landed after it and is on `main`, not in the tag. See `AGENTS.md` for the contract and `board/INDEX.md` for the task board.
+## In plain words
+
+This part is for a reader who is not a programmer or a pharmacokineticist. The technical sections start at "Trademark notice".
+
+**What this is.** Caladrius is a small program that does the standard calculations of pharmacokinetics: how fast a drug is absorbed, how far it spreads in the body, how fast it leaves. Pharmacists and pharmaceutical scientists do these calculations every day with commercial software. Caladrius does a subset of them, in the open, with every number checked against an independent calculation.
+
+**What this is not.** It is a prototype and a learning project. It is not a replacement for the commercial software used in industry, and it does not claim to be: the section "What is verified, and what is not" says exactly which calculations are checked, against what, and which are not. Population modelling, bioequivalence and regulatory submissions are out of scope.
+
+**Why I am building it.** I am a pharmacy student at Université Paris Cité, and I want to do a PhD at the meeting point of drug metabolism and pharmacokinetics (DMPK) and artificial intelligence. In my coursework the calculations are done in a commercial program that shows results but not its reasoning. Rebuilding them from textbooks, with a test for every rule, is how I make sure I understand them. The second reason is the question below: can a local AI be trusted with these numbers? To answer it honestly I needed a calculation engine whose every output I could verify. This repository is that engine, and the portfolio I show when I apply for internships and positions.
+
+**How it fits with Apothicaire.** Apothicaire is the other half of the project: a DMPK assistant that runs entirely on one consumer PC (a single 12 GB graphics card, nothing sent to the cloud). It is not a chatbot. The language model (today Bonsai 2 27B, a "ternary" model from PrismML that fits the card; other small open models are candidates to compare, such as Underdog Saluki 27B and Woof 4B from Conway Research) is allowed to read the user's data, decide which calculation to run, call Caladrius, and explain the result. It is never allowed to compute a pharmacokinetic number itself. A deterministic check, written in plain Python and not learned, reads every answer and rejects any number that does not come from a tool result or from the user. On a benchmark of 25 simulated exercises and 200 questions, that check found 76 invented numbers in the model's first drafts (all in the one question that tempts it to do arithmetic) and 0 after the engine was given a `compare` command. The point of the design is that the AI is the one part that can be wrong, so it is surrounded by parts that cannot.
+
+```mermaid
+flowchart LR
+    U([User, in French or English]) --> A
+
+    subgraph Apothicaire [Apothicaire: the assistant, local PC]
+        A[Language model<br/>Bonsai 2 27B, llama.cpp]
+        M[(OptChat memory<br/>tree of summaries)]
+        G{{Number gate<br/>deterministic, no AI}}
+        A <--> M
+        A --> G
+    end
+
+    A -- "MCP tool calls:<br/>data_import, nca_run, fit_run..." --> C
+
+    subgraph Caladrius [Caladrius: the calculation engine, Rust]
+        C[Command registry<br/>one stable id per analysis]
+        E[Engine: NCA, models, fit]
+        C --> E
+    end
+
+    E -- "numbers with units" --> A
+    G -- "every number traced<br/>to a tool result" --> U
+
+    subgraph Checks [How the engine is checked]
+        O[(Oracle: PKNCA, R nls,<br/>256-bit closed forms)]
+    end
+    O -. "48,955 expected values,<br/>stated tolerances" .-> E
+
+    D[Desktop UI] --> C
+    L[Command line] --> C
+```
+
+**Why Rust.** Not for speed; these calculations are small. Rust was chosen because the compiler enforces the rules this project cares about. A value that may be missing must be handled where it appears. There is no garbage collector and no runtime to install, so the engine is one file that runs on Windows, Linux and a Mac, and the same code compiles to WebAssembly for a browser demo. The project forbids every way of crashing on bad input (the `unwrap`, `panic` and indexing patterns are denied by the linter in every crate), so a malformed CSV or a non-estimable half-life gives a readable error, not a crash. Lastly, the layer rules (the numerical crates may not depend on the interface, the interface holds no numerical code) are checked by a command in the continuous integration, so the engine stays usable from a test, a terminal, an agent or a window alike.
+
+**Why OptChat.** A conversation about a dataset can be long, and a 12 GB card cannot keep all of it in the model's context. OptChat is an idea by Victor Taelin: keep the whole chat on disk, and show the model a view where recent messages are verbatim and older ones are progressively merged into summary lines, arranged as a binary tree. Nothing is ever deleted, the view always covers the whole history, and the cost stays bounded. The prototype in `../optchat/` recalled 8 of 8 planted facts after 32 turns of filler on the local model, which is why Apothicaire imports it unchanged.
+
+**How it is built, and what went wrong.** The code is written by AI coding agents (Claude Code, with a DeepSeek agent as a second contributor) working under a written contract, `AGENTS.md`, with a task board in `board/` and a human who answers questions and decides what is published. The rules that matter most: no code is ever copied from the commercial software (clean room, textbooks and public documentation only); no change without a test; the conformance counts can only go up. The honest part is in the validation section below: one of the reference scripts was wrong once and the engine was right, and the repository records how that was found and fixed rather than hiding it in a tolerance.
+
+**Sources, tools and credits.** Everything the project stands on, with its license, is listed in `ATTRIBUTION.md` and `specs/sources.md`; the short version:
+
+- Pharmacokinetics: Gabrielsson and Weiner, *Pharmacokinetic and Pharmacodynamic Data Analysis*; Gibaldi and Perrier, *Pharmacokinetics*; Rowland and Tozer, *Clinical Pharmacokinetics and Pharmacodynamics*; Bertrand and Mentré (2008) for the compartmental closed forms.
+- Independent calculations the engine is checked against: `PKNCA` (Bill Denney and contributors), R and its packages `Rmpfr`, `expm`, `deSolve`, `minpack.lm`; the public `Theoph` and `Indometh` datasets shipped with R.
+- Rust ecosystem: `egui`, `eframe` and `egui_plot` (Emil Ernerfeldt and contributors) for the interface, `wgpu` and `winit` for rendering and windows, `serde` for every command's parameters, and the rest of `Cargo.lock`.
+- Model Context Protocol (MCP), the open protocol through which Apothicaire calls Caladrius.
+- Apothicaire's model and runtime: Bonsai 2 27B and the PrismML fork of `llama.cpp` (Georgi Gerganov and the ggml contributors); Underdog Saluki 27B and Woof 4B (Conway Research) as candidates for comparison; the OptChat gist by Victor Taelin; the Liquid AI `d1` decision models considered for a small judge on the roadmap.
+- The agents that wrote the code: Claude Code (Anthropic) and the DeepSeek Harness `dsh` (DeepSeek).
+- The commercial reference software named in the trademark notice below is used in my coursework only; its results were compared once, privately, on counts, and nothing from it is in this repository.
+
+## Status
+
+Status (2026-10-09): NCA, one- and two-compartment models and weighted least-squares fitting are checked against PKNCA, exact closed forms and R `nls`/`nlsLM` at stated tolerances (what is covered, and what is not, is in the section "What is verified, and what is not"); the conformance table holds 48955 of 48955 values (`docs/conformance.md`). A CLI and an MCP server expose every command, and the desktop UI (step 5) covers the NCA, fit and simulation pages, project files, the command palette and settings. `v0.2.0` is tagged with Linux and Windows binaries; the multiple-dosing work landed after it and is on `main`, not in the tag. See `AGENTS.md` for the contract and `board/INDEX.md` for the task board.
 
 Named after the caladrius, the white bird of Roman legend said to take a sick person's illness away as it flies off.
 
