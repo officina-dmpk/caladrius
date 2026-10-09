@@ -30,7 +30,7 @@
     "derivatives": "central differences in 256-bit arithmetic (Rmpfr), relative step 1e-25, of the independent explicit form of the concentration; rounded once to double",
     "kappa_max": 1000,
     "n_omitted_ill_conditioned": 8,
-    "n_omitted_structural_zero": 2,
+    "n_structural_zero_written_as_zero": 2,
     "kappa_max_kept": 27.260123689750674
   },
   "versions": {
@@ -40,6 +40,6 @@
     "deSolve": "1.42",
     "gmp": "0.7.5.1"
   },
-  "n_values": 98,
+  "n_values": 100,
   "n_times": 18
 }

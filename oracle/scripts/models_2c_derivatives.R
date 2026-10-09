@@ -96,10 +96,14 @@ write_deriv_case <- function(name, model, set, p, dose, extra, note) {
         next
       }
       # A derivative that is zero by construction (for example dC/dcl at t = 0 of the bolus, where
-      # C = D / vc) comes out of the 256-bit differences as rounding noise of order 1e-52: it is
-      # not an expected value, and is left out.
+      # C = D / vc) comes out of the 256-bit differences as rounding noise of order 1e-52, not as 0;
+      # the true value is 0 and it is written as an exact 0 (MODEL_DERIVATIVES has no absolute part).
       noise <- 1e-30 * ctime / (if (nm %in% pn) abs(num(p[[nm]])) else 1)
-      if (abs(dn) <= noise && total <= noise) { omitted_zero <- omitted_zero + 1L; next }
+      if (abs(dn) <= noise && total <= noise) {
+        omitted_zero <- omitted_zero + 1L
+        rows[[length(rows) + 1L]] <- list(t = t, nm = nm, v = 0)
+        next
+      }
       # the decomposition must reproduce the direct central difference (double check of the code path)
       check(abs(dn - dsum) <= 1e-9 * (abs(dn) + total * 1e-6) + 1e-300, name, ": decomposition of d", nm,
             " at t = ", t, ": ", dn, " against ", dsum)
@@ -133,7 +137,7 @@ write_deriv_case <- function(name, model, set, p, dose, extra, note) {
       derivatives = "central differences in 256-bit arithmetic (Rmpfr), relative step 1e-25, of the independent explicit form of the concentration; rounded once to double",
       kappa_max = KAPPA_MAX,
       n_omitted_ill_conditioned = omitted,
-      n_omitted_structural_zero = omitted_zero,
+      n_structural_zero_written_as_zero = omitted_zero,
       kappa_max_kept = kappa_max_seen
     ),
     versions = versions,

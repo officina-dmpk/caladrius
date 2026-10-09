@@ -34,6 +34,13 @@
 //! Tolerances: `Tolerance::MODEL_VALUES` for every value and `Tolerance::MODEL_DERIVATIVES` for
 //! every derivative (both relative 1e-12, an expected zero returned as exactly zero). The oracle
 //! omits the derivatives whose condition number exceeds 1e3 (zero crossings), see its options.
+//!
+//! The contract comparisons are the ones carried by the case files, which use only these two
+//! constants. The tests in the last section ("properties of the models") are property checks beside
+//! that contract, not comparisons with an oracle value: their bounds (continuity in ka within
+//! 1e-2, 1e-5, 1e-8 of the limit for steps of 1e-3, 1e-6, 1e-9; a 1e-8 h infusion within 1e-7 of the
+//! bolus; the lag shift within 1e-13) are not engine tolerances and decide nothing about the
+//! tolerances of the engine.
 
 use std::collections::BTreeMap;
 
