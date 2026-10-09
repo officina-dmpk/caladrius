@@ -19,6 +19,12 @@
 KAPPA_MAX <- 1e3
 STEP <- mp(10)^-25
 
+at_prec <- function(prec, expr) {
+  old <- PREC
+  PREC <<- prec
+  on.exit(PREC <<- old)
+  expr
+}
 conc_eval <- function(model, set, p, dose, extra, t) {
   q <- derive_q(set, p, dose, extra)
   conc_at(segments(model, q), t, model == "pk2.iv_bolus")
@@ -58,7 +64,9 @@ write_deriv_case <- function(name, model, set, p, dose, extra, note) {
   # d psi_j / d theta for the set parameters (independent of t)
   psi_theta <- lapply(pn, function(nm) {
     vapply(psi_names, function(j) {
-      num(cdiff(function(x) { p2 <- p; p2[[nm]] <- x; psi_of(set, p2, dose, extra)[[j]] }, mp(p[[nm]])))
+      v <- cdiff(function(x) { p2 <- p; p2[[nm]] <- x; psi_of(set, p2, dose, extra)[[j]] }, mp(p[[nm]]))
+      # an internal parameter that does not depend on this one comes out as noise of order 1e-52
+      if (abs(num(v)) <= 1e-30 * abs(num(psi0[[j]])) / abs(num(p[[nm]]))) 0 else num(v)
     }, 0)
   })
   names(psi_theta) <- pn
@@ -67,49 +75,81 @@ write_deriv_case <- function(name, model, set, p, dose, extra, note) {
   rows <- list()
   omitted <- 0L
   omitted_zero <- 0L
+  n_high <- 0L
   kappa_max_seen <- 0
-  for (t in times) {
-    ctime <- abs(num(conc_eval(model, set, p, dose, extra, t)))
-    # d C / d psi_j at (psi0, extra)
-    Cpsi <- vapply(psi_names, function(j) {
-      num(cdiff(function(x) { ps <- psi0; ps[[j]] <- x; conc_eval(model, "psi", ps, dose, extra, t) }, psi0[[j]]))
-    }, 0)
-    for (nm in c(pn, en)) {
+  # Entries are first computed at 256 bits. Where the value is below the rounding noise of that
+  # precision relative to C (a derivative that is tiny next to C, such as d_alpha of the macro set at
+  # late times, where only the alpha term depends on alpha and C is dominated by the beta term; or a
+  # structural zero), the entry is computed again at 2048 bits, where the noise is 2^-1900 relative:
+  # a value above it is real and is written, a value below it is a structural zero and is written
+  # as an exact 0 (MODEL_DERIVATIVES has no absolute part).
+  PREC_HIGH <- 2048L
+  cpsi_cache <- new.env()
+  cpsi <- function(t, prec) {
+    key <- paste(t, prec)
+    if (is.null(cpsi_cache[[key]])) {
+      cpsi_cache[[key]] <- at_prec(prec, {
+        out <- lapply(psi_names, function(j) {
+          cdiff(function(x) { ps <- psi0; ps[[j]] <- x; conc_eval(model, "psi", ps, dose, extra, t) }, mp(psi0[[j]]))
+        })
+        names(out) <- psi_names
+        out
+      })
+    }
+    cpsi_cache[[key]]
+  }
+  entry <- function(nm, t, prec) {
+    at_prec(prec, {
       if (nm %in% pn) {
         d <- cdiff(function(x) { p2 <- p; p2[[nm]] <- x; conc_eval(model, set, p2, dose, extra, t) }, mp(p[[nm]]))
-        terms <- Cpsi * psi_theta[[nm]]
-        total <- sum(abs(terms)); dsum <- sum(terms)
+        cp <- cpsi(t, prec)
+        terms <- lapply(psi_names, function(j) cp[[j]] * mp(psi_theta[[nm]][[j]]))
       } else {
         d <- cdiff(function(x) { e2 <- extra; e2[[nm]] <- x; conc_eval(model, set, p, dose, e2, t) }, mp(extra[[nm]]))
-        w <- psi0$w
+        w <- mp(psi0$w)
         d1 <- cdiff(function(x) { e2 <- extra; e2[[nm]] <- x; conc_eval(model, "psi", psi_w(1), dose, e2, t) }, mp(extra[[nm]]))
         d0 <- cdiff(function(x) { e2 <- extra; e2[[nm]] <- x; conc_eval(model, "psi", psi_w(0), dose, e2, t) }, mp(extra[[nm]]))
-        terms <- c(num(w * d1), num((1 - w) * d0))
-        total <- sum(abs(terms)); dsum <- num(w * d1 + (1 - w) * d0)
+        terms <- list(w * d1, (1 - w) * d0)
       }
-      dn <- num(d)
+      list(d = d, total = Reduce(`+`, lapply(terms, abs)), dsum = Reduce(`+`, terms))
+    })
+  }
+  below_range <- 0L
+  for (t in times) {
+    ctime <- abs(num(conc_eval(model, set, p, dose, extra, t)))
+    for (nm in c(pn, en)) {
+      scale <- if (nm %in% pn) abs(num(p[[nm]])) else 1
+      res <- entry(nm, t, PREC)
       if (ctime == 0) {
         # before the dose and before the lag, and at the start of a non-bolus input, C = 0 whatever
         # the parameters: every derivative is exactly 0 and the engine must return exactly 0
-        check(dn == 0 && total == 0, name, ": a derivative at a time with C = 0: d", nm, " at t = ", t)
+        check(num(res$d) == 0 && num(res$total) == 0, name, ": a derivative at a time with C = 0: d", nm, " at t = ", t)
         rows[[length(rows) + 1L]] <- list(t = t, nm = nm, v = 0)
         next
       }
-      # A derivative that is zero by construction (for example dC/dcl at t = 0 of the bolus, where
-      # C = D / vc) comes out of the 256-bit differences as rounding noise of order 1e-52, not as 0;
-      # the true value is 0 and it is written as an exact 0 (MODEL_DERIVATIVES has no absolute part).
-      noise <- 1e-30 * ctime / (if (nm %in% pn) abs(num(p[[nm]])) else 1)
-      if (abs(dn) <= noise && total <= noise) {
-        omitted_zero <- omitted_zero + 1L
-        rows[[length(rows) + 1L]] <- list(t = t, nm = nm, v = 0)
-        next
+      noise <- 1e-30 * ctime / scale
+      if (abs(num(res$d)) <= noise && num(res$total) <= noise) {
+        res <- entry(nm, t, PREC_HIGH)
+        noise_high <- at_prec(PREC_HIGH, mp(ctime) / scale * mp(2)^-1900)
+        if (res$d <= noise_high && res$d >= -noise_high && res$total <= noise_high) {
+          omitted_zero <- omitted_zero + 1L
+          rows[[length(rows) + 1L]] <- list(t = t, nm = nm, v = 0)
+          next
+        }
+        n_high <- n_high + 1L
       }
       # the decomposition must reproduce the direct central difference (double check of the code path)
-      check(abs(dn - dsum) <= 1e-9 * (abs(dn) + total * 1e-6) + 1e-300, name, ": decomposition of d", nm,
-            " at t = ", t, ": ", dn, " against ", dsum)
-      kappa <- if (dn == 0) Inf else total / abs(dn)
+      check(abs(res$d - res$dsum) <= 1e-9 * (abs(res$d) + res$total * 1e-6), name, ": decomposition of d", nm,
+            " at t = ", t, ": ", num(res$d), " against ", num(res$dsum))
+      kappa <- if (res$d == 0) Inf else num(res$total / abs(res$d))
       if (kappa > KAPPA_MAX) { omitted <- omitted + 1L; next }
       kappa_max_seen <- max(kappa_max_seen, kappa)
+      dn <- num(res$d)
+      if (abs(dn) < .Machine$double.xmin) {
+        # a true value below the range of normal doubles (about 2.2e-308): written as an exact 0
+        below_range <- below_range + 1L
+        dn <- 0
+      }
       rows[[length(rows) + 1L]] <- list(t = t, nm = nm, v = dn)
     }
   }
@@ -138,6 +178,8 @@ write_deriv_case <- function(name, model, set, p, dose, extra, note) {
       kappa_max = KAPPA_MAX,
       n_omitted_ill_conditioned = omitted,
       n_structural_zero_written_as_zero = omitted_zero,
+      n_recomputed_at_2048_bits = n_high,
+      n_below_double_range_written_as_zero = below_range,
       kappa_max_kept = kappa_max_seen
     ),
     versions = versions,
