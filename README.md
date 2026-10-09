@@ -32,7 +32,7 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 
 ## What is verified, and what is not
 
-"Validated" here has a narrow meaning: a number produced by Caladrius equals a number produced by an independent computation, within a stated tolerance, on a stated case. It does not mean that Caladrius gives the same answer as any commercial program, and the table says where the independent computation comes from. Everything is reproducible: the R scripts that write the expected values are in `oracle/scripts/` (versions recorded in each `*.options.json`), `cargo xtask conformance` regenerates `docs/conformance.md` (the per-case counts; never edited by hand), and the tests are in `crates/*/tests/`.
+"Validated" here has a narrow meaning: a number produced by Caladrius equals a number produced by an independent computation, within a stated tolerance, on a stated case. It does not mean that Caladrius gives the same answer as any commercial program, and the table says where the independent computation comes from. Everything is reproducible: the R scripts that write the expected values are in `oracle/scripts/` (versions recorded in each `*.options.json`), `cargo xtask conformance` regenerates `docs/conformance.md` (the per-case counts; never edited by hand), and the tests are in `crates/*/tests/`. The full validation report — versions, methods, tolerances, coverage, documented differences, open items and how to reproduce — is `docs/validation.md`.
 
 | What | Checked against | Tolerance (relative) | Cases and values | Not validated |
 |---|---|---|---|---|
