@@ -17,16 +17,20 @@
 //! - `review-claims-checked`: the case and value counts the README states for its one- and
 //!   two-compartment model rows are checked against `docs/conformance.md`, the file the section
 //!   points at.
+//! - `review-pk2-readme`: when the registry holds `pk2.` models, the README has a two-compartment
+//!   row in its coverage table and no clause that still says they are not implemented.
 //! - `review-specs-counts` (note): the "Which rules are settled" table of the README against the
-//!   `- **Status:**` lines of each `specs/*.md`. The README counts them by grep and the tagging
+//!   `- Status:` lines of each `specs/*.md`. The README counts them by grep and the tagging
 //!   convention is the reader's, so a difference is worth reading, not a contradiction.
-//! - `review-release-drift` (note): what changed under `docs/`, `specs/`, `oracle/` or `README.md`
-//!   since the last tag, so that a claim covered by that tag is not read as a claim about `main`.
+//! - `review-release-drift` (note): what changed under `docs/`, `specs/`, `oracle/scripts/`,
+//!   `oracle/README.md` or `README.md` since the last tag, so that a claim covered by that tag is not
+//!   read as a claim about `main`.
 //!
-//! A failure exits 1 (with `--strict`, a note exits 1 too). The output is meant to be read in a
+//! A failure exits 1 (with `--strict`, a note exits 1 too). A rule that finds the claim correct says
+//! nothing, so a consistent tree has only the real notes. The output is meant to be read in a
 //! terminal and pasted into a review note.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -118,6 +122,7 @@ fn checks(tree: &Tree, root: &Path) -> Result<Vec<Finding>> {
     findings.extend(versions(tree));
     findings.extend(specs_index(tree));
     findings.extend(claims_checked(tree));
+    findings.extend(two_compartment_readme(tree));
     findings.extend(specs_counts(tree));
     findings.extend(release_drift(root));
     findings.sort_by(|a, b| {
@@ -149,22 +154,26 @@ fn counts_of(line: &str) -> Option<((usize, usize), Option<usize>)> {
     Some(((start, expected), cases))
 }
 
-/// The counts of the conformance file: the overall line and the total of each section.
+/// The counts of the conformance file: the overall line (with its line number) and the total of each
+/// section.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Conformance {
     overall: Option<(usize, usize)>,
+    /// 1-based line of the overall line, 0 when there is none.
+    overall_line: usize,
     sections: Vec<usize>,
 }
 
 /// Reads `docs/conformance.md`: the overall line and the total of each section.
 fn parse_conformance(text: &str) -> Conformance {
     let mut out = Conformance::default();
-    for line in text.lines() {
+    for (index, line) in text.lines().enumerate() {
         let Some((values, cases)) = counts_of(line) else {
             continue;
         };
         if line.starts_with("**Overall:") {
             out.overall = Some(values);
+            out.overall_line = index + 1;
         } else if cases.is_some() {
             out.sections.push(values.0);
         }
@@ -187,16 +196,17 @@ fn conformance_total(tree: &Tree) -> Vec<Finding> {
         return vec![Finding::fail(
             "review-conformance-total",
             CONFORMANCE,
-            1,
+            0,
             "no `**Overall: <n> of <n> values validated**` line",
         )];
     };
+    let line = parsed.overall_line;
     let mut findings = Vec::new();
     if overall != expected {
         findings.push(Finding::fail(
             "review-conformance-total",
             CONFORMANCE,
-            1,
+            line,
             format!("the overall line says {overall} of {expected}: the two halves differ"),
         ));
     }
@@ -205,7 +215,7 @@ fn conformance_total(tree: &Tree) -> Vec<Finding> {
         findings.push(Finding::fail(
             "review-conformance-total",
             CONFORMANCE,
-            1,
+            line,
             format!(
                 "the overall line says {overall}, the {} sections total {sum}",
                 parsed.sections.len()
@@ -220,57 +230,82 @@ fn conformance_floors(tree: &Tree) -> Vec<Finding> {
     let Some(text) = tree.files.get(CONFORMANCE) else {
         return Vec::new();
     };
-    let cases: BTreeSet<String> = text
-        .lines()
-        .filter_map(|line| line.strip_prefix("### "))
-        .map(|name| name.trim().to_owned())
-        .collect();
-    let floors: BTreeSet<String> = text
-        .lines()
-        .filter_map(|line| {
-            let rest = line.trim_start().strip_prefix("<!-- floor ")?;
-            Some(rest.split_ascii_whitespace().next()?.to_owned())
-        })
-        .collect();
-    let mut findings = Vec::new();
-    for name in cases.difference(&floors) {
-        findings.push(Finding::fail(
-            "review-conformance-floors",
-            CONFORMANCE,
-            0,
-            format!("case `{name}` has no floor line"),
-        ));
+    // Name -> 1-based line of its heading or of its floor line.
+    let mut cases: BTreeMap<String, usize> = BTreeMap::new();
+    let mut floors: BTreeMap<String, usize> = BTreeMap::new();
+    for (index, line) in text.lines().enumerate() {
+        if let Some(name) = line.strip_prefix("### ") {
+            cases.entry(name.trim().to_owned()).or_insert(index + 1);
+        } else if let Some(name) = line
+            .trim_start()
+            .strip_prefix("<!-- floor ")
+            .and_then(|rest| rest.split_ascii_whitespace().next())
+        {
+            floors.entry(name.to_owned()).or_insert(index + 1);
+        }
     }
-    for name in floors.difference(&cases) {
-        findings.push(Finding::fail(
-            "review-conformance-floors",
-            CONFORMANCE,
-            0,
-            format!("floor line `{name}` names no case in the file"),
-        ));
+    let mut findings = Vec::new();
+    for (name, line) in &cases {
+        if !floors.contains_key(name) {
+            findings.push(Finding::fail(
+                "review-conformance-floors",
+                CONFORMANCE,
+                *line,
+                format!("case `{name}` has no floor line"),
+            ));
+        }
+    }
+    for (name, line) in &floors {
+        if !cases.contains_key(name) {
+            findings.push(Finding::fail(
+                "review-conformance-floors",
+                CONFORMANCE,
+                *line,
+                format!("floor line `{name}` names no case in the file"),
+            ));
+        }
     }
     findings
 }
 
-/// The model ids of the registry, as the string literals of `model.rs`.
-fn registry_ids(text: &str) -> BTreeSet<String> {
-    let mut ids = BTreeSet::new();
-    for line in text.lines() {
+/// The model ids of the registry, as the string literals of `model.rs`, each with the 1-based line
+/// of its first appearance. Only the `pk1.` and `pk2.` families are read.
+fn registry_ids(text: &str) -> BTreeMap<String, usize> {
+    let mut ids = BTreeMap::new();
+    for (index, line) in text.lines().enumerate() {
         if line.trim_start().starts_with("//") {
             continue;
         }
         let mut rest = line;
-        while let Some(open) = rest.find("\"pk") {
-            rest = &rest[open + 1..];
-            let Some(close) = rest.find('"') else { break };
-            let candidate = &rest[..close];
+        while let Some((_, after)) = rest.split_once("\"pk") {
+            let Some((tail, next)) = after.split_once('"') else {
+                break;
+            };
+            let candidate = format!("pk{tail}");
             if candidate.starts_with("pk1.") || candidate.starts_with("pk2.") {
-                ids.insert(candidate.to_owned());
+                ids.entry(candidate).or_insert(index + 1);
             }
-            rest = &rest[close + 1..];
+            rest = next;
         }
     }
     ids
+}
+
+/// The model ids a conformance table names in its second column, with the line of each. The row
+/// that lists the inputs the engine must refuse names them as a pattern
+/// (`pk2.* (inputs to refuse)`), which is not a model id.
+fn conformance_models(text: &str) -> BTreeMap<String, usize> {
+    let mut covered = BTreeMap::new();
+    for (index, line) in text.lines().enumerate() {
+        let Some(cell) = line.split('|').nth(2) else {
+            continue;
+        };
+        let cell = cell.trim();
+        if !cell.contains(' ') && (cell.starts_with("pk1.") || cell.starts_with("pk2.")) {
+            covered.entry(cell.to_owned()).or_insert(index + 1);
+        }
+    }
+    covered
 }
 
 /// Every model of the registry is covered by a conformance case, and the reverse.
@@ -288,86 +323,132 @@ fn model_ids(tree: &Tree) -> Vec<Finding> {
         return vec![Finding::fail(
             "review-model-ids",
             REGISTRY,
-            1,
+            0,
             "no `pk1.`/`pk2.` id found: the registry no longer looks as expected",
         )];
     }
     let Some(text) = tree.files.get(CONFORMANCE) else {
         return Vec::new();
     };
-    let covered: BTreeSet<String> = text
-        .lines()
-        .filter_map(|line| line.split('|').nth(2))
-        .map(|cell| cell.trim().to_owned())
-        // The row that lists the inputs the engine must refuse names them as a pattern
-        // (`pk2.* (inputs to refuse)`), which is not a model id.
-        .filter(|cell| !cell.contains(' '))
-        .filter(|cell| cell.starts_with("pk1.") || cell.starts_with("pk2."))
-        .collect();
+    let covered = conformance_models(text);
     let mut findings = Vec::new();
-    for id in ids.difference(&covered) {
-        findings.push(Finding::fail(
-            "review-model-ids",
-            CONFORMANCE,
-            0,
-            format!("model `{id}` has no conformance case: the oracle does not cover it"),
-        ));
+    for (id, line) in &ids {
+        if !covered.contains_key(id) {
+            findings.push(Finding::fail(
+                "review-model-ids",
+                REGISTRY,
+                *line,
+                format!("model `{id}` has no conformance case: the oracle does not cover it"),
+            ));
+        }
     }
-    for id in covered.difference(&ids) {
-        findings.push(Finding::fail(
-            "review-model-ids",
-            CONFORMANCE,
-            0,
-            format!("a conformance case names `{id}`, absent from the registry"),
-        ));
+    for (id, line) in &covered {
+        if !ids.contains_key(id) {
+            findings.push(Finding::fail(
+                "review-model-ids",
+                CONFORMANCE,
+                *line,
+                format!("a conformance case names `{id}`, absent from the registry"),
+            ));
+        }
     }
     findings
 }
 
-/// The version of a `version = "x.y.z"` (TOML) or `version: x.y.z` (YAML) line.
-fn version_in(text: &str, key: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        let trimmed = line.trim();
-        let rest = trimmed.strip_prefix(key)?;
-        let rest = rest.trim_start();
-        let rest = rest.strip_prefix('=').or_else(|| rest.strip_prefix(':'))?;
-        let value = rest.trim().trim_matches('"').trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value.to_owned())
-        }
-    })
+/// A version as a file declares it.
+#[derive(Debug, PartialEq, Eq)]
+enum Declared {
+    /// The version and its 1-based line.
+    Version(String, usize),
+    /// The manifest takes the version of the workspace (`version.workspace = true`).
+    Inherited,
+    /// No readable version.
+    Missing,
 }
 
-/// The version the root manifest states, unless the members inherit it (`version.workspace = true`).
-fn manifest_version(text: &str) -> Option<String> {
-    if text.contains("version.workspace = true") {
-        return None;
+/// The value of a `key = "x.y.z"` (TOML) or `key: x.y.z` (YAML) line, without a trailing comment.
+fn value_of(line: &str, key: &str, separator: char) -> Option<String> {
+    let rest = line.strip_prefix(key)?.trim_start();
+    let rest = rest.strip_prefix(separator)?;
+    let value = rest.split('#').next().unwrap_or_default();
+    let value = value.trim().trim_matches('"').trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_owned())
     }
-    version_in(text, "version")
 }
 
-/// `Cargo.toml` and `CITATION.cff` state the same version.
+/// The version of the manifest: the `version` key of `[workspace.package]` or `[package]`.
+fn manifest_version(text: &str) -> Declared {
+    let mut in_package = false;
+    let mut inherited = false;
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            let name = trimmed.split('#').next().unwrap_or_default().trim();
+            in_package = name == "[workspace.package]" || name == "[package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        if let Some(value) = value_of(trimmed, "version", '=') {
+            return Declared::Version(value, index + 1);
+        }
+        if trimmed.starts_with("version.workspace") && trimmed.contains("true") {
+            inherited = true;
+        }
+    }
+    if inherited {
+        Declared::Inherited
+    } else {
+        Declared::Missing
+    }
+}
+
+/// The version of `CITATION.cff`: the first `version:` at the top level (an indented one belongs to a
+/// nested entry, such as a reference).
+fn citation_version(text: &str) -> Declared {
+    for (index, line) in text.lines().enumerate() {
+        if let Some(value) = value_of(line, "version", ':') {
+            return Declared::Version(value, index + 1);
+        }
+    }
+    Declared::Missing
+}
+
+/// `Cargo.toml` and `CITATION.cff` state the same version, and both state one.
 fn versions(tree: &Tree) -> Vec<Finding> {
     let (Some(cargo), Some(citation)) =
         (tree.files.get("Cargo.toml"), tree.files.get("CITATION.cff"))
     else {
         return Vec::new();
     };
-    let (Some(manifest), Some(cite)) = (manifest_version(cargo), version_in(citation, "version"))
-    else {
-        return Vec::new();
+    let Declared::Version(cite, line) = citation_version(citation) else {
+        return vec![Finding::fail(
+            "review-versions",
+            "CITATION.cff",
+            0,
+            "no top-level `version:` line: the version of the citation is unreadable",
+        )];
     };
-    if manifest == cite {
-        return Vec::new();
+    match manifest_version(cargo) {
+        Declared::Version(manifest, _) if manifest == cite => Vec::new(),
+        Declared::Version(manifest, _) => vec![Finding::fail(
+            "review-versions",
+            "CITATION.cff",
+            line,
+            format!("CITATION.cff says {cite}, Cargo.toml says {manifest}"),
+        )],
+        Declared::Inherited => Vec::new(),
+        Declared::Missing => vec![Finding::fail(
+            "review-versions",
+            "Cargo.toml",
+            0,
+            "no `version` in `[workspace.package]` or `[package]`: the version of the manifest is unreadable",
+        )],
     }
-    vec![Finding::fail(
-        "review-versions",
-        "CITATION.cff",
-        0,
-        format!("CITATION.cff says {cite}, Cargo.toml says {manifest}"),
-    )]
 }
 
 /// Every `specs/*.md` is named by `specs/README.md`.
@@ -428,32 +509,49 @@ enum Family {
     Two,
 }
 
+/// The case and value counts the README states for one model family, and the line of the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Claim {
+    family: Family,
+    cases: usize,
+    values: usize,
+    line: usize,
+}
+
 /// The case and value counts the README states for each model family in its coverage table.
-fn readme_claims(text: &str) -> Option<Vec<(Family, usize, usize)>> {
+fn readme_claims(text: &str) -> Option<Vec<Claim>> {
     let lines: Vec<&str> = text.lines().collect();
     let reference = lines.iter().position(|line| line.contains(REFERENCE))?;
     let mut claims = Vec::new();
-    for line in lines.iter().skip(reference) {
+    for (index, line) in lines.iter().enumerate().skip(reference) {
         let row: Vec<&str> = line.split('|').map(str::trim).collect();
         // A model row: | description | checked against | tolerance | cases and values | not validated |
+        // (the first and the last cell of the split are the empty outsides of the row).
         if row.len() < 6 {
             continue;
         }
-        let family = if row[1].contains("two-compartment models") {
+        let (Some(description), Some(counts)) = (row.get(1), row.get(4)) else {
+            continue;
+        };
+        let family = if description.contains("two-compartment models") {
             Family::Two
-        } else if row[1].contains("one-compartment models") {
+        } else if description.contains("one-compartment models") {
             Family::One
         } else {
             continue;
         };
-        let counts = row[4];
         if !counts.contains("case") {
             continue;
         }
         let (Some(cases), Some(values)) = (first_number(counts), second_number(counts)) else {
             continue;
         };
-        claims.push((family, cases, values));
+        claims.push(Claim {
+            family,
+            cases,
+            values,
+            line: index + 1,
+        });
     }
     Some(claims)
 }
@@ -479,11 +577,17 @@ fn coverage(text: &str) -> BTreeMap<String, (usize, usize)> {
             continue;
         }
         let row: Vec<&str> = line.split('|').map(str::trim).collect();
-        if row.len() < 7 || !row[2].starts_with("pk") {
+        if row.len() < 7 {
             continue;
         }
-        let family = row[2].split('.').next().unwrap_or_default().to_owned();
-        let values = row[4]
+        let (Some(model), Some(validated)) = (row.get(2), row.get(4)) else {
+            continue;
+        };
+        if !model.starts_with("pk") {
+            continue;
+        }
+        let family = model.split('.').next().unwrap_or_default().to_owned();
+        let values = validated
             .split_once('/')
             .and_then(|(_, after)| after.trim().parse::<usize>().ok())
             .unwrap_or(0);
@@ -494,7 +598,8 @@ fn coverage(text: &str) -> BTreeMap<String, (usize, usize)> {
     per_model
 }
 
-/// The model counts the README states are checked against `docs/conformance.md`.
+/// The model counts the README states are checked against `docs/conformance.md`. Agreement is
+/// silent: a confirmation is not something to read, so `--strict` can pass.
 fn claims_checked(tree: &Tree) -> Vec<Finding> {
     let Some(readme) = tree.files.get("README.md") else {
         return Vec::new();
@@ -520,8 +625,8 @@ fn claims_checked(tree: &Tree) -> Vec<Finding> {
     }
     let per_model = coverage(conformance);
     let mut findings = Vec::new();
-    for (family, cases, values) in claims {
-        let key = match family {
+    for claim in claims {
+        let key = match claim.family {
             Family::One => "pk1",
             Family::Two => "pk2",
         };
@@ -529,27 +634,71 @@ fn claims_checked(tree: &Tree) -> Vec<Finding> {
             findings.push(Finding::fail(
                 "review-claims-checked",
                 "README.md",
-                0,
+                claim.line,
                 format!("the README claims {key} coverage, `{CONFORMANCE}` has no {key} case"),
             ));
             continue;
         };
-        if cases != *actual_cases || values != *actual_values {
+        if claim.cases != *actual_cases || claim.values != *actual_values {
             findings.push(Finding::fail(
                 "review-claims-checked",
                 "README.md",
-                0,
+                claim.line,
                 format!(
-                    "the README claims {cases} cases and {values} values for {key}; \
-                     `{CONFORMANCE}` holds {actual_cases} cases and {actual_values} values"
+                    "the README claims {} cases and {} values for {key}; \
+                     `{CONFORMANCE}` holds {actual_cases} cases and {actual_values} values",
+                    claim.cases, claim.values
                 ),
             ));
-        } else {
-            findings.push(Finding::note(
-                "review-claims-checked",
+        }
+    }
+    findings
+}
+
+/// The README speaks about two-compartment models when the registry has them: a coverage row with
+/// counts, and no clause that still says they are not implemented.
+fn two_compartment_readme(tree: &Tree) -> Vec<Finding> {
+    let Some(registry) = tree.files.get(REGISTRY) else {
+        return Vec::new();
+    };
+    if !registry_ids(registry)
+        .keys()
+        .any(|id| id.starts_with("pk2."))
+    {
+        return Vec::new();
+    }
+    let Some(readme) = tree.files.get("README.md") else {
+        return Vec::new();
+    };
+    let mut findings = Vec::new();
+    let has_row = readme_claims(readme)
+        .is_some_and(|claims| claims.iter().any(|claim| claim.family == Family::Two));
+    if !has_row {
+        findings.push(Finding::fail(
+            "review-pk2-readme",
+            "README.md",
+            0,
+            "the registry has `pk2.` models but the coverage table has no two-compartment row \
+             with case and value counts",
+        ));
+    }
+    for (index, line) in readme.lines().enumerate() {
+        // A clause is what lies between two separators, so that "user-written models (not
+        // implemented); the two-compartment fit" is not read as one statement.
+        let stale = line
+            .to_ascii_lowercase()
+            .split([';', '|', '.'])
+            .any(|clause| {
+                (clause.contains("two-compartment") || clause.contains("two compartment"))
+                    && clause.contains("not implemented")
+            });
+        if stale {
+            findings.push(Finding::fail(
+                "review-pk2-readme",
                 "README.md",
-                0,
-                format!("{key}: {cases} cases and {values} values, the two files agree"),
+                index + 1,
+                "the README still says two-compartment models are not implemented, \
+                 the registry has `pk2.` models",
             ));
         }
     }
@@ -603,12 +752,18 @@ fn specs_counts(tree: &Tree) -> Vec<Finding> {
         );
     }
     let mut findings = Vec::new();
-    for line in readme.lines() {
+    for (index, line) in readme.lines().enumerate() {
         let row: Vec<&str> = line.split('|').map(str::trim).collect();
-        if row.len() < 7 || !row[1].starts_with("`specs/") {
+        if row.len() < 7 {
             continue;
         }
-        let name = row[1]
+        let (Some(first), Some(cells)) = (row.get(1), row.get(2..6)) else {
+            continue;
+        };
+        if !first.starts_with("`specs/") {
+            continue;
+        }
+        let name = first
             .trim_matches('`')
             .trim_start_matches("specs/")
             .to_owned();
@@ -616,22 +771,19 @@ fn specs_counts(tree: &Tree) -> Vec<Finding> {
             findings.push(Finding::note(
                 "review-specs-counts",
                 "README.md",
-                0,
+                index + 1,
                 format!("`{name}` is listed in the table but is not in the tree"),
             ));
             continue;
         };
-        let claimed: Vec<usize> = row[2..6]
-            .iter()
-            .filter_map(|cell| cell.parse().ok())
-            .collect();
+        let claimed: Vec<usize> = cells.iter().filter_map(|cell| cell.parse().ok()).collect();
         if claimed.len() == counts.len() && claimed != *counts {
             findings.push(Finding::note(
                 "review-specs-counts",
                 "README.md",
-                0,
+                index + 1,
                 format!(
-                    "{name}: the README table says {claimed:?}, the `**Status:**` lines count {counts:?}"
+                    "{name}: the README table says {claimed:?}, the `Status:` lines count {counts:?}"
                 ),
             ));
         }
@@ -639,9 +791,31 @@ fn specs_counts(tree: &Tree) -> Vec<Finding> {
     findings
 }
 
-/// What changed under `docs/`, `specs/`, `oracle/` or `README.md` since the last tag.
+/// What the drift note counts: the files whose change a reader of the tag does not see.
+const DRIFT_SCOPE: &str = "docs/, specs/, oracle/scripts/, oracle/README.md or README.md";
+
+/// Whether a changed path is one the drift note counts.
+fn is_tracked_for_drift(path: &str) -> bool {
+    ["docs/", "specs/", "oracle/scripts/"]
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+        || path == "oracle/README.md"
+        || path == "README.md"
+}
+
+/// What changed under `docs/`, `specs/`, `oracle/scripts/`, `oracle/README.md` or `README.md` since
+/// the last tag. Git is asked here; the reading of its answers is [`drift_findings`].
 fn release_drift(root: &Path) -> Vec<Finding> {
-    let Some(tag) = git(root, &["describe", "--tags", "--abbrev=0"]) else {
+    let tag = git(root, &["describe", "--tags", "--abbrev=0"]).map(|text| text.trim().to_owned());
+    let changed = tag
+        .as_deref()
+        .and_then(|tag| git(root, &["diff", "--name-only", tag, "--"]));
+    drift_findings(tag.as_deref(), changed.as_deref())
+}
+
+/// The note about the drift since `tag`, from the answers of git (`None` when git had none).
+fn drift_findings(tag: Option<&str>, changed: Option<&str>) -> Vec<Finding> {
+    let Some(tag) = tag else {
         return vec![Finding::note(
             "review-release-drift",
             "README.md",
@@ -649,33 +823,28 @@ fn release_drift(root: &Path) -> Vec<Finding> {
             "no tag found: the drift of the published release cannot be reported",
         )];
     };
-    let tag = tag.trim().to_owned();
-    let Some(changed) = git(root, &["diff", "--name-only", &tag, "--"]) else {
-        return Vec::new();
+    let Some(changed) = changed else {
+        return vec![Finding::note(
+            "review-release-drift",
+            "README.md",
+            0,
+            format!(
+                "`git diff` against {tag} failed: the drift of the published release cannot be reported"
+            ),
+        )];
     };
-    let mut tracked: Vec<String> = changed
+    let mut tracked: Vec<&str> = changed
         .lines()
         .map(str::trim)
-        .filter(|path| {
-            [
-                "docs/",
-                "specs/",
-                "oracle/scripts/",
-                "oracle/README.md",
-                "README.md",
-            ]
-            .iter()
-            .any(|prefix| path.starts_with(prefix))
-        })
-        .map(str::to_owned)
+        .filter(|path| is_tracked_for_drift(path))
         .collect();
-    tracked.sort();
+    tracked.sort_unstable();
     if tracked.is_empty() {
         return vec![Finding::note(
             "review-release-drift",
             "README.md",
             0,
-            format!("nothing under docs/, specs/, oracle/ or README.md changed since {tag}"),
+            format!("nothing under {DRIFT_SCOPE} changed since {tag}"),
         )];
     }
     vec![Finding::note(
@@ -683,13 +852,13 @@ fn release_drift(root: &Path) -> Vec<Finding> {
         "README.md",
         0,
         format!(
-            "{} file(s) under docs/, specs/ or oracle/scripts/ or in README.md changed since {tag}: a \
-             reader who opens the tag does not see them (first three: {})",
+            "{} file(s) under {DRIFT_SCOPE} changed since {tag}: a reader who opens the tag does \
+             not see them (first three: {})",
             tracked.len(),
             tracked
                 .iter()
                 .take(3)
-                .cloned()
+                .copied()
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -842,7 +1011,7 @@ pub const MODELS: &[Model] = &[
     #[test]
     fn a_commented_out_id_is_not_a_model() {
         let registry = format!("{REGISTRY_OK}// Model {{ id: \"pk2.oral_0\" }},\n");
-        assert!(!registry_ids(&registry).contains("pk2.oral_0"));
+        assert!(!registry_ids(&registry).contains_key("pk2.oral_0"));
     }
 
     #[test]
@@ -852,15 +1021,15 @@ pub const MODELS: &[Model] = &[
             "| model_a | pk1.iv_bolus | 2 / 2 | 60 / 60 | 100.0 | 0 |\n\
              | model_err | pk2.* (inputs to refuse) | 6 / 6 | 80 / 80 | 100.0 | 0 |",
         );
-        let covered: BTreeSet<String> = text
-            .lines()
-            .filter_map(|line| line.split('|').nth(2))
-            .map(|cell| cell.trim().to_owned())
-            .filter(|cell| !cell.contains(' '))
-            .filter(|cell| cell.starts_with("pk1.") || cell.starts_with("pk2."))
-            .collect();
-        assert!(covered.contains("pk1.iv_bolus"));
-        assert!(!covered.iter().any(|id| id.contains(' ')));
+        assert!(
+            text.contains("inputs to refuse"),
+            "the fixture lost its row"
+        );
+        let findings = model_ids(&tree(&[
+            (CONFORMANCE, text.as_str()),
+            (REGISTRY, REGISTRY_OK),
+        ]));
+        assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
@@ -877,18 +1046,22 @@ pub const MODELS: &[Model] = &[
 
     #[test]
     fn a_version_mismatch_fails_and_a_match_does_not() {
-        let cargo = "version = \"0.1.0\"\n";
+        let cargo = "[workspace.package]\nversion = \"0.1.0\"\n";
         let cite = "version: 0.1.0\n";
         assert!(versions(&tree(&[("Cargo.toml", cargo), ("CITATION.cff", cite)])).is_empty());
-        let cite = "version: 0.2.0\n";
+        let cite = "cff-version: 1.2.0\ntitle: x\nversion: 0.2.0\n";
         let findings = versions(&tree(&[("Cargo.toml", cargo), ("CITATION.cff", cite)]));
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].message.contains("0.2.0"));
+        assert_eq!(
+            findings[0].line, 3,
+            "the line of the version in CITATION.cff"
+        );
     }
 
     #[test]
     fn a_version_line_that_the_manifest_does_not_have_is_not_a_finding() {
-        let cargo = "[workspace]\nversion.workspace = true\n";
+        let cargo = "[package]\nversion.workspace = true\n";
         let cite = "version: 0.1.0\n";
         let findings = versions(&tree(&[("Cargo.toml", cargo), ("CITATION.cff", cite)]));
         assert!(findings.is_empty(), "{findings:?}");
@@ -911,7 +1084,20 @@ pub const MODELS: &[Model] = &[
         let readme = readme_with_rows((21, 886), (172, 16906));
         assert_eq!(
             readme_claims(&readme),
-            Some(vec![(Family::One, 21, 886), (Family::Two, 172, 16906)]),
+            Some(vec![
+                Claim {
+                    family: Family::One,
+                    cases: 21,
+                    values: 886,
+                    line: 5,
+                },
+                Claim {
+                    family: Family::Two,
+                    cases: 172,
+                    values: 16906,
+                    line: 6,
+                },
+            ]),
             "fixture:\n{readme}"
         );
     }
@@ -924,20 +1110,17 @@ pub const MODELS: &[Model] = &[
             ("README.md", readme.as_str()),
         ];
         let findings = claims_checked(&tree(&files));
-        assert_eq!(findings.len(), 2, "{findings:?}");
         assert!(
-            findings.iter().all(|f| f.kind == Kind::Note),
-            "{findings:?}"
+            findings.is_empty(),
+            "an agreement is not a finding, or --strict could never pass: {findings:?}"
         );
 
         let wrong = readme.replace("1 case, 60 values", "1 case, 61 values");
         let files = vec![(CONFORMANCE, CONFORMANCE_OK), ("README.md", wrong.as_str())];
         let findings = claims_checked(&tree(&files));
-        assert_eq!(
-            findings.iter().filter(|f| f.kind == Kind::Fail).count(),
-            1,
-            "{findings:?}"
-        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert_eq!(findings[0].line, 5, "the line of the one-compartment row");
     }
 
     #[test]
@@ -965,6 +1148,291 @@ pub const MODELS: &[Model] = &[
         let findings = specs_counts(&tree(&[("README.md", readme), ("specs/nca.md", nca)]));
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].message.contains("nca.md"));
+    }
+
+    #[test]
+    fn a_missing_conformance_file_fails_the_total() {
+        let findings = conformance_total(&tree(&[]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert!(findings[0].message.contains("missing"));
+    }
+
+    #[test]
+    fn a_conformance_file_without_an_overall_line_fails() {
+        let text =
+            CONFORMANCE_OK.replace("**Overall: 300 of 300 values validated (100.0 %).**", "");
+        let findings = conformance_total(&tree(&[(CONFORMANCE, text.as_str())]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert!(findings[0].message.contains("Overall"));
+    }
+
+    #[test]
+    fn an_overall_line_whose_two_halves_differ_fails_at_its_line() {
+        let text = CONFORMANCE_OK.replace("**Overall: 300 of 300", "**Overall: 300 of 299");
+        let findings = conformance_total(&tree(&[(CONFORMANCE, text.as_str())]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].message.contains("two halves differ"));
+        assert_eq!(
+            findings[0].line, 3,
+            "the overall line is the third of the fixture"
+        );
+    }
+
+    #[test]
+    fn the_floor_findings_name_the_line_of_the_claim() {
+        let missing = CONFORMANCE_OK.replace("<!-- floor model_b conc 2 2 0 -->", "");
+        let findings = conformance_floors(&tree(&[(CONFORMANCE, missing.as_str())]));
+        let heading = missing
+            .lines()
+            .position(|line| line == "### model_b")
+            .map(|index| index + 1);
+        assert_eq!(Some(findings[0].line), heading, "{findings:?}");
+    }
+
+    #[test]
+    fn an_empty_registry_fails_the_model_ids_once() {
+        let findings = model_ids(&tree(&[
+            (CONFORMANCE, CONFORMANCE_OK),
+            (REGISTRY, "pub const MODELS: &[Model] = &[];\n"),
+        ]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert!(findings[0].message.contains("no `pk1.`"));
+    }
+
+    #[test]
+    fn a_missing_registry_fails_the_model_ids() {
+        let findings = model_ids(&tree(&[(CONFORMANCE, CONFORMANCE_OK)]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].message.contains("registry file is missing"));
+    }
+
+    #[test]
+    fn a_pk2_model_without_a_pk2_case_fails_at_its_registry_line() {
+        let conformance = CONFORMANCE_OK
+            .replace(
+                "| model_b | pk2.iv_bolus | 2 / 2 | 100 / 100 | 100.0 | 0 |\n",
+                "",
+            )
+            .replace(
+                "| model_c | pk2.oral_1 | 2 / 2 | 40 / 40 | 100.0 | 0 |\n",
+                "",
+            );
+        let findings = model_ids(&tree(&[
+            (CONFORMANCE, conformance.as_str()),
+            (REGISTRY, REGISTRY_OK),
+        ]));
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert!(findings.iter().all(|f| f.file == REGISTRY && f.line > 0));
+        assert!(findings.iter().all(|f| f.message.contains("pk2.")));
+    }
+
+    #[test]
+    fn a_readme_claiming_pk2_when_the_conformance_file_has_no_pk2_case_fails() {
+        let conformance = CONFORMANCE_OK
+            .replace(
+                "| model_b | pk2.iv_bolus | 2 / 2 | 100 / 100 | 100.0 | 0 |\n",
+                "",
+            )
+            .replace(
+                "| model_c | pk2.oral_1 | 2 / 2 | 40 / 40 | 100.0 | 0 |\n",
+                "",
+            );
+        let readme = readme_with_rows((1, 60), (2, 140));
+        let findings = claims_checked(&tree(&[
+            (CONFORMANCE, conformance.as_str()),
+            ("README.md", readme.as_str()),
+        ]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert!(findings[0].message.contains("no pk2 case"));
+        assert_eq!(findings[0].line, 6, "the line of the two-compartment row");
+    }
+
+    #[test]
+    fn a_readme_naming_the_file_but_stating_no_counts_is_a_note() {
+        let readme = "See `docs/conformance.md`.\n\n| What | Checked |\n|---|---|\n";
+        let findings = claims_checked(&tree(&[
+            (CONFORMANCE, CONFORMANCE_OK),
+            ("README.md", readme),
+        ]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Note);
+        assert!(findings[0].message.contains("no model case/value counts"));
+    }
+
+    #[test]
+    fn claims_are_not_checked_without_a_conformance_file() {
+        let readme = readme_with_rows((1, 60), (2, 140));
+        assert!(claims_checked(&tree(&[("README.md", readme.as_str())])).is_empty());
+    }
+
+    #[test]
+    fn a_readme_with_no_two_compartment_row_fails_when_the_registry_has_pk2() {
+        let readme = "See `docs/conformance.md`.\n\n\
+                      | Model curves: six one-compartment models | closed forms | 1e-12 | 1 case, 60 values | none |\n";
+        let files = [("README.md", readme), (REGISTRY, REGISTRY_OK)];
+        let findings = two_compartment_readme(&tree(&files));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert_eq!(findings[0].rule, "review-pk2-readme");
+        assert!(findings[0].message.contains("no two-compartment row"));
+    }
+
+    #[test]
+    fn a_readme_that_still_says_two_compartments_are_not_implemented_fails() {
+        let mut readme = readme_with_rows((1, 60), (2, 140));
+        readme.push_str(
+            "| Other | x | y | z | user-written models, two-compartment models (not implemented) |\n",
+        );
+        let files = [("README.md", readme.as_str()), (REGISTRY, REGISTRY_OK)];
+        let findings = two_compartment_readme(&tree(&files));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].message.contains("not implemented"));
+        assert_eq!(findings[0].line, 7, "the line of the stale clause");
+    }
+
+    #[test]
+    fn a_readme_with_the_two_compartment_row_and_no_stale_clause_passes() {
+        // The not-implemented clause of user-written models sits next to a two-compartment fit
+        // in the same cell: separate clauses, so no finding.
+        let mut readme = readme_with_rows((1, 60), (2, 140));
+        readme.push_str(
+            "| Other | x | y | z | user-written models (not implemented); the two-compartment fit (no reference) |\n",
+        );
+        let files = [("README.md", readme.as_str()), (REGISTRY, REGISTRY_OK)];
+        let findings = two_compartment_readme(&tree(&files));
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn the_pk2_readme_rule_is_silent_while_the_registry_has_no_pk2_model() {
+        let registry = "Model { id: \"pk1.iv_bolus\" },\n";
+        let readme = "See `docs/conformance.md`. Two-compartment models are not implemented.\n";
+        let files = [("README.md", readme), (REGISTRY, registry)];
+        assert!(two_compartment_readme(&tree(&files)).is_empty());
+        assert!(two_compartment_readme(&tree(&[("README.md", readme)])).is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_version_fails_instead_of_passing() {
+        let cargo = "[workspace.package]\nversion = \"0.1.0\"\n";
+        let findings = versions(&tree(&[
+            ("Cargo.toml", cargo),
+            ("CITATION.cff", "title: x\n"),
+        ]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Fail);
+        assert!(findings[0].message.contains("unreadable"));
+
+        let findings = versions(&tree(&[
+            ("Cargo.toml", "[workspace]\nmembers = []\n"),
+            ("CITATION.cff", "version: 0.1.0\n"),
+        ]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].file, "Cargo.toml");
+    }
+
+    #[test]
+    fn a_nested_or_foreign_version_is_not_the_version() {
+        // An indented `version:` belongs to a nested entry; a `version` outside the package
+        // section (a dependency) is not the manifest version.
+        let cite = "references:\n  - version: 9.9.9\nversion: 0.1.0\n";
+        assert_eq!(
+            citation_version(cite),
+            Declared::Version("0.1.0".to_owned(), 3)
+        );
+        let cargo = "[dependencies]\nx = { version = \"1\" }\nversion = \"9.9.9\"\n\
+                     [workspace.package]\nversion = \"0.1.0\" # tagged\n";
+        assert_eq!(
+            manifest_version(cargo),
+            Declared::Version("0.1.0".to_owned(), 5)
+        );
+    }
+
+    #[test]
+    fn the_specs_counts_note_names_the_line_of_the_readme_row() {
+        let readme = "intro\n\n\
+                      | `specs/nca.md` | 5 | 0 | 0 | 0 |\n";
+        let nca = "- Status: `confirmed by oracle`\n";
+        let findings = specs_counts(&tree(&[("README.md", readme), ("specs/nca.md", nca)]));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].line, 3);
+    }
+
+    #[test]
+    fn a_truncated_table_row_is_skipped_without_a_panic() {
+        let readme = "See `docs/conformance.md`.\n|||||\n| `specs/nca.md` | 1 |\n| a | b | c |\n";
+        assert_eq!(readme_claims(readme), Some(Vec::new()));
+        assert!(specs_counts(&tree(&[("README.md", readme)])).is_empty());
+        assert!(
+            coverage("## Models against exact closed-form values\n|||||\n| a | pk1.x |\n")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_drift_note_names_the_tag_and_the_files_it_counts() {
+        let changed = "README.md\ndocs/conformance.md\ncrates/x/src/lib.rs\noracle/scripts/a.R\n\
+                       oracle/data/big.csv\noracle/README.md\nREADME.mdx\n";
+        let findings = drift_findings(Some("v0.1.0"), Some(changed));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, Kind::Note);
+        let message = &findings[0].message;
+        assert!(message.starts_with("4 file(s) under docs/, specs/, oracle/scripts/, oracle/README.md or README.md changed since v0.1.0"), "{message}");
+        assert!(
+            message.contains("README.md, docs/conformance.md, oracle/README.md"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn the_drift_note_says_when_nothing_changed() {
+        let findings = drift_findings(Some("v0.1.0"), Some("crates/x/src/lib.rs\n"));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].message.starts_with("nothing under "));
+        assert!(findings[0].message.contains("since v0.1.0"));
+    }
+
+    #[test]
+    fn the_drift_note_is_a_note_when_git_has_no_tag_or_no_diff() {
+        for (tag, changed, expect) in [
+            (None, None, "no tag found"),
+            (Some("v0.1.0"), None, "failed"),
+        ] {
+            let findings = drift_findings(tag, changed);
+            assert_eq!(findings.len(), 1, "{findings:?}");
+            assert_eq!(findings[0].kind, Kind::Note);
+            assert!(findings[0].message.contains(expect), "{findings:?}");
+        }
+    }
+
+    #[test]
+    fn a_consistent_tree_has_no_finding_but_the_drift_note() {
+        let readme = readme_with_rows((1, 60), (2, 140));
+        let files = [
+            (CONFORMANCE, CONFORMANCE_OK),
+            (REGISTRY, REGISTRY_OK),
+            ("README.md", readme.as_str()),
+            ("Cargo.toml", "[workspace.package]\nversion = \"0.1.0\"\n"),
+            ("CITATION.cff", "version: 0.1.0\n"),
+        ];
+        let tree = tree(&files);
+        let mut findings = Vec::new();
+        findings.extend(conformance_total(&tree));
+        findings.extend(conformance_floors(&tree));
+        findings.extend(model_ids(&tree));
+        findings.extend(versions(&tree));
+        findings.extend(specs_index(&tree));
+        findings.extend(claims_checked(&tree));
+        findings.extend(two_compartment_readme(&tree));
+        findings.extend(specs_counts(&tree));
+        assert!(
+            findings.is_empty(),
+            "--strict must be able to pass: {findings:?}"
+        );
     }
 
     #[test]
