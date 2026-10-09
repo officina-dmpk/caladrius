@@ -322,3 +322,30 @@ pub(crate) fn jacobian(input: &ModelInput) -> Result<Jacobian, ModelError> {
         method: Derivatives::Analytic,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The 8-point Gauss–Legendre rule integrates every polynomial of degree <= 15 exactly on
+    /// [−1, 1]: ∫ x^k dx = 2/(k + 1) for even k, 0 for odd k.
+    #[test]
+    fn the_gauss_legendre_rule_is_exact_to_degree_15() {
+        for k in 0..=15 {
+            let rule: f64 = GL_NODES
+                .iter()
+                .zip(GL_WEIGHTS)
+                .map(|(x, w)| w * (x.powi(k) + (-x).powi(k)))
+                .sum();
+            let exact = if k % 2 == 0 {
+                2.0 / f64::from(k + 1)
+            } else {
+                0.0
+            };
+            assert!(
+                (rule - exact).abs() <= 1e-15,
+                "degree {k}: {rule} against {exact}"
+            );
+        }
+    }
+}
