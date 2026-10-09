@@ -45,4 +45,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-033 | caladrius-models pk2.* (two compartments), derivatives, xtask conformance for pk2 | engine | done | T-032 |
 | T-034 | pk2 reachable from the engine, CLI and MCP (a, now), then the UI (b, after the benchmark) | interface | done | T-033 |
 | T-035 | specs sync after T-032/T-033: output names, AUMC(0,t), dose 0 conventions, OF-08 (no automatic initial estimates for pk2), confirmed-by-oracle tags for MOD-2C | reader | done | T-033 |
-| T-036 | cargo xtask lint: forbidden names, private/ leaks, deny-lints header, tolerances once, board hygiene; CI step | interface | todo | T-028 |
+| T-036 | cargo xtask lint: forbidden names, private/ leaks, deny-lints header, tolerances once, board hygiene; CI step | interface | done | T-028 |
