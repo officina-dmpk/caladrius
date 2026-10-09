@@ -378,6 +378,41 @@ fn a_route_column_is_read_and_a_missing_dose_only_blanks_dependent_parameters() 
     assert_eq!(get("cl.obs"), json!({ "not_calculated": "dose_missing" }));
 }
 
+/// T-040 (Q-014 option 2): the default fit uses closed-form derivatives and the tight stop; the
+/// preset `reference_conventions` is one key of the options and is stored as plain values.
+#[test]
+fn the_fit_preset_is_one_option() {
+    let mut e = engine_with_two_subjects();
+    let call = json!({ "worksheet": 1, "subject": "A", "model": "pk1.oral_1" });
+    let default = ok(&mut e, "fit.run", call.clone());
+    let o = &default["spec"]["options"];
+    assert_eq!(
+        (o["derivatives"].clone(), o["convergence"].clone()),
+        (json!("auto"), json!(1e-10))
+    );
+    let outcome = &default["result"]["outcome"]["ok"];
+    assert_eq!(outcome["status"], "converged");
+    assert_eq!(outcome["derivatives"], "analytic");
+    let mut with_preset = call;
+    with_preset["options"] = json!({ "preset": "reference_conventions", "max_iterations": 40 });
+    let reference = ok(&mut e, "fit.run", with_preset);
+    let o = &reference["spec"]["options"];
+    assert_eq!(o["derivatives"], "forward_difference");
+    assert_eq!(o["increment"], 0.001);
+    assert_eq!(o["convergence"], 0.0001);
+    assert_eq!(o["max_iterations"], 40);
+    assert!(o.get("preset").is_none(), "{o}");
+    assert_eq!(
+        reference["result"]["outcome"]["ok"]["derivatives"],
+        "forward_difference"
+    );
+    let schema = info("fit.run").params_schema;
+    assert_eq!(
+        schema["$defs"]["FitOptions"]["properties"]["preset"]["enum"],
+        json!(["default", "reference_conventions"])
+    );
+}
+
 #[test]
 fn stale_marking_is_visible_through_the_commands() {
     let mut e = engine_with_two_subjects();

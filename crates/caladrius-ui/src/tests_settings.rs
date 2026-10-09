@@ -44,7 +44,7 @@ fn the_page_lists_every_setting_with_what_it_affects_and_its_default() {
     h.get_by_label("Default: Point (3.25)");
     h.get_by_label("Default: Linear up, log down");
     h.get_by_label("Default: 50");
-    h.get_by_label("Default: 0.0001");
+    h.get_by_label("Default: 0.0000000001");
     // Nothing is changed, so nothing offers a reset.
     assert!(h.query_by_label("Reset").is_none());
     // The system locale row says when the system reported nothing.

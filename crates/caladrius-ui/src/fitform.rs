@@ -320,7 +320,7 @@ fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut 
                     ui.end_row();
 
                     ui.label("Partial derivatives");
-                    let current = page.option_str("/derivatives", "forward_difference");
+                    let current = page.option_str("/derivatives", defaults::DERIVATIVES);
                     if let Some(v) = combo(ui, "derivatives", &current, &DERIVATIVES) {
                         page.set_option(&["derivatives"], json!(v));
                         *changed = true;

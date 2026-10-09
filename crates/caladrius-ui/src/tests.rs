@@ -870,6 +870,7 @@ fn the_defaults_the_page_shows_are_the_engines() {
     assert_eq!(options["max_iterations"], defaults::MAX_ITERATIONS);
     assert_eq!(options["convergence"], defaults::CONVERGENCE);
     assert_eq!(options["increment"], defaults::INCREMENT);
+    assert_eq!(options["derivatives"], defaults::DERIVATIVES);
     assert_eq!(options["confidence_level"], defaults::CONFIDENCE_LEVEL);
     assert_eq!(options["flags"]["max_cv_percent"], defaults::MAX_CV_PERCENT);
     assert_eq!(

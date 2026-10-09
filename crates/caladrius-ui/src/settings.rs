@@ -247,10 +247,7 @@ pub const FIELDS: [Field; 11] = [
         group: "New fit (options of fit.run)",
         title: "Convergence criterion",
         affects: "The fit stops when the relative decrease of the sum of squares falls below this number, in every new fit.",
-        kind: Kind::Number {
-            min: 1.0e-9,
-            max: 0.1,
-        },
+        kind: Kind::Number { min: 0.0, max: 0.1 },
     },
     Field {
         key: "locale",
@@ -542,7 +539,7 @@ mod tests {
         let e = s.set("fit.weighting", json!("wild")).unwrap_err();
         assert!(e.contains("not one of uniform, inv_y"), "{e}");
         let e = s.set("fit.convergence", json!(5.0)).unwrap_err();
-        assert!(e.contains("from 0.000000001 to 0.1"), "{e}");
+        assert!(e.contains("from 0 to 0.1"), "{e}");
         assert!(s.set("fit.convergence", json!(f64::NAN)).is_err());
         assert!(s.set("nca.lambda_z_allow_tmax", json!("yes")).is_err());
         assert!(

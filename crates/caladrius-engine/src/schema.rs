@@ -302,8 +302,12 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                 object(
                     vec![
                         (
+                            "preset",
+                            one_of_strings(&["default", "reference_conventions"]),
+                        ),
+                        (
                             "derivatives",
-                            one_of_strings(&["forward_difference", "analytic"]),
+                            one_of_strings(&["auto", "forward_difference", "analytic"]),
                         ),
                         (
                             "increment",

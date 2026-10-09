@@ -22,7 +22,11 @@ pub const WEIGHTINGS: [(&str, &str); 5] = [
 ];
 
 /// How the partial derivatives are formed.
-pub const DERIVATIVES: [(&str, &str); 2] = [
+pub const DERIVATIVES: [(&str, &str); 3] = [
+    (
+        "auto",
+        "Closed forms when the model has them, else forward differences",
+    ),
     ("forward_difference", "Forward differences"),
     ("analytic", "Closed forms (where the model has them)"),
 ];
@@ -37,12 +41,13 @@ pub const CRITERIA: [(&str, &str); 2] = [
 ];
 
 /// The defaults the page shows before the engine has returned the options of a run. They mirror
-/// the engine's (`AGENTS.md` section 6); a test compares them with what a run returns, so a change
-/// in the engine cannot leave the page showing other numbers.
+/// the engine's (its preset `default`, task T-040); a test compares them with what a run returns,
+/// so a change in the engine cannot leave the page showing other numbers.
 pub mod defaults {
     pub const MAX_ITERATIONS: u64 = 50;
-    pub const CONVERGENCE: f64 = 0.0001;
-    pub const INCREMENT: f64 = 0.001;
+    pub const CONVERGENCE: f64 = 1.0e-10;
+    pub const INCREMENT: f64 = 1.0e-5;
+    pub const DERIVATIVES: &str = "auto";
     pub const CONFIDENCE_LEVEL: f64 = 0.95;
     pub const MAX_CV_PERCENT: f64 = 50.0;
     pub const MAX_ABS_CORRELATION: f64 = 0.95;
