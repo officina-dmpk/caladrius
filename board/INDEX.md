@@ -46,3 +46,6 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-034 | pk2 reachable from the engine, CLI and MCP (a, now), then the UI (b, after the benchmark) | interface | done | T-033 |
 | T-035 | specs sync after T-032/T-033: output names, AUMC(0,t), dose 0 conventions, OF-08 (no automatic initial estimates for pk2), confirmed-by-oracle tags for MOD-2C | reader | done | T-033 |
 | T-036 | cargo xtask lint: forbidden names, private/ leaks, deny-lints header, tolerances once, board hygiene; CI step | interface | done | T-028 |
+| T-037 | README: sync the verified section with main (PR #1, external contribution) | orchestrator | done | T-034 |
+| T-038 | docs/screens: the application illustrated from the snapshot example (PR #2, external contribution) | orchestrator | done | T-034 |
+| T-040 | Default fit settings reach the exact minimum (Q-014 option 2); reference_conventions preset; D-04 | engine | todo | T-030 |

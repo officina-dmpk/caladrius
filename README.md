@@ -46,12 +46,14 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 
 **Why 1e-4 for fit parameters and 1e-6 for NCA.** NCA is closed arithmetic on the data, so two correct implementations differ only by rounding. A fit is a search: two optimizers stop at different points because of their stopping rules, and the engine's default derivatives are finite differences while the references use exact ones. The contract tolerance (1e-4) is a margin of caution, and the measured gaps are much smaller: over the 95 older reference fits the worst difference is 7.4e-6 on an estimate, 9.2e-6 on a standard error and 3.8e-7 on the residual sum of squares (the tolerance is about 14 times the worst on estimates, 11 times on standard errors, and only 2.6 times on the residual sum of squares), and on the five-point example, which is small enough to be worked on paper, the engine and R agree to 1e-6 on every statistic, and a test holds them to it (only the estimates are also tied to a second scripted recurrence; the other statistics are the engine against R). No tolerance has been loosened; the reasoning and the command that reproduces the figures are in `specs/fit.md` section 10.
 
+**Where the numbers come from.** None of the values in the conformance table comes from the reference commercial software: every expected value is produced by PKNCA, by 256-bit evaluations of closed forms cross-checked with expm and deSolve, or by R nls and nlsLM, from public or synthetic data, with a versioned script. The reference software was compared once, privately, on counts only.
+
 **Which rules are settled.** Every behaviour rule in `specs/` carries a status. "Confirmed by oracle" means the rule's arithmetic or definition agrees with PKNCA, R or the closed forms above; it says nothing about the reference commercial software. Counts of the `- Status:` lines in each file (made with `grep`):
 
 | Specification | confirmed by oracle | documented, untested | assumed | observed |
 |---|---|---|---|---|
 | `specs/nca.md` | 44 | 15 | 12 | 5 |
-| `specs/models.md` | 19 | 2 | 4 | 0 |
+| `specs/models.md` | 37 | 4 | 9 | 0 |
 | `specs/fit.md` | 18 | 3 | 21 | 0 |
 | `specs/ux.md` | 0 | 12 | 26 | 0 |
 

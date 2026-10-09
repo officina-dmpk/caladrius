@@ -191,4 +191,4 @@ The defaults (forward differences with increment 0.001, convergence 0.0001, 50 i
 
 Decision taken meanwhile: option 1 for v0.1.0 (no behaviour change before the tag); the texts say so. Your answer decides v0.2.
 
-Answer: _pending_.
+Answer (2026-10-09, human): option 2. The default fit uses analytic derivatives and the tight stopping rule; the assumed reference defaults stay available as a named preset. Card T-040.
