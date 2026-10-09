@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "kind": "model_md",
+  "case": "model_md_pk2_oral_0_lag_sched_n40",
+  "generated_by": "oracle/scripts/models_md.R",
+  "model": "pk2.oral_0_lag",
+  "group": "superposition",
+  "parameterisation": "clearance",
+  "dose": 100,
+  "parameters": {
+    "cl": 2,
+    "vc": 10,
+    "q": 4,
+    "vp": 8,
+    "tlag": 0.5
+  },
+  "regimen": {
+    "kind": "schedule",
+    "records": [{
+        "time": 117,
+        "dose": 100,
+        "dur": 3
+      }, {
+        "time": 114.75,
+        "dose": 125,
+        "dur": 4
+      }, {
+        "time": 111.25,
+        "dose": 150,
+        "dur": 1.5
+      }, {
+        "time": 109,
+        "dose": 175,
+        "dur": 2.5
+      }, {
+        "time": 105.5,
+        "dose": 100,
+        "dur": 3.5
+      }, {
+        "time": 102,
+        "dose": 125,
+        "dur": 1
+      }, {
+        "time": 99.75,
+        "dose": 150,
+        "dur": 2
+      }, {
+        "time": 96.25,
+        "dose": 175,
+        "dur": 3
+      }, {
+        "time": 94,
+        "dose": 100,
+        "dur": 4
+      }, {
+        "time": 90.5,
+        "dose": 125,
+        "dur": 1.5
+      }, {
+        "time": 87,
+        "dose": 150,
+        "dur": 2.5
+      }, {
+        "time": 84.75,
+        "dose": 175,
+        "dur": 3.5
+      }, {
+        "time": 81.25,
+        "dose": 100,
+        "dur": 1
+      }, {
+        "time": 79,
+        "dose": 125,
+        "dur": 2
+      }, {
+        "time": 75.5,
+        "dose": 150,
+        "dur": 3
+      }, {
+        "time": 72,
+        "dose": 175,
+        "dur": 4
+      }, {
+        "time": 69.75,
+        "dose": 100,
+        "dur": 1.5
+      }, {
+        "time": 66.25,
+        "dose": 125,
+        "dur": 2.5
+      }, {
+        "time": 64,
+        "dose": 150,
+        "dur": 3.5
+      }, {
+        "time": 60.5,
+        "dose": 175,
+        "dur": 1
+      }, {
+        "time": 57,
+        "dose": 100,
+        "dur": 2
+      }, {
+        "time": 54.75,
+        "dose": 125,
+        "dur": 3
+      }, {
+        "time": 51.25,
+        "dose": 150,
+        "dur": 4
+      }, {
+        "time": 49,
+        "dose": 0,
+        "dur": 1.5
+      }, {
+        "time": 45.5,
+        "dose": 100,
+        "dur": 2.5
+      }, {
+        "time": 42,
+        "dose": 125,
+        "dur": 3.5
+      }, {
+        "time": 39.75,
+        "dose": 150,
+        "dur": 1
+      }, {
+        "time": 36.25,
+        "dose": 175,
+        "dur": 2
+      }, {
+        "time": 34,
+        "dose": 100,
+        "dur": 3
+      }, {
+        "time": 30.5,
+        "dose": 125,
+        "dur": 4
+      }, {
+        "time": 27,
+        "dose": 150,
+        "dur": 1.5
+      }, {
+        "time": 24.75,
+        "dose": 175,
+        "dur": 2.5
+      }, {
+        "time": 21.25,
+        "dose": 100,
+        "dur": 3.5
+      }, {
+        "time": 19,
+        "dose": 125,
+        "dur": 1
+      }, {
+        "time": 15.5,
+        "dose": 150,
+        "dur": 2
+      }, {
+        "time": 12,
+        "dose": 175,
+        "dur": 3
+      }, {
+        "time": 9.75,
+        "dose": 100,
+        "dur": 4
+      }, {
+        "time": 6.25,
+        "dose": 125,
+        "dur": 1.5
+      }, {
+        "time": 4,
+        "dose": 150,
+        "dur": 2.5
+      }, {
+        "time": 0.5,
+        "dose": 175,
+        "dur": 3.5
+      }]
+  },
+  "times": [-0.5, 0.5, 1, 1.55, 2.75, 3.65, 4, 4.5, 6.25, 9.75, 12, 12.5, 13.05, 14, 15.15, 15.5, 19, 21.25, 24.75, 25.25, 25.425, 26.5, 26.775, 27, 27.75, 30.5, 34, 36.25, 36.75, 37.3, 37.75, 38.75, 39.4, 39.75, 42, 45.5, 49, 49.5, 49.675, 50.25, 51, 51.025, 51.25, 54.75, 57, 60.5, 61, 61.5, 61.55, 62, 63.65, 64, 66.25, 69.75, 72, 72.5, 73.05, 74.5, 75.15, 75.5, 76.5, 79, 81.25, 84.75, 85.25, 85.425, 86.775, 87, 88.75, 90.5, 94, 96.25, 96.75, 97.3, 98.25, 99.4, 99.75, 102, 105.5, 109, 109.5, 109.675, 110.75, 111.025, 111.25, 112, 114.75, 117, 118, 122, 137, 197, 417],
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "note": "schedule of 40 doses, irregular times and varying amounts, records in reverse order, a zero dose, infusions that overlap",
+  "textbook_double_ok": true,
+  "quantities": {
+    "conc": "concentration of the central compartment at the time t of the origin shared by the dose times: the sum of the single-dose functions of every dose (0 before the first dose; a bolus exactly at its dose time counts)",
+    "auc": "sum of the single-dose areas, each from its own dose time (not from its lag), to the time",
+    "scalar": "auc_inf = sum of the doses / CL (the sum of the single-dose areas to infinity, MOD-MD-01)"
+  },
+  "method": {
+    "closed_form": "plain sum of the single-dose closed forms of the model (explicit sums of exponentials, MOD-IVB-01, MOD-IVI-01, MOD-AB1-01, MOD-AB0-01, MOD-2C-07..12, the lag as a delay), 256-bit arithmetic (Rmpfr), rounded once to double; areas are the exact integrals of the terms; steady state is the sum over j = 0..N with the tail bounded below 2^-70 of the smallest value; the geometric-series forms of MOD-MD-03..06 and 10 give no value and are checked against the sums in the script (agreement 2^-60)",
+    "cross_checks": ["adaptive ODE solver (deSolve lsoda, rtol 1e-12) with the doses as events and a state for the AUC", "steady state: periodic solution of the linear system (fixed point of the one-period map) and, up to 3000 doses, a long train of dosing events"],
+    "cross_check_tolerance": 1e-08
+  },
+  "results_of_checks": {
+    "cross_checks": {
+      "ode_events": {
+        "conc_max_rel_gap": 6.1e-12,
+        "auc_max_rel_gap": 2.3e-13
+      }
+    }
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 187,
+  "n_times": 93
+}

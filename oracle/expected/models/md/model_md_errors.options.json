@@ -1,0 +1,670 @@
+{
+  "schema": 1,
+  "kind": "model_errors",
+  "case": "model_md_errors",
+  "generated_by": "oracle/scripts/models_md.R",
+  "note": "inputs the multiple-dosing engine must refuse (MOD-MD-12); the expected table has one not-available row (empty value) per case, the reason is in `reason`, the rule in `spec`, and the readable message must contain, for each inner list of `message_contains`, at least one of its words (lower case). The regimen is encoded in `parameters` as in the case options: `tau`, `n_doses`, and for a schedule `dose_time[i]`, `dose_amount[i]`, `dose_dur[i]` (i from 0); the encoding is provisional until the engine card defines the interface (the test has one helper to change)",
+  "groups": ["tau", "tau_below_dur", "times", "n_doses", "schedule", "lag", "domain"],
+  "cases": [{
+      "id": "tau_zero_pk1_iv_bolus",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 0
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be finite and > 0"
+    }, {
+      "id": "tau_negative_pk1_iv_bolus",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": -6
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be finite and > 0"
+    }, {
+      "id": "tau_nan_pk1_iv_bolus",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": "NaN"
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be finite and > 0"
+    }, {
+      "id": "tau_infinite_pk1_iv_bolus",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": "Infinity"
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be finite and > 0"
+    }, {
+      "id": "tau_zero_pk1_oral_1",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.oral_1",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "ka": 1,
+        "tau": 0
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be > 0"
+    }, {
+      "id": "tau_zero_pk1_oral_0_lag",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk1.oral_0_lag",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tlag": 0.5,
+        "tau": 0
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be > 0"
+    }, {
+      "id": "tau_zero_pk2_iv_bolus",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk2.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "tau": 0
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be > 0"
+    }, {
+      "id": "tau_negative_pk2_oral_1_lag",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk2.oral_1_lag",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "ka": 2,
+        "tlag": 0.5,
+        "tau": -12
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be > 0"
+    }, {
+      "id": "tau_nan_pk2_iv_infusion",
+      "group": "tau",
+      "spec": "MOD-MD-12, MOD-MD-02",
+      "model": "pk2.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dur": 2,
+        "tau": "NaN"
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be finite"
+    }, {
+      "id": "tau_below_dur_pk1_iv_infusion_1p9",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tau": 1.9
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk1_iv_infusion_1p999999998",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tau": 1.999999998
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk1_oral_0_1",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.oral_0",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tau": 1
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk1_oral_0_lag_1p9",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.oral_0_lag",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tlag": 1,
+        "tau": 1.9
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk2_iv_infusion_1p5",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk2.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dur": 2,
+        "tau": 1.5
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk2_oral_0_0p5",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk2.oral_0",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dur": 2,
+        "tau": 0.5
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "tau_below_dur_pk2_oral_0_lag_1p9",
+      "group": "tau_below_dur",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk2.oral_0_lag",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dur": 2,
+        "tlag": 1,
+        "tau": 1.9
+      },
+      "times": [1],
+      "message_contains": [["tau"], ["dur", "duration"], ["schedule", "overlap"]],
+      "reason": "an infusion or zero-order absorption longer than the interval overlaps the earlier ones: the steady-state rules refuse it and the message says to use the schedule form (MOD-MD-12)"
+    }, {
+      "id": "time_outside_pk1_iv_bolus_-0p5",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6
+      },
+      "times": [1, -0.5],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk1_iv_bolus_6p5",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6
+      },
+      "times": [1, 6.5],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk1_oral_1_-0p000000001",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.oral_1",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "ka": 1,
+        "tau": 6
+      },
+      "times": [1, -1e-09],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk1_iv_infusion_7",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dur": 2,
+        "tau": 6
+      },
+      "times": [1, 7],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk2_oral_1_12p5",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk2.oral_1",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "ka": 2,
+        "tau": 12
+      },
+      "times": [1, 12.5],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk2_iv_bolus_24",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk2.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "tau": 12
+      },
+      "times": [1, 24],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_outside_pk1_oral_1_lag_6p0001",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-MD-02 (f)",
+      "model": "pk1.oral_1_lag",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "ka": 1,
+        "tlag": 0.5,
+        "tau": 6
+      },
+      "times": [1, 6.0001],
+      "message_contains": [["time"], ["tau", "interval"]],
+      "reason": "a time outside [0, tau] in a steady-state request is a readable error"
+    }, {
+      "id": "time_nan_steady",
+      "group": "times",
+      "spec": "MOD-MD-12, MOD-GEN-04",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6
+      },
+      "times": [1, "NaN"],
+      "message_contains": [["time"], ["finite", "nan"]],
+      "reason": "a NaN time is refused"
+    }, {
+      "id": "n_doses_zero_pk1_iv_bolus",
+      "group": "n_doses",
+      "spec": "MOD-MD-12",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6,
+        "n_doses": 0
+      },
+      "times": [1],
+      "message_contains": [["n_doses", "doses"]],
+      "reason": "`n_doses` must be an integer >= 1"
+    }, {
+      "id": "n_doses_negative_pk1_iv_bolus",
+      "group": "n_doses",
+      "spec": "MOD-MD-12",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6,
+        "n_doses": -1
+      },
+      "times": [1],
+      "message_contains": [["n_doses", "doses"]],
+      "reason": "`n_doses` must be an integer >= 1"
+    }, {
+      "id": "n_doses_nan_pk1_iv_bolus",
+      "group": "n_doses",
+      "spec": "MOD-MD-12",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6,
+        "n_doses": "NaN"
+      },
+      "times": [1],
+      "message_contains": [["n_doses", "doses"]],
+      "reason": "`n_doses` must be an integer >= 1"
+    }, {
+      "id": "n_doses_zero_pk2_oral_1",
+      "group": "n_doses",
+      "spec": "MOD-MD-12",
+      "model": "pk2.oral_1",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "ka": 2,
+        "tau": 12,
+        "n_doses": 0
+      },
+      "times": [1],
+      "message_contains": [["n_doses", "doses"]],
+      "reason": "`n_doses` must be an integer >= 1"
+    }, {
+      "id": "n_doses_with_tau_zero",
+      "group": "n_doses",
+      "spec": "MOD-MD-12",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 0,
+        "n_doses": 3
+      },
+      "times": [1],
+      "message_contains": [["tau"]],
+      "reason": "`tau` must be > 0 for a regular regimen too"
+    }, {
+      "id": "schedule_time_nan",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_time[1]": "NaN",
+        "dose_amount[1]": 100
+      },
+      "times": [1, 8],
+      "message_contains": [["time"]],
+      "reason": "a non-finite dose time"
+    }, {
+      "id": "schedule_time_infinite",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.oral_1",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "ka": 1,
+        "dose_time[0]": "Infinity",
+        "dose_amount[0]": 100
+      },
+      "times": [1],
+      "message_contains": [["time"]],
+      "reason": "a non-finite dose time"
+    }, {
+      "id": "schedule_dose_negative",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_time[1]": 6,
+        "dose_amount[1]": -5
+      },
+      "times": [1],
+      "message_contains": [["dose"]],
+      "reason": "a negative dose amount"
+    }, {
+      "id": "schedule_dose_nan",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk2.iv_bolus",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dose_time[0]": 0,
+        "dose_amount[0]": "NaN"
+      },
+      "times": [1],
+      "message_contains": [["dose"]],
+      "reason": "a non-finite dose amount"
+    }, {
+      "id": "schedule_dur_zero",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_dur[0]": 0
+      },
+      "times": [1],
+      "message_contains": [["dur"]],
+      "reason": "a non-positive duration for a finite-duration input"
+    }, {
+      "id": "schedule_dur_negative",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.oral_0",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_dur[0]": 2,
+        "dose_time[1]": 6,
+        "dose_amount[1]": 100,
+        "dose_dur[1]": -1
+      },
+      "times": [1],
+      "message_contains": [["dur"]],
+      "reason": "a negative duration"
+    }, {
+      "id": "schedule_dur_nan",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk2.oral_0_lag",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "tlag": 0.5,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_dur[0]": "NaN"
+      },
+      "times": [1],
+      "message_contains": [["dur"]],
+      "reason": "a non-finite duration"
+    }, {
+      "id": "schedule_dur_missing",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk1.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100
+      },
+      "times": [1],
+      "message_contains": [["dur"]],
+      "reason": "a record of a finite-duration input without a duration"
+    }, {
+      "id": "schedule_dur_missing_pk2",
+      "group": "schedule",
+      "spec": "MOD-MD-12, MOD-MD-01",
+      "model": "pk2.iv_infusion",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dose_time[0]": 0,
+        "dose_amount[0]": 100,
+        "dose_time[1]": 4,
+        "dose_amount[1]": 100,
+        "dose_dur[1]": 2
+      },
+      "times": [1],
+      "message_contains": [["dur"]],
+      "reason": "the first record has no duration"
+    }, {
+      "id": "tlag_negative_steady",
+      "group": "lag",
+      "spec": "MOD-MD-12, MOD-GEN-04",
+      "model": "pk1.oral_1_lag",
+      "dose": 100,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "ka": 1,
+        "tlag": -0.5,
+        "tau": 6
+      },
+      "times": [1],
+      "message_contains": [["tlag"]],
+      "reason": "`tlag` must be >= 0 (a lag longer than tau is allowed)"
+    }, {
+      "id": "tlag_nan_steady",
+      "group": "lag",
+      "spec": "MOD-MD-12, MOD-GEN-04",
+      "model": "pk2.oral_0_lag",
+      "dose": 100,
+      "parameters": {
+        "cl": 2,
+        "vc": 10,
+        "q": 4,
+        "vp": 8,
+        "dur": 2,
+        "tlag": "NaN",
+        "tau": 12
+      },
+      "times": [1],
+      "message_contains": [["tlag"]],
+      "reason": "`tlag` must be finite"
+    }, {
+      "id": "dose_negative_steady",
+      "group": "domain",
+      "spec": "MOD-MD-12, MOD-GEN-04",
+      "model": "pk1.iv_bolus",
+      "dose": -1,
+      "parameters": {
+        "v": 10,
+        "cl": 2,
+        "tau": 6
+      },
+      "times": [1],
+      "message_contains": [["dose"]],
+      "reason": "the dose must be >= 0"
+    }],
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 41
+}

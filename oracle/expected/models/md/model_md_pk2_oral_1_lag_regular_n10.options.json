@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "model_md",
+  "case": "model_md_pk2_oral_1_lag_regular_n10",
+  "generated_by": "oracle/scripts/models_md.R",
+  "model": "pk2.oral_1_lag",
+  "group": "superposition",
+  "parameterisation": "clearance",
+  "dose": 100,
+  "parameters": {
+    "cl": 2,
+    "vc": 10,
+    "q": 4,
+    "vp": 8,
+    "ka": 2,
+    "tlag": 0.5
+  },
+  "regimen": {
+    "kind": "regular",
+    "tau": 12,
+    "n_doses": 10
+  },
+  "times": [-1, 0, 0.5, 3.6, 4, 10.8, 12, 12.5, 15.6, 22.8, 24, 24.5, 27.6, 34.8, 36, 36.5, 39.6, 46.8, 48, 48.5, 51.6, 58.8, 60, 60.5, 63.6, 70.8, 72, 72.5, 75.6, 82.8, 84, 84.5, 87.6, 94.8, 96, 96.5, 99.6, 106.8, 108, 108.5, 109, 111.6, 113, 118.8, 128, 188, 408],
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "note": "10 equal doses at interval 12 (MOD-MD-07)",
+  "textbook_double_ok": true,
+  "quantities": {
+    "conc": "concentration of the central compartment at the time t of the origin shared by the dose times: the sum of the single-dose functions of every dose (0 before the first dose; a bolus exactly at its dose time counts)",
+    "auc": "sum of the single-dose areas, each from its own dose time (not from its lag), to the time",
+    "scalar": "auc_inf = sum of the doses / CL (the sum of the single-dose areas to infinity, MOD-MD-01)"
+  },
+  "method": {
+    "closed_form": "plain sum of the single-dose closed forms of the model (explicit sums of exponentials, MOD-IVB-01, MOD-IVI-01, MOD-AB1-01, MOD-AB0-01, MOD-2C-07..12, the lag as a delay), 256-bit arithmetic (Rmpfr), rounded once to double; areas are the exact integrals of the terms; steady state is the sum over j = 0..N with the tail bounded below 2^-70 of the smallest value; the geometric-series forms of MOD-MD-03..06 and 10 give no value and are checked against the sums in the script (agreement 2^-60)",
+    "cross_checks": ["adaptive ODE solver (deSolve lsoda, rtol 1e-12) with the doses as events and a state for the AUC", "steady state: periodic solution of the linear system (fixed point of the one-period map) and, up to 3000 doses, a long train of dosing events"],
+    "cross_check_tolerance": 1e-08
+  },
+  "results_of_checks": {
+    "cross_checks": {
+      "ode_events": {
+        "conc_max_rel_gap": 2e-10,
+        "auc_max_rel_gap": 3.1e-14
+      }
+    }
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 95,
+  "n_times": 47
+}

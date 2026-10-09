@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "kind": "model_md",
+  "case": "model_md_pk1_oral_1_lag_conv_tlag_2tau",
+  "generated_by": "oracle/scripts/models_md.R",
+  "model": "pk1.oral_1_lag",
+  "group": "convention",
+  "parameterisation": "clearance",
+  "dose": 100,
+  "parameters": {
+    "v": 10,
+    "cl": 2,
+    "ka": 1,
+    "tlag": 12
+  },
+  "regimen": {
+    "kind": "steady_state",
+    "tau": 6
+  },
+  "times": [0, 6e-06, 0.006, 0.06, 0.2, 0.3, 0.6, 1, 1.5, 2, 2.4, 3, 3.5, 3.6, 4, 4.5, 5.4, 5.94, 5.99999, 6],
+  "units": {
+    "dose": "mg",
+    "time": "h",
+    "concentration": "mg/L"
+  },
+  "note": "first-order absorption, ka = 1, tau = 6, tlag = 12: above tau, the printed S-36 branch needs a negative elapsed time",
+  "textbook_double_ok": true,
+  "quantities": {
+    "conc": "concentration of the central compartment at the time s since the last dose, 0 <= s <= tau, at steady state: the sum over j >= 0 of the single-dose function at s + j*tau (a bolus at s = 0 includes the dose; at s = tau it is the value just before the next one)",
+    "auc": "area under the steady-state profile from s = 0 to s (D/CL at s = tau)",
+    "accum_c": "R_C(s) = C_ss(s) / C_1(s), the ratio to the single-dose concentration at the same time since the dose (MOD-MD-08); not available where C_1(s) = 0 (s up to the lag, or s = 0 for an input that starts at 0)",
+    "scalar": "cmax_ss, tmax_ss (time since the dose in [0, tau); not available when the maximum is attained at every s: a continuous infusion, tau = T), cmin_ss, cav_ss = D/(CL*tau), auc_tau_ss = D/CL, accum_cmax = cmax_ss / (single-dose Cmax), accum_auc = (D/CL) / AUC(0, tau) of one dose (not available when that area is 0, a lag of at least tau) (MOD-MD-08 to 10)"
+  },
+  "method": {
+    "closed_form": "plain sum of the single-dose closed forms of the model (explicit sums of exponentials, MOD-IVB-01, MOD-IVI-01, MOD-AB1-01, MOD-AB0-01, MOD-2C-07..12, the lag as a delay), 256-bit arithmetic (Rmpfr), rounded once to double; areas are the exact integrals of the terms; steady state is the sum over j = 0..N with the tail bounded below 2^-70 of the smallest value; the geometric-series forms of MOD-MD-03..06 and 10 give no value and are checked against the sums in the script (agreement 2^-60)",
+    "cross_checks": ["adaptive ODE solver (deSolve lsoda, rtol 1e-12) with the doses as events and a state for the AUC", "steady state: periodic solution of the linear system (fixed point of the one-period map) and, up to 3000 doses, a long train of dosing events"],
+    "cross_check_tolerance": 1e-08
+  },
+  "results_of_checks": {
+    "steady_state": {
+      "terms_in_sum": 71,
+      "tail_bound_relative": 5.2e-36,
+      "closed_form_max_rel_gap": 3.7e-36,
+      "tmax_ss_is_not_unique": false
+    },
+    "cross_checks": {
+      "ode_periodic_solution": {
+        "conc_max_rel_gap": 2.1e-13,
+        "auc_max_rel_gap": 2.3e-12
+      },
+      "ode_long_train": {
+        "doses": 32,
+        "conc_max_rel_gap": 1.7e-12,
+        "auc_max_rel_gap": 7e-11
+      }
+    },
+    "s36_printed_form": {
+      "branch": "S-36 p. 10 eq. 1.16 (first-order input) and p. 14 eq. 1.26 (zero-order input), branch s <= tlag: the earlier dose in its decay phase at the elapsed time s + tau - tlag",
+      "differs_from_oracle": true,
+      "times_that_differ": [0, 6e-06, 0.006, 0.06, 0.2, 0.3, 0.6, 1, 1.5, 2, 2.4, 3, 3.5, 3.6, 4, 4.5, 5.4, 5.94, 5.99999],
+      "printed_values": [-4996.001859012026, -4995.971598024045, -4965.831552650109, -4702.307217863224, -4081.9436239054526, -3689.195182815756, -2721.7839696873198, -1811.1507088496753, -1084.0136560137446, -644.3630518060718, -421.865721033043, -219.0996556645504, -123.16781505946817, -109.22431135446789, -65.90746339402288, -32.01450616219692, -2.6648027798263856, 4.797665544424162, 5.35650857707039],
+      "oracle_values": [5.356598112956107, 5.356651833920391, 5.410107055221937, 5.872981179172332, 6.926709013703035, 7.562724707669653, 8.987738476699848, 10.035257076794148, 10.455446353316146, 10.294562002075407, 9.931794379883295, 9.193070870414079, 8.504343565573645, 8.364463376140959, 7.807929122094369, 7.133372122328847, 6.017971580312774, 5.4197187654151815, 5.3566085776703884]
+    }
+  },
+  "convention": {
+    "id": "OM-17 (e)",
+    "text": "OM-17 (e): the steady-state lag forms of S-36 print a branch for s <= tlag that is valid only when the earlier dose is already in its decay phase, tau >= tlag (first-order input) or tau >= tlag + T (zero-order input); MOD-MD-05 reads the profile at the phase (s - tlag) modulo tau and has no such condition. The expected values follow MOD-MD-05; the printed branch is evaluated in results_of_checks.s36_printed_form and listed where it differs"
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "deSolve": "1.42",
+    "gmp": "0.7.5.1"
+  },
+  "n_values": 67,
+  "n_times": 20
+}
