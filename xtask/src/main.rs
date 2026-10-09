@@ -12,6 +12,7 @@ mod console;
 mod error;
 mod layers;
 mod lint;
+mod review;
 mod wasm;
 mod workspace;
 
@@ -30,6 +31,8 @@ tasks:
   wasm         cargo check the L0 to L3 crates for wasm32-unknown-unknown
   conformance  run caladrius-nca on every oracle case and write docs/conformance.md
                (`conformance --private` also writes the counts of the private oracle into it)
+  review       check the figures the README and the specs state against the files that own them
+               (`review --strict` also fails on a note); reads only, writes nothing
   help         show this message";
 
 /// The tasks this binary can run.
@@ -41,6 +44,10 @@ enum Task {
     /// `private`: also write the counts of the private oracle into `docs/conformance.md`.
     Conformance {
         private: bool,
+    },
+    /// `strict`: a note is a failure too.
+    Review {
+        strict: bool,
     },
     Help,
 }
@@ -54,6 +61,7 @@ fn parse_task(args: &[OsString]) -> std::result::Result<Task, String> {
             Some("lint") => Ok(Task::Lint),
             Some("wasm") => Ok(Task::Wasm),
             Some("conformance") => Ok(Task::Conformance { private: false }),
+            Some("review") => Ok(Task::Review { strict: false }),
             Some("help" | "-h" | "--help") => Ok(Task::Help),
             _ => Err(format!("unknown task `{}`", task.to_string_lossy())),
         },
@@ -61,6 +69,9 @@ fn parse_task(args: &[OsString]) -> std::result::Result<Task, String> {
             if task.to_str() == Some("conformance") && flag.to_str() == Some("--private") =>
         {
             Ok(Task::Conformance { private: true })
+        }
+        [task, flag] if task.to_str() == Some("review") && flag.to_str() == Some("--strict") => {
+            Ok(Task::Review { strict: true })
         }
         [_, extra, ..] => Err(format!("unexpected argument `{}`", extra.to_string_lossy())),
     }
@@ -81,6 +92,7 @@ fn main() -> ExitCode {
         Task::Lint => lint::run(),
         Task::Wasm => wasm::run(),
         Task::Conformance { private } => conformance::run(private),
+        Task::Review { strict } => review::run(strict),
         Task::Help => {
             console::out(USAGE);
             Ok(())
@@ -117,6 +129,11 @@ mod tests {
             parse(&["conformance", "--private"]),
             Ok(Task::Conformance { private: true })
         );
+        assert_eq!(parse(&["review"]), Ok(Task::Review { strict: false }));
+        assert_eq!(
+            parse(&["review", "--strict"]),
+            Ok(Task::Review { strict: true })
+        );
         assert_eq!(parse(&["help"]), Ok(Task::Help));
         assert_eq!(parse(&["--help"]), Ok(Task::Help));
         assert_eq!(parse(&["-h"]), Ok(Task::Help));
@@ -141,6 +158,10 @@ mod tests {
         assert_eq!(
             parse(&["conformance", "--fast"]),
             Err("unexpected argument `--fast`".to_owned())
+        );
+        assert_eq!(
+            parse(&["review", "--private"]),
+            Err("unexpected argument `--private`".to_owned())
         );
     }
 }

@@ -49,3 +49,4 @@
 - 2026-10-09 T-037 (PR #1, external): README verified section synced with main (status restamped, two-compartment coverage row 172 cases / 16906 values, D-03 quoted exactly); merged 2152631; orchestrator follow-up: specs/models.md status row 37/4/9/0, "Where the numbers come from" paragraph.
 - 2026-10-09 T-038 (PR #2, external): docs/screens gallery (14 PNGs from the snapshot example, synthetic data) and a three-picture strip in the README; merged b237ced.
 - 2026-10-09 Q-014 answered by the human: option 2 (exact minimum by default, reference_conventions preset); card T-040.
+- 2026-10-09 T-039 (PR #3, external): cargo xtask review (eight read-only consistency rules between README, specs, Cargo.toml/CITATION.cff and docs/conformance.md; CI step after lint, notes do not fail); 105 xtask tests; reviewed by the reviewer agent (board/messages/2026-10-09-reviewer-orchestrator-pr3.md): approve with follow-ups (T-041).
