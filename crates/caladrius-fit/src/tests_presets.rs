@@ -60,8 +60,12 @@ fn the_reference_conventions_are_the_previous_defaults() {
 
 /// The preset reproduces the defaults of v0.1.0: the trace below was recorded with
 /// `FitOptions::default()` before T-040 (commit 2fee9b9), on the reference fit where those
-/// defaults are furthest from the exact minimum (D-03). Values are compared to 1e-12 relative
-/// (the last bits of `exp` may differ between platforms); the step, damping and halvings exactly.
+/// defaults are furthest from the exact minimum (D-03). The structure is compared exactly (status,
+/// derivatives used, trace length, iteration index, step, damping, halvings); the values (WRSS,
+/// estimates, relative decrease, standard errors) to 1e-9 relative, because the last bits of the
+/// platform's `exp` differ and forward differences of increment 0.001 amplify them (1.8e-12 on
+/// Ubuntu CI against Windows; T-030b saw the same effect). This test pins the old behaviour; 1e-9
+/// is not an oracle tolerance, and those of `caladrius-testkit` are untouched.
 #[test]
 fn the_reference_conventions_reproduce_the_previous_default_trace() {
     #[rustfmt::skip]
@@ -78,7 +82,7 @@ fn the_reference_conventions_reproduce_the_previous_default_trace() {
         (0.8167853216123054, [16.234047302506447, 0.5677708739510228], Some(0.00012621102866645323)),
         (0.8167485533382147, [16.271469815283513, 0.5656785974348557], Some(4.5017862523827723e-5)),
     ];
-    let same = |a: f64, b: f64| (a - b).abs() <= 1e-12 * b.abs();
+    let same = |a: f64, b: f64| (a - b).abs() <= 1e-9 * b.abs();
     let r = run(&indometh_inv_y_subject_2(
         FitOptions::reference_conventions(),
     ))
