@@ -219,23 +219,23 @@ impl Kernel {
 
     /// ∂Φ/∂s, for the peak search of first-order input (MOD-2C-15).
     pub fn slope(&self, rate: f64, s: f64) -> f64 {
-        self.partials(rate, s).s
+        self.partials(Rate::plain(rate), s).s
     }
 
     /// Φ and its partial derivatives (`specs/fit.md` FIT-JAC-02 with V = 1, k = λ): 0 before the
     /// start of the input, as Φ is (the bolus is D at s = 0).
-    pub fn partials(&self, rate: f64, s: f64) -> Partials {
+    pub fn partials(&self, rate: Rate, s: f64) -> Partials {
         let dose = self.dose;
         match self.input {
             Input::Bolus => {
                 if s < 0.0 {
                     return Partials::default();
                 }
-                let value = dose * (-rate * s).exp();
+                let value = dose * rate.decay(s);
                 Partials {
                     value,
                     rate: if value == 0.0 { 0.0 } else { -s * value },
-                    s: -rate * value,
+                    s: -rate.value() * value,
                     ..Partials::default()
                 }
             }
@@ -247,26 +247,26 @@ impl Kernel {
     /// During the input (0 < s <= T): Φ = (D/T)·s·g(λs), ∂λ = (D/T)·s²·g'(λs), ∂T = −Φ/T,
     /// ∂s = (D/T)·e^−λs. After it: Φ = D·g(λT)·e^−λ(s−T), ∂λ = D·e^−λ(s−T)·[T·g'(λT) − (s − T)·g(λT)],
     /// ∂T = D·e^−λ(s−T)·λ·(g' + g)(λT) (g + g' = (1 − g)/z > 0), ∂s = −λ·Φ.
-    fn zero_order(&self, rate: f64, s: f64) -> Partials {
+    fn zero_order(&self, rate: Rate, s: f64) -> Partials {
         if s <= 0.0 {
             return Partials::default();
         }
-        let (dose, t) = (self.dose, self.dur);
+        let (dose, t, lambda) = (self.dose, self.dur, rate.value());
         if s <= t {
             let base = dose / t;
-            let z = rate * s;
+            let z = lambda * s;
             let value = base * s * g(z);
             return Partials {
                 value,
                 rate: base * s * s * dg(z),
                 dur: -value / t,
-                s: base * (-z).exp(),
+                s: base * rate.decay(s),
                 ka: 0.0,
             };
         }
-        let z = rate * t;
+        let z = lambda * t;
         let (g_z, dg_z) = (g(z), dg(z));
-        let decay = (-rate * (s - t)).exp();
+        let decay = rate.decay(s - t);
         let value = dose * g_z * decay;
         let rate_term = if decay == 0.0 {
             0.0
@@ -276,43 +276,88 @@ impl Kernel {
         Partials {
             value,
             rate: rate_term,
-            dur: dose * decay * rate * (dg_z + g_z),
-            s: -rate * value,
+            dur: dose * decay * lambda * (dg_z + g_z),
+            s: -lambda * value,
             ka: 0.0,
         }
     }
 
-    /// Φ = D·ka·f with f = s·e^−as·g(δs), a = min(λ, ka), b = max(λ, ka), z = δs:
-    /// ∂f/∂b = s²·e^−as·g'(z), ∂f/∂a = −s²·e^−as·(g + g')(z); ∂Φ/∂λ = D·ka·∂f/∂λ,
-    /// ∂Φ/∂ka = D·(f + ka·∂f/∂ka), ∂Φ/∂s = D·ka·(e^−bs − a·s·e^−as·g(z)). No division by ka − λ.
-    fn first_order(&self, rate: f64, s: f64) -> Partials {
+    /// Φ = D·ka·f with f = s·e^−as·g(z), a = min(λ, ka), b = max(λ, ka), z = (b − a)·s, x = a·s:
+    /// ∂f/∂b = s²·e^−as·g'(z), ∂f/∂a = −s²·e^−as·(g + g')(z) (g + g' = (1 − g)/z > 0);
+    /// ∂Φ/∂λ = D·ka·∂f/∂λ; ∂Φ/∂s = D·ka·e^−as·(e^−z − x·g(z)). For ∂Φ/∂ka = D·(f + ka·∂f/∂ka):
+    /// when ka = b, f + b·∂f/∂b = s·e^−as·(g + (x + z)·g') = s·e^−as·(e^−z + x·g'(z)) (since
+    /// g + z·g' = e^−z), which does not cancel when ka ≫ λ; when ka = a,
+    /// s·e^−as·(g − x·(g + g')). No division by ka − λ anywhere.
+    fn first_order(&self, rate: Rate, s: f64) -> Partials {
         if s <= 0.0 {
             return Partials::default();
         }
-        let (dose, ka) = (self.dose, self.ka);
-        let (a, b) = (rate.min(ka), rate.max(ka));
-        let z = (b - a) * s;
+        let (dose, ka, lambda) = (self.dose, self.ka, rate.value());
+        let rate_is_slower = lambda <= ka;
+        let (a, b) = if rate_is_slower {
+            (lambda, ka)
+        } else {
+            (ka, lambda)
+        };
+        let (x, z) = (a * s, (b - a) * s);
         let (g_z, dg_z) = (g(z), dg(z));
-        let decay = (-a * s).exp();
+        let decay = if rate_is_slower {
+            rate.decay(s)
+        } else {
+            (-ka * s).exp()
+        };
         let (s_decay, s2_decay) = if decay == 0.0 {
             (0.0, 0.0)
         } else {
             (s * decay, s * s * decay)
         };
         let f = s_decay * g_z;
-        let df_db = s2_decay * dg_z;
-        let df_da = -s2_decay * (g_z + dg_z);
-        let (df_drate, df_dka) = if rate <= ka {
-            (df_da, df_db)
+        let (df_drate, ka_bracket) = if rate_is_slower {
+            (-s2_decay * (g_z + dg_z), (-z).exp() + x * dg_z)
         } else {
-            (df_db, df_da)
+            (s2_decay * dg_z, g_z - x * (g_z + dg_z))
         };
         Partials {
             value: dose * ka * f,
             rate: dose * ka * df_drate,
-            ka: dose * (f + ka * df_dka),
-            s: dose * ka * ((-b * s).exp() - a * s_decay * g_z),
+            ka: dose * s_decay * ka_bracket,
+            s: dose * ka * decay * ((-z).exp() - x * g_z),
             dur: 0.0,
+        }
+    }
+}
+
+/// A rate constant λ = center + offset. The exponentials e^(−λ·u) are formed as
+/// e^(−center·u)·e^(−offset·u): when α and β are close, both are written about their mean, so the
+/// rounding of the large argument center·u is common to every term of a derivative and cancels
+/// out of the differences between the terms (MOD-2C-19, 2C-21); the small offsets keep their
+/// digits.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Rate {
+    pub center: f64,
+    pub offset: f64,
+}
+
+impl Rate {
+    /// λ itself, with no offset.
+    pub fn plain(rate: f64) -> Rate {
+        Rate {
+            center: rate,
+            offset: 0.0,
+        }
+    }
+
+    fn value(&self) -> f64 {
+        self.center + self.offset
+    }
+
+    /// e^(−λ·u).
+    fn decay(&self, u: f64) -> f64 {
+        let main = (-self.center * u).exp();
+        if self.offset == 0.0 || main == 0.0 {
+            main
+        } else {
+            main * (-self.offset * u).exp()
         }
     }
 }
@@ -390,15 +435,24 @@ mod tests {
         // Each pair of regimes at a point near their common boundary, where both are accurate.
         for (a, b, s) in [(1.0, 1.5, 3.0), (1.0, 1.2, 3.0), (1.0, 4.0, 3.0)] {
             let (x, y) = (moment_by_tail(a, b, s), moment_by_difference(a, b, s));
-            assert!((x - y).abs() <= 1e-14 * x, "tail/difference {a} {b} {s}: {x} {y}");
+            assert!(
+                (x - y).abs() <= 1e-14 * x,
+                "tail/difference {a} {b} {s}: {x} {y}"
+            );
         }
         for (a, b, s) in [(1.0, 1.25, 4.0), (1.0, 1.1, 2.9), (0.1, 0.6, 2.0)] {
             let (x, y) = (moment_by_series(a, b, s), moment_by_difference(a, b, s));
-            assert!((x - y).abs() <= 1e-14 * x, "series/difference {a} {b} {s}: {x} {y}");
+            assert!(
+                (x - y).abs() <= 1e-14 * x,
+                "series/difference {a} {b} {s}: {x} {y}"
+            );
         }
         for (a, b, s) in [(1.0, 1.2, 3.0), (1.0, 1.0, 3.0), (0.5, 0.7, 4.0)] {
             let (x, y) = (moment_by_series(a, b, s), moment_by_tail(a, b, s));
-            assert!((x - y).abs() <= 1e-14 * x, "series/tail {a} {b} {s}: {x} {y}");
+            assert!(
+                (x - y).abs() <= 1e-14 * x,
+                "series/tail {a} {b} {s}: {x} {y}"
+            );
         }
         // At ka = k the moment is ∫ u² e^−ku du = (2/k³)[1 − e^−y(1 + y + y²/2)].
         for s in [1.0_f64, 2.9, 3.1, 30.0] {
@@ -424,7 +478,7 @@ mod tests {
             dur: 0.0,
         };
         assert!(k.moment(0.5, 1e300).is_finite());
-        let p = k.partials(0.5, 1e300);
+        let p = k.partials(Rate::plain(0.5), 1e300);
         assert_eq!((p.value, p.rate, p.ka, p.s), (0.0, 0.0, 0.0, 0.0));
         let z = Kernel {
             input: Input::ZeroOrder,

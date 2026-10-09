@@ -320,9 +320,17 @@ fn from_macro(dose: f64, a: f64, b: f64, alpha: f64, beta: f64) -> Result<Dispos
     let w_alpha = a / total;
     let w_beta = b / total;
     let d = alpha - beta;
-    let k21 = derived("k21", "alpha x w_beta + beta x w_alpha", alpha * w_beta + beta * w_alpha)?;
+    let k21 = derived(
+        "k21",
+        "alpha x w_beta + beta x w_alpha",
+        alpha * w_beta + beta * w_alpha,
+    )?;
     let k10 = derived("k10", "alpha x beta / k21", alpha * beta / k21)?;
-    let k12 = derived("k12", "w_alpha x w_beta x (alpha - beta)^2 / k21", w_alpha * w_beta * d * d / k21)?;
+    let k12 = derived(
+        "k12",
+        "w_alpha x w_beta x (alpha - beta)^2 / k21",
+        w_alpha * w_beta * d * d / k21,
+    )?;
     let cl = derived("cl", "k10 x vc", k10 * vc)?;
     let q = derived("q", "k12 x vc", k12 * vc)?;
     let vp = derived("vp", "q / k21", q / k21)?;
@@ -387,7 +395,12 @@ mod tests {
         assert!(close(m.cl, 2.0) && close(m.q, 4.0) && close(m.vp, 8.0));
         let x = resolve(
             ModelId::Pk2IvBolus,
-            &given(&[("a", 50.0 / 9.0), ("b", 40.0 / 9.0), ("alpha", 1.0), ("beta", 0.1)]),
+            &given(&[
+                ("a", 50.0 / 9.0),
+                ("b", 40.0 / 9.0),
+                ("alpha", 1.0),
+                ("beta", 0.1),
+            ]),
             100.0,
         )
         .unwrap();
@@ -428,7 +441,13 @@ mod tests {
                 .unwrap_err()
                 .to_string()
         };
-        let base = [("cl", 2.0), ("vc", 10.0), ("q", 4.0), ("vp", 8.0), ("ka", 1.0)];
+        let base = [
+            ("cl", 2.0),
+            ("vc", 10.0),
+            ("q", 4.0),
+            ("vp", 8.0),
+            ("ka", 1.0),
+        ];
         let with = |name: &str, value: f64| -> Vec<(&str, f64)> {
             base.iter()
                 .map(|&(n, v)| if n == name { (n, value) } else { (n, v) })
@@ -442,9 +461,27 @@ mod tests {
         assert!(e(&[], 1.0).contains("alpha"));
         let mixed = e(&[("cl", 2.0), ("k12", 0.4), ("ka", 1.0)], 1.0);
         assert!(mixed.contains("`cl`") && mixed.contains("`k12`"), "{mixed}");
-        let macro_set = [("a", 5.0), ("b", 4.0), ("alpha", 1.0), ("beta", 0.1), ("ka", 1.0)];
+        let macro_set = [
+            ("a", 5.0),
+            ("b", 4.0),
+            ("alpha", 1.0),
+            ("beta", 0.1),
+            ("ka", 1.0),
+        ];
         assert!(e(&macro_set, 0.0).contains("dose"));
-        assert!(e(&[("a", 5.0), ("b", 4.0), ("alpha", 0.1), ("beta", 1.0), ("ka", 1.0)], 1.0).contains("alpha"));
+        assert!(
+            e(
+                &[
+                    ("a", 5.0),
+                    ("b", 4.0),
+                    ("alpha", 0.1),
+                    ("beta", 1.0),
+                    ("ka", 1.0)
+                ],
+                1.0
+            )
+            .contains("alpha")
+        );
         let degenerate = resolve(
             ModelId::Pk2IvBolus,
             &given(&[("k10", 1.0), ("k12", 1e-200), ("k21", 1e-200), ("vc", 1.0)]),
@@ -452,7 +489,32 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(degenerate, ModelError::DegenerateExponents { .. }));
-        assert!(e(&[("cl", 2.0), ("vc", 10.0), ("q", 1e300), ("vp", 1e-300), ("ka", 1.0)], 1.0).contains("k21"));
-        assert!(e(&[("v", 2.0), ("cl", 2.0), ("vc", 10.0), ("q", 4.0), ("vp", 8.0), ("ka", 1.0)], 1.0).contains("`v`"));
+        assert!(
+            e(
+                &[
+                    ("cl", 2.0),
+                    ("vc", 10.0),
+                    ("q", 1e300),
+                    ("vp", 1e-300),
+                    ("ka", 1.0)
+                ],
+                1.0
+            )
+            .contains("k21")
+        );
+        assert!(
+            e(
+                &[
+                    ("v", 2.0),
+                    ("cl", 2.0),
+                    ("vc", 10.0),
+                    ("q", 4.0),
+                    ("vp", 8.0),
+                    ("ka", 1.0)
+                ],
+                1.0
+            )
+            .contains("`v`")
+        );
     }
 }

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::kernel::{Kernel, Partials, first_order_peak};
+use crate::kernel::{Kernel, Partials, Rate, first_order_peak};
 use crate::model::Input;
 use crate::params2::{self, Disposition, Set};
 use crate::{Derivatives, Jacobian, ModelError, ModelInput, ModelOutput};
@@ -190,18 +190,51 @@ const GL_WEIGHTS: [f64; 4] = [
 
 /// Φ(α, s) − Φ(β, s). When the exponents are close on the time scale of s (d·s <= 1) the
 /// difference would cancel, so it is the integral of ∂Φ/∂λ over [β, α] by Gauss–Legendre (exact to
-/// rounding there: Φ is an entire function of λ varying on the scale 1/s); otherwise the
-/// difference, which then keeps all but a few bits.
-fn kernel_difference(p: &Disposition, kernel: &Kernel, s: f64, at_alpha: &Partials, at_beta: &Partials) -> f64 {
-    if p.d * s > 1.0 {
+/// rounding there: Φ is an entire function of λ varying on the scale 1/s), with every node written
+/// about the mean of α and β like the two kernels themselves; otherwise the difference, which then
+/// keeps all but a few bits.
+fn kernel_difference(
+    p: &Disposition,
+    kernel: &Kernel,
+    s: f64,
+    at_alpha: &Partials,
+    at_beta: &Partials,
+) -> f64 {
+    if !close_on_scale(p, s) {
         return at_alpha.value - at_beta.value;
     }
-    let (mid, half) = ((p.alpha + p.beta) / 2.0, p.d / 2.0);
+    let (center, half) = ((p.alpha + p.beta) / 2.0, p.d / 2.0);
+    let node = |offset: f64| kernel.partials(Rate { center, offset }, s).rate;
     let mut sum = 0.0;
     for (x, w) in GL_NODES.iter().zip(GL_WEIGHTS) {
-        sum += w * (kernel.partials(mid + half * x, s).rate + kernel.partials(mid - half * x, s).rate);
+        sum += w * (node(half * x) + node(-half * x));
     }
     half * sum
+}
+
+/// Whether the two exponents are close on the time scale of s (d·s <= 1).
+fn close_on_scale(p: &Disposition, s: f64) -> bool {
+    p.d * s <= 1.0
+}
+
+/// The rates α and β for the derivatives at s: about their mean when they are close on the time
+/// scale of s (see [`Rate`]), as they are otherwise.
+fn rates(p: &Disposition, s: f64) -> (Rate, Rate) {
+    if close_on_scale(p, s) {
+        let (center, half) = ((p.alpha + p.beta) / 2.0, p.d / 2.0);
+        (
+            Rate {
+                center,
+                offset: half,
+            },
+            Rate {
+                center,
+                offset: -half,
+            },
+        )
+    } else {
+        (Rate::plain(p.alpha), Rate::plain(p.beta))
+    }
 }
 
 /// ∂(V, α, β, w)/∂θ of MOD-2C-19 for a parameter θ of the clearance or the micro set, in forms
@@ -213,7 +246,12 @@ fn psi_gradient(p: &Disposition, name: &str) -> Option<[f64; 4]> {
     let sum = p.k10 + p.k12 + p.k21;
     let g = match (p.set, name) {
         (Set::Clearance, "cl") => [0.0, wa / p.vc, wb / p.vc, 2.0 * ww / p.vc],
-        (Set::Clearance, "vc") => [1.0, -p.alpha * wa / p.vc, -p.beta * wb / p.vc, -sum * ww / p.vc],
+        (Set::Clearance, "vc") => [
+            1.0,
+            -p.alpha * wa / p.vc,
+            -p.beta * wb / p.vc,
+            -sum * ww / p.vc,
+        ],
         (Set::Clearance, "q") => [
             0.0,
             p.alpha * p.m / (d * p.q),
@@ -247,8 +285,9 @@ pub(crate) fn jacobian(input: &ModelInput) -> Result<Jacobian, ModelError> {
     let mut columns: Vec<Vec<f64>> = vec![Vec::with_capacity(input.times.len()); names.len()];
     for &t in &input.times {
         let s = t - p.tlag;
-        let at_alpha = kernel.partials(p.alpha, s);
-        let at_beta = kernel.partials(p.beta, s);
+        let (rate_alpha, rate_beta) = rates(&p, s);
+        let at_alpha = kernel.partials(rate_alpha, s);
+        let at_beta = kernel.partials(rate_beta, s);
         let (wa, wb, v) = (p.w_alpha, p.w_beta, p.vc);
         let conc = (wa * at_alpha.value + wb * at_beta.value) / v;
         // ∂C/∂(V, α, β, w), MOD-2C-18.
