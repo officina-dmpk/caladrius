@@ -44,4 +44,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-032 | Oracle for the two-compartment models (grids, 256-bit, deSolve, derivatives, failing tests) | oracle | done | T-031 |
 | T-033 | caladrius-models pk2.* (two compartments), derivatives, xtask conformance for pk2 | engine | done | T-032 |
 | T-034 | pk2 in the engine schemas, UI model catalogue, fit page (parameter sets, diagram, labels), palette | interface | todo | T-033 |
-| T-035 | specs sync after T-032/T-033: output names, AUMC(0,t), dose 0 conventions, OF-08 (no automatic initial estimates for pk2), confirmed-by-oracle tags for MOD-2C | reader | todo | T-033 |
+| T-035 | specs sync after T-032/T-033: output names, AUMC(0,t), dose 0 conventions, OF-08 (no automatic initial estimates for pk2), confirmed-by-oracle tags for MOD-2C | reader | done | T-033 |
