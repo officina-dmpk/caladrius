@@ -41,5 +41,5 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-029 | Honest validation claims: coverage table per model, tolerance note, missing fit oracles (infusion, zero-order, lag) | oracle | done | T-021 |
 | T-030 | Closed-form derivatives for infusion, zero-order and lag models; xtask fit conformance with fixed parameters | engine | done | T-029 |
 | T-031 | specs/models.md: two-compartment models (parameterisations, closed forms, derivatives, ids, oracle cases) | reader | done | T-017 |
-| T-032 | Oracle for the two-compartment models (grids, 256-bit, deSolve, derivatives, failing tests) | oracle | todo | T-031 |
+| T-032 | Oracle for the two-compartment models (grids, 256-bit, deSolve, derivatives, failing tests) | oracle | done | T-031 |
 | T-033 | caladrius-models pk2.* (two compartments), derivatives, xtask conformance for pk2 | engine | todo | T-032 |
