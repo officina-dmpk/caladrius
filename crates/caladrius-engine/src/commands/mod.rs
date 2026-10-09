@@ -2,6 +2,7 @@
 //! deserialize from JSON, a result that serializes to JSON, and the schemas of both.
 
 mod analysis;
+mod compare;
 mod data;
 mod project;
 
@@ -44,6 +45,7 @@ pub(crate) const COMMANDS: &[CommandDef] = &[
     analysis::MODEL_SIMULATE,
     analysis::ANALYSIS_RUN,
     analysis::EXPORT_TABLE,
+    compare::ANALYSIS_COMPARE,
     project::DESCRIBE,
     project::SAVE,
     project::HISTORY_LIST,

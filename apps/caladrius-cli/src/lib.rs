@@ -13,6 +13,7 @@
 //! caladrius-cli commands [--format text|json]
 //! caladrius-cli <command-id> [--json FILE|-] [--param KEY=VALUE]... [--csv FILE]
 //!               [--project FILE] [--format json|csv] [--table NAME]
+//! caladrius-cli compare A B [--param parameters=[...]] --project FILE [--format json|csv]
 //! ```
 //!
 //! Every failure is a one-line message on stderr and exit code 1.
@@ -103,8 +104,13 @@ options for a command:
 Every command is also listed, with the JSON schema of its parameters and results, by
 `caladrius-cli commands --format json`. Failures print `error: ...` and exit with code 1.
 
+compare A B         short for `analysis.compare --param a=A --param b=B`: the difference, the
+                      percentage and the ratio of the parameters two analyses of the project
+                      share (--format csv prints them as a table)
+
 example:
-  caladrius-cli nca.run --csv oracle/data/theoph.csv --param route=extravascular --format csv";
+  caladrius-cli nca.run --csv oracle/data/theoph.csv --param route=extravascular --format csv
+  caladrius-cli compare 2 3 --project study.caladrius.json --format csv";
 
 fn parse_format(text: &str) -> Result<Format, CliError> {
     match text {
@@ -129,8 +135,15 @@ fn parse_args(args: &[String]) -> Result<Action, CliError> {
         return Ok(Action::Help);
     }
     let is_commands = first == "commands";
+    // `compare A B` is `analysis.compare` with the two analysis ids as plain arguments.
+    let is_compare = first == "compare";
+    let mut positional = 0;
     let mut run = RunArgs {
-        command: first.clone(),
+        command: if is_compare {
+            "analysis.compare".to_owned()
+        } else {
+            first.clone()
+        },
         json: None,
         params: Vec::new(),
         csv: None,
@@ -143,6 +156,17 @@ fn parse_args(args: &[String]) -> Result<Action, CliError> {
             Some((f, v)) if f.starts_with("--") => (f.to_owned(), Some(v.to_owned())),
             _ => (arg.clone(), None),
         };
+        if is_compare && !arg.starts_with("--") && positional < 2 {
+            if arg.parse::<u64>().is_err() {
+                return fail(format!(
+                    "`{arg}` is not an analysis id; use `compare A B` with the ids of two analyses"
+                ));
+            }
+            run.params
+                .push(format!("{}={arg}", if positional == 0 { "a" } else { "b" }));
+            positional += 1;
+            continue;
+        }
         if !flag.starts_with("--") {
             return fail(format!(
                 "unexpected argument `{arg}`; options start with `--` (see `caladrius-cli help`)"
@@ -293,6 +317,10 @@ fn csv_of(
     result: &Value,
     table: Option<&str>,
 ) -> Result<String, CliError> {
+    // analysis.compare: one row per parameter.
+    if params.get("a").is_some() && result.get("rows").is_some() && result.get("b").is_some() {
+        return Ok(compare_csv(result));
+    }
     // export.table prints its own table.
     if let Some(csv) = result.get("csv").and_then(Value::as_str) {
         return Ok(csv.to_owned());
@@ -349,7 +377,8 @@ fn csv_of(
 }
 
 /// Commands whose answer has a CSV form without naming a table.
-const CSV_COMMANDS: [&str; 6] = [
+const CSV_COMMANDS: [&str; 7] = [
+    "analysis.compare",
     "nca.run",
     "fit.run",
     "analysis.run",
@@ -357,6 +386,49 @@ const CSV_COMMANDS: [&str; 6] = [
     "model.simulate",
     "export.table",
 ];
+
+/// The columns of the table of `analysis.compare`, in the order of the rows' fields.
+const COMPARE_COLUMNS: [&str; 10] = [
+    "parameter",
+    "a",
+    "b",
+    "unit_a",
+    "unit_b",
+    "difference",
+    "difference_unit",
+    "relative_percent",
+    "ratio",
+    "not_comparable",
+];
+
+/// A CSV field: quoted when it holds a comma, a quote or a line end.
+fn csv_field(text: &str) -> String {
+    if text.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_owned()
+    }
+}
+
+/// The comparison of two analyses as a table: a column per field of a row, a line per parameter,
+/// an empty cell for a number the engine did not compute.
+fn compare_csv(result: &Value) -> String {
+    let mut out = COMPARE_COLUMNS.join(",");
+    out.push('\n');
+    for row in result["rows"].as_array().into_iter().flatten() {
+        let cells: Vec<String> = COMPARE_COLUMNS
+            .iter()
+            .map(|column| match &row[*column] {
+                Value::Null => String::new(),
+                Value::String(text) => csv_field(text),
+                other => number(other),
+            })
+            .collect();
+        out.push_str(&cells.join(","));
+        out.push('\n');
+    }
+    out
+}
 
 /// The tables `export.table` knows, from its schema.
 fn known_tables() -> Vec<String> {

@@ -52,7 +52,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-039 | cargo xtask review: the stated numbers confront the files that own them (PR #3, external contribution) | interface | done | T-036 |
 | T-041 | cargo xtask review follow-ups (strict can pass, pk2 drift rule, missing failure tests, .get indexing, line numbers) | interface | done | T-039 |
 | T-043 | Release workflow: binaries for Linux and Windows attached to every version tag; checkout@v5 | contributor-dsh | done | T-028 |
-| T-042 | analysis.compare command (differences, ratios between two analyses, computed by the engine), CLI and MCP | interface | todo | T-034 |
+| T-042 | analysis.compare command (differences, ratios between two analyses, computed by the engine), CLI and MCP | interface | done | T-034 |
 | T-045 | docs/validation.md: validation report (versions, methods, coverage, differences, limits, reproduction) | contributor-dsh | done | T-040 |
 | T-044 | Fit page: preset choice (Caladrius default / reference conventions) in More options | interface | todo | T-040 |
 | T-046 | Second source for the compartmental specs (Bertrand and Mentré 2008): page citations, multiple dosing and steady state, later models | reader | todo | T-035 |

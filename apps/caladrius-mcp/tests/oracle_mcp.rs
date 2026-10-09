@@ -209,3 +209,64 @@ impl Server {
         s
     }
 }
+
+#[test]
+fn an_agent_compares_two_auc_methods_of_theoph_and_the_engine_does_the_arithmetic() {
+    let csv = fs::read_to_string(oracle_dir().join("data").join("theoph.csv")).unwrap();
+    let linear = load_case("theoph_linear")
+        .unwrap()
+        .expected
+        .get("1", "auclast")
+        .flatten()
+        .unwrap();
+    let mixed = load_case("theoph")
+        .unwrap()
+        .expected
+        .get("1", "auclast")
+        .flatten()
+        .unwrap();
+    let mut s = Session::start();
+    s.initialize();
+    let imported = s.tool("data_import", json!({ "name": "theoph", "csv": csv }));
+    let worksheet = imported["result"]["structuredContent"]["worksheet"]["id"].clone();
+    let mut ids = Vec::new();
+    for method in ["linear", "lin_up_log_down"] {
+        let run = s.tool(
+            "nca_run",
+            json!({ "worksheet": worksheet, "route": "extravascular", "subject": 1,
+                    "options": { "auc_method": method } }),
+        );
+        assert_eq!(run["result"]["isError"], false, "{run}");
+        ids.push(run["result"]["structuredContent"]["id"].clone());
+    }
+    let answer = s.tool(
+        "analysis_compare",
+        json!({ "a": ids[0], "b": ids[1], "parameters": ["auclast"] }),
+    );
+    assert_eq!(answer["result"]["isError"], false, "{answer}");
+    let row = &answer["result"]["structuredContent"]["rows"][0];
+    let (a, b) = (row["a"].as_f64().unwrap(), row["b"].as_f64().unwrap());
+    // The values are PKNCA's (1e-6), and the three operations are the engine's own.
+    assert!((a - linear).abs() <= 1e-6 * linear, "{a} {linear}");
+    assert!((b - mixed).abs() <= 1e-6 * mixed, "{b} {mixed}");
+    assert_eq!(row["difference"].as_f64().unwrap(), b - a);
+    assert_eq!(
+        row["relative_percent"].as_f64().unwrap(),
+        (b - a) / a * 100.0
+    );
+    assert_eq!(row["ratio"].as_f64().unwrap(), b / a);
+    // Theoph has no units: still compared, with no unit to quote.
+    assert_eq!(row["unit_a"], Value::Null);
+    assert_eq!(row["not_comparable"], Value::Null);
+    // The whole subject list of the worksheet is refused with the way out.
+    let all = s.tool(
+        "nca_run",
+        json!({ "worksheet": worksheet, "route": "extravascular" }),
+    );
+    let all_id = all["result"]["structuredContent"]["id"].clone();
+    let refused = s.tool("analysis_compare", json!({ "a": ids[0], "b": all_id }));
+    assert_eq!(refused["result"]["isError"], true);
+    let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.starts_with("ambiguous_subject: "), "{text}");
+    s.finish();
+}

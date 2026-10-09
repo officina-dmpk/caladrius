@@ -198,3 +198,86 @@ fn standard_input_can_carry_the_parameters() {
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["conc"][0], 2.0);
 }
+
+/// The `auclast` of subject 1 in a case of the oracle.
+fn expected_auclast(case: &str) -> f64 {
+    load_case(case)
+        .unwrap()
+        .expected
+        .get("1", "auclast")
+        .flatten()
+        .unwrap()
+}
+
+#[test]
+fn compare_prints_the_difference_of_two_auc_methods_of_theoph_against_pknca() {
+    let dir = std::env::temp_dir().join(format!("caladrius-cli-compare-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let project = dir.join("theoph.caladrius.json");
+    let project = project.to_str().unwrap();
+    let data = oracle_dir().join("data").join("theoph.csv");
+    let data = data.to_str().unwrap();
+    // The first call imports the file (worksheet 1, analysis 2); the second, on the project,
+    // uses that worksheet (analysis 3).
+    for (method, csv) in [("linear", true), ("lin_up_log_down", false)] {
+        let option = format!("options.auc_method={method}");
+        let mut args = vec!["nca.run", "--project", project];
+        if csv {
+            args.extend(["--csv", data]);
+        }
+        args.extend(["--param", "route=extravascular", "--param", "subject=1"]);
+        args.extend(["--param", &option]);
+        let out = cli(&args);
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+    let out = cli(&[
+        "compare",
+        "2",
+        "3",
+        "--project",
+        project,
+        "--param",
+        r#"parameters=["auclast","cmax","half.life"]"#,
+        "--format",
+        "csv",
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    let mut lines = text.lines();
+    assert_eq!(
+        lines.next(),
+        Some(
+            "parameter,a,b,unit_a,unit_b,difference,difference_unit,relative_percent,ratio,not_comparable"
+        )
+    );
+    let rows: Vec<Vec<&str>> = lines.map(|l| l.split(',').collect()).collect();
+    assert_eq!(rows.len(), 3, "{text}");
+    let auc = &rows[0];
+    assert_eq!(auc[0], "auclast");
+    let (linear, mixed) = (
+        expected_auclast("theoph_linear"),
+        expected_auclast("theoph"),
+    );
+    let (a, b): (f64, f64) = (auc[1].parse().unwrap(), auc[2].parse().unwrap());
+    assert!((a - linear).abs() <= 1e-6 * linear, "{a} {linear}");
+    assert!((b - mixed).abs() <= 1e-6 * mixed, "{b} {mixed}");
+    // The engine's own arithmetic on its own numbers, printed in full.
+    let difference: f64 = auc[5].parse().unwrap();
+    assert_eq!(difference, b - a);
+    assert_eq!(auc[8].parse::<f64>().unwrap(), b / a);
+    assert!(difference < 0.0);
+    // No units were given to nca.run: no unit, and still a number.
+    assert_eq!((auc[3], auc[6], auc[9]), ("", "", ""));
+    // A bad id is one readable line.
+    let bad = cli(&["compare", "2", "x", "--project", project]);
+    assert_eq!(bad.status.code(), Some(1));
+    assert!(stderr(&bad).starts_with("error: "), "{}", stderr(&bad));
+    let missing = cli(&["compare", "2", "99", "--project", project]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(
+        stderr(&missing).contains("unknown_analysis"),
+        "{}",
+        stderr(&missing)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

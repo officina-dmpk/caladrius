@@ -97,6 +97,8 @@ cargo run -q -p caladrius-cli -- project.describe --project indo.caladrius.json
 
 `--param KEY=VALUE` sets one parameter (JSON when the value parses, text otherwise; `a.b=1` nests; `csv=@file` reads a file), `--json FILE` (or `-` for standard input) gives them all as an object, `--csv FILE` imports a worksheet first and is used by commands that take a `worksheet`, `--project FILE` loads and saves the project (worksheets, analyses with their options and results, and the history of the commands), `--format csv` prints the main table of an analysis (`--table NAME` picks another). What an import guessed (roles, units) and unit warnings go to standard error. A failure prints `error: <code>: <message>` and exits with code 1.
 
+`caladrius-cli compare A B --project FILE` (MCP tool `analysis_compare`) compares two analyses of one subject, NCA or fit: for each parameter they share, both values with units, the difference, the relative difference in percent and the ratio, computed by the engine (never convert or subtract by hand), or `not_comparable` with the reason (unit mismatch, missing value, a = 0); `--format csv` prints the table.
+
 A saved project contains the data it was built from, twice: in its worksheets, and in the history, which keeps the parameters of each command up to 64 KiB (an import keeps its CSV text; from the second invocation on, a `project.load` entry can hold the previous project text while that is under 64 KiB). This is provenance, and it makes the file larger and de-identification harder: before sharing a project, remove the `history` array from the JSON file (the project loads without it; `history_restored` is then false), or start from `project.new` and import only what you want to keep.
 
 ## MCP

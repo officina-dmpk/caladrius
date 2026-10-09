@@ -47,7 +47,7 @@ Typical session: data_import (CSV text in `csv`; roles and units are guessed fro
 data_describe to check them (data_set_column to fix a role or a unit), nca_run for a non-compartmental analysis \
 or fit_run for a model fit (the answer holds the result and its status), export_table for CSV tables. \
 Worksheets and analyses persist during the session; after data_set_cell or data_set_column an analysis is \
-`stale` until analysis_run. project_save returns the whole project to keep. Errors say what to fix.";
+`stale` until analysis_run. project_save returns the whole project to keep. To compare two analyses of one subject call analysis_compare: per shared parameter it gives both values with units, b-a, the relative difference in percent and the ratio, or `not_comparable` with the reason; quote those numbers, never compute them. Errors say what to fix.";
 
 /// The tool name of a command id.
 pub fn tool_name(command: &str) -> String {

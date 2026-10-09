@@ -28,6 +28,8 @@ mod schema;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_compare;
+#[cfg(test)]
 mod tests_pk2;
 #[cfg(test)]
 mod tests_units;

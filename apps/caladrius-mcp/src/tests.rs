@@ -643,3 +643,91 @@ fn a_pk2_fit_runs_over_mcp_and_its_initial_estimates_are_refused_readably() {
     assert!(text.starts_with("fit_error: "), "{text}");
     assert!(text.contains("enter initial estimates"), "{text}");
 }
+
+/// The `tools/list` entry of `analysis_compare` may add at most this many bytes to the list
+/// (T-042: a small tool; every tool is read by the model at the start of every conversation).
+const COMPARE_TOOL_BUDGET: usize = 600;
+
+#[test]
+fn the_compare_tool_is_small_and_read_only() {
+    let mut s = Server::new();
+    let r = send(
+        &mut s,
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    );
+    let tools = r["result"]["tools"].as_array().unwrap();
+    let tool = tools
+        .iter()
+        .find(|t| t["name"] == "analysis_compare")
+        .expect("analysis_compare is a tool");
+    assert_eq!(tool["annotations"]["readOnlyHint"], true);
+    assert_eq!(tool["inputSchema"]["required"], json!(["a", "b"]));
+    // The entry plus the comma that separates it from the next one.
+    let growth = tool.to_string().len() + 1;
+    assert!(
+        growth < COMPARE_TOOL_BUDGET,
+        "analysis_compare adds {growth} bytes to tools/list; the budget is {COMPARE_TOOL_BUDGET}"
+    );
+    // One line of description.
+    let description = tool["description"].as_str().unwrap();
+    assert!(!description.contains('\n'), "{description}");
+}
+
+#[test]
+fn two_analyses_are_compared_over_the_session() {
+    let mut s = Server::new();
+    let r = call(
+        &mut s,
+        1,
+        "data_import",
+        json!({ "name": "w", "csv": "time (h),conc (mg/L),dose (mg)\n0,0,10\n0.5,4,10\n1,5,10\n2,3,10\n4,1,10\n8,0.2,10\n" }),
+    );
+    let ws = r["result"]["structuredContent"]["worksheet"]["id"].clone();
+    let mut ids = Vec::new();
+    for (i, method) in ["linear", "lin_up_log_down"].iter().enumerate() {
+        let r = call(
+            &mut s,
+            2 + i as u64,
+            "nca_run",
+            json!({ "worksheet": ws, "route": "extravascular",
+                    "options": { "auc_method": method,
+                                 "units": { "time": "h", "concentration": "mg/L", "dose": "mg" } } }),
+        );
+        assert_eq!(r["result"]["isError"], false, "{r}");
+        ids.push(r["result"]["structuredContent"]["id"].clone());
+    }
+    let r = call(
+        &mut s,
+        9,
+        "analysis_compare",
+        json!({ "a": ids[0], "b": ids[1], "parameters": ["auclast", "cmax"] }),
+    );
+    assert_jsonrpc(&r);
+    assert_eq!(r["result"]["isError"], false, "{r}");
+    let out = &r["result"]["structuredContent"];
+    let rows = out["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    let auc = &rows[0];
+    let (a, b) = (auc["a"].as_f64().unwrap(), auc["b"].as_f64().unwrap());
+    assert!(b < a, "{auc}");
+    assert_eq!(auc["difference"], b - a);
+    assert_eq!(auc["relative_percent"], (b - a) / a * 100.0);
+    assert_eq!(auc["ratio"], b / a);
+    assert_eq!(auc["difference_unit"], "h·mg/L");
+    assert_eq!(rows[1]["difference"], 0.0);
+    // The text content is the same JSON, and the dotted id works too.
+    let text: Value =
+        serde_json::from_str(r["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(&text, out);
+    let r = call(
+        &mut s,
+        10,
+        "analysis.compare",
+        json!({ "a": ids[0], "b": 99 }),
+    );
+    assert_eq!(r["result"]["isError"], true);
+    let text = r["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.starts_with("unknown_analysis: "), "{text}");
+    // Nothing was stored by comparing.
+    assert_eq!(s.engine().project().analyses().len(), 2);
+}

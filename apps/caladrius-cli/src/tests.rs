@@ -624,3 +624,140 @@ fn a_pk2_fit_runs_from_the_command_line() {
     assert!(refused.contains("fit_error"), "{refused}");
     assert!(refused.contains("enter initial estimates"), "{refused}");
 }
+
+#[test]
+fn compare_is_analysis_compare_with_the_two_ids_as_arguments() {
+    let Action::Run(r) = parse_args(&args(&["compare", "2", "3", "--format", "csv"])).unwrap()
+    else {
+        panic!("a run");
+    };
+    assert_eq!(r.command, "analysis.compare");
+    assert_eq!(r.params, ["a=2", "b=3"]);
+    assert_eq!(r.format, Some(Format::Csv));
+    // The long spelling takes the ids as parameters.
+    let Action::Run(r) = parse_args(&args(&["analysis.compare", "--param", "a=2"])).unwrap() else {
+        panic!("a run");
+    };
+    assert_eq!(r.command, "analysis.compare");
+    // Anything but a number is refused with the way out; a third id is not an option.
+    assert!(failure(&["compare", "x", "3"]).contains("not an analysis id"));
+    assert!(failure(&["compare", "2", "3", "4"]).contains("unexpected argument `4`"));
+    // Other commands still take no bare argument.
+    assert!(failure(&["nca.run", "2"]).contains("unexpected argument `2`"));
+}
+
+#[test]
+fn compare_runs_on_a_project_and_prints_json_or_a_table() {
+    let dir = scratch("compare");
+    let file = csv_file(&dir);
+    let project = dir.join("study.caladrius.json");
+    let project = project.to_str().unwrap();
+    let units = r#"options.units={"time":"h","concentration":"mg/L","dose":"mg"}"#;
+    // Analysis 2 imports the worksheet; analysis 3 uses it again.
+    for (method, with_csv) in [("linear", true), ("lin_up_log_down", false)] {
+        let method = format!("options.auc_method={method}");
+        let mut list = vec!["nca.run", "--project", project];
+        if with_csv {
+            list.extend(["--csv", &file]);
+        }
+        list.extend([
+            "--param",
+            "route=extravascular",
+            "--param",
+            units,
+            "--param",
+            &method,
+        ]);
+        run_args(&list).unwrap();
+    }
+    let before = fs::read(project).unwrap();
+    let json = json_out(
+        &run_args(&[
+            "compare",
+            "2",
+            "3",
+            "--project",
+            project,
+            "--param",
+            r#"parameters=["auclast","tlag"]"#,
+        ])
+        .unwrap(),
+    );
+    assert_eq!(json["a"]["analysis"], 2);
+    assert_eq!(json["b"]["subject"], "A");
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    let (a, b) = (
+        rows[0]["a"].as_f64().unwrap(),
+        rows[0]["b"].as_f64().unwrap(),
+    );
+    assert_eq!(rows[0]["difference"], b - a);
+    assert_eq!(rows[0]["ratio"], b / a);
+    // tlag is 0 in a: the difference is kept, the percentage and the ratio are not.
+    assert_eq!(rows[1]["a"], 0.0);
+    assert_eq!(rows[1]["relative_percent"], Value::Null);
+    // The table: the header, a line per parameter, an empty cell for what was not computed.
+    let table = run_args(&[
+        "compare",
+        "2",
+        "3",
+        "--project",
+        project,
+        "--param",
+        r#"parameters=["auclast","tlag"]"#,
+        "--format",
+        "csv",
+    ])
+    .unwrap()
+    .stdout;
+    let lines: Vec<&str> = table.lines().collect();
+    assert_eq!(
+        lines[0],
+        "parameter,a,b,unit_a,unit_b,difference,difference_unit,relative_percent,ratio,not_comparable"
+    );
+    assert_eq!(lines.len(), 3, "{table}");
+    let auc: Vec<&str> = lines[1].split(',').collect();
+    assert_eq!(auc[0], "auclast");
+    assert_eq!(auc[1].parse::<f64>().unwrap(), a);
+    assert_eq!(auc[5].parse::<f64>().unwrap(), b - a);
+    assert_eq!(auc[9], "");
+    // tlag: "a is zero: ..." is the reason, the percentage and the ratio are empty.
+    assert!(
+        lines[2].starts_with("tlag,0,0,h,h,0,h,,,a is zero"),
+        "{}",
+        lines[2]
+    );
+    // Comparing changes nothing in the project file.
+    assert_eq!(fs::read(project).unwrap(), before);
+    // The table is a --format csv of this command only.
+    assert!(
+        failure(&[
+            "compare",
+            "2",
+            "3",
+            "--project",
+            project,
+            "--table",
+            "nca.parameters"
+        ])
+        .contains("--table needs --format csv")
+    );
+    // A bad id is one line with its code.
+    assert!(
+        failure(&["compare", "2", "99", "--project", project]).starts_with("unknown_analysis: ")
+    );
+}
+
+#[test]
+fn a_reason_with_a_comma_is_quoted_in_the_table() {
+    let result = json!({
+        "a": { "analysis": 1 }, "b": { "analysis": 2 },
+        "rows": [{ "parameter": "x", "a": 1.5, "b": null, "unit_a": "h", "unit_b": null,
+                   "difference": null, "difference_unit": null, "relative_percent": null,
+                   "ratio": null, "not_comparable": "a, \"b\"" }]
+    });
+    assert_eq!(
+        compare_csv(&result),
+        "parameter,a,b,unit_a,unit_b,difference,difference_unit,relative_percent,ratio,not_comparable\nx,1.5,,h,,,,,,\"a, \"\"b\"\"\"\n"
+    );
+}

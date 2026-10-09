@@ -65,6 +65,7 @@ fn the_commands_are_the_documented_ones() {
             "model.simulate",
             "analysis.run",
             "export.table",
+            "analysis.compare",
             "project.describe",
             "project.save",
             "history.list",
