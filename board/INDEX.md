@@ -54,3 +54,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-043 | Release workflow: binaries for Linux and Windows attached to every version tag; checkout@v5 | contributor-dsh | done | T-028 |
 | T-042 | analysis.compare command (differences, ratios between two analyses, computed by the engine), CLI and MCP | interface | todo | T-034 |
 | T-045 | docs/validation.md: validation report (versions, methods, coverage, differences, limits, reproduction) | contributor-dsh | done | T-040 |
+| T-044 | Fit page: preset choice (Caladrius default / reference conventions) in More options | interface | todo | T-040 |
