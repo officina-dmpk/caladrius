@@ -3,13 +3,13 @@
 //! it (`fit.initial_estimates`, `fit.evaluate`, `model.simulate`, `fit.run`). The last answers of the
 //! engine are caches and are not saved. Nothing here computes a curve or a statistic.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::model::{FitOk, FitView, Status, Table, WorksheetInfo};
-use crate::modelinfo::{self, Input, ModelInfo};
+use crate::modelinfo::{self, Compartments, Input, ModelInfo, ParameterSet};
 use crate::sheet;
 
 /// The weighting schemes of the engine, by id, as the person reads them.
@@ -75,8 +75,13 @@ pub struct FitPage {
     pub analysis: Option<u64>,
     pub worksheet: u64,
     pub subject: String,
+    #[serde(default)]
+    pub compartments: Compartments,
     pub input: Input,
     pub lag: bool,
+    /// For two compartments: which complete set of parameters the starting values are in.
+    #[serde(default)]
+    pub set: ParameterSet,
     /// The fixed duration of an infusion or a zero-order input.
     pub duration: f64,
     pub dose_override: Option<f64>,
@@ -84,6 +89,10 @@ pub struct FitPage {
     pub weighting: String,
     /// The starting values by parameter name, as the person sees and edits them.
     pub initial: BTreeMap<String, f64>,
+    /// Starting values that are placeholders the person has not set yet (two compartments, where
+    /// the engine cannot generate them).
+    #[serde(default)]
+    pub pending: BTreeSet<String>,
     /// The options the person set, as the engine takes them (empty: the engine's defaults).
     pub options: Value,
     #[serde(skip)]
@@ -102,12 +111,15 @@ impl FitPage {
             analysis: None,
             worksheet,
             subject,
+            compartments: Compartments::default(),
             input: Input::default(),
             lag: false,
+            set: ParameterSet::default(),
             duration: defaults::DURATION,
             dose_override: None,
             weighting: "uniform".to_owned(),
             initial: BTreeMap::new(),
+            pending: BTreeSet::new(),
             options: Value::Null,
             view: None,
             error: None,
@@ -132,7 +144,7 @@ impl FitPage {
         if let Some(fixed) = options.get_mut("fixed").and_then(Value::as_object_mut) {
             fixed.remove("dur");
         }
-        let initial = spec
+        let initial: BTreeMap<String, f64> = spec
             .get("initial")
             .and_then(Value::as_object)
             .map(|m| {
@@ -149,8 +161,10 @@ impl FitPage {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned(),
+            compartments: model.compartments,
             input: model.input,
             lag: model.lag,
+            set: ParameterSet::of(initial.keys().map(String::as_str)),
             duration,
             dose_override: spec.get("dose").and_then(Value::as_f64),
             weighting: spec
@@ -159,6 +173,7 @@ impl FitPage {
                 .unwrap_or("uniform")
                 .to_owned(),
             initial,
+            pending: BTreeSet::new(),
             options,
             view: Some(v),
             error: None,
@@ -168,7 +183,66 @@ impl FitPage {
     }
 
     pub fn model(&self) -> &'static ModelInfo {
-        modelinfo::pick(self.input, self.lag)
+        modelinfo::pick(self.compartments, self.input, self.lag)
+    }
+
+    /// What the model controls hold.
+    pub fn choice(&self) -> crate::modelpick::Choice {
+        crate::modelpick::Choice {
+            compartments: self.compartments,
+            input: self.input,
+            lag: self.lag,
+            set: self.set,
+        }
+    }
+
+    pub fn set_choice(&mut self, choice: crate::modelpick::Choice) {
+        self.compartments = choice.compartments;
+        self.input = choice.input;
+        self.lag = choice.lag;
+        self.set = choice.set;
+    }
+
+    /// The parameters the model fits, in the parameter set the page holds.
+    pub fn parameters(&self) -> Vec<&'static str> {
+        self.model().parameters_in(self.set)
+    }
+
+    /// Whether the engine can generate the starting values from the data (one compartment only,
+    /// `specs/fit.md` OF-08); for two compartments the person gives every one.
+    pub fn automatic_estimates(&self) -> bool {
+        self.compartments == Compartments::One
+    }
+
+    /// Two compartments: makes sure there is a value to edit for every parameter of the model in
+    /// the chosen set. A value already there is kept (it may be one the person set); a missing
+    /// one is a placeholder from the public worked example, shown as not set yet. Values of
+    /// parameters the set does not have are dropped.
+    pub fn seed_placeholders(&mut self) {
+        // Values left by a one-compartment model (V, k) mean nothing here.
+        if self.initial.contains_key("v") || self.initial.contains_key("k") {
+            self.initial.clear();
+        }
+        let names = self.parameters();
+        self.initial.retain(|k, _| names.contains(&k.as_str()));
+        self.pending.retain(|k| names.contains(&k.as_str()));
+        for name in names {
+            if !self.initial.contains_key(name) {
+                self.initial
+                    .insert(name.to_owned(), ParameterSet::example(name).unwrap_or(1.0));
+                self.pending.insert(name.to_owned());
+            }
+        }
+    }
+
+    /// The starting values are all set by the person (always so when the engine generated them).
+    pub fn starting_values_set(&self) -> bool {
+        !self.initial.is_empty() && self.pending.is_empty()
+    }
+
+    /// The person accepts the values shown.
+    pub fn accept_placeholders(&mut self) {
+        self.pending.clear();
     }
 
     /// The parameters held at a value (the duration of the input).
@@ -269,7 +343,7 @@ impl FitPage {
 
     /// The starting values only for the parameters the model fits.
     fn fitted_initial(&self) -> BTreeMap<&String, f64> {
-        let names = self.model().parameters;
+        let names = self.parameters();
         self.initial
             .iter()
             .filter(|(k, _)| names.contains(&k.as_str()))
@@ -315,8 +389,8 @@ impl FitPage {
     pub fn simulate_params(&self, end: f64) -> Option<Value> {
         let dose = self.dose()?;
         let mut params: BTreeMap<String, f64> = BTreeMap::new();
-        for name in self.model().parameters {
-            params.insert((*name).to_owned(), *self.initial.get(*name)?);
+        for name in self.parameters() {
+            params.insert(name.to_owned(), *self.initial.get(name)?);
         }
         params.extend(self.fixed());
         Some(json!({
@@ -332,10 +406,11 @@ impl FitPage {
     /// Takes the generated starting values from `fit.initial_estimates`.
     pub fn adopt_initial(&mut self, answer: &Value) {
         self.initial.clear();
+        self.pending.clear();
         if let Some(map) = answer.get("initial").and_then(Value::as_object) {
-            for name in self.model().parameters {
-                if let Some(x) = map.get(*name).and_then(Value::as_f64) {
-                    self.initial.insert((*name).to_owned(), x);
+            for name in self.parameters() {
+                if let Some(x) = map.get(name).and_then(Value::as_f64) {
+                    self.initial.insert(name.to_owned(), x);
                 }
             }
         }
@@ -460,6 +535,45 @@ mod tests {
         assert_eq!(sim["params"]["dur"], 2.0);
         assert_eq!(sim["grid"]["end"], 24.0);
         assert!(sim["params"].get("ka").is_none());
+    }
+
+    #[test]
+    fn two_compartments_have_placeholders_a_set_and_their_own_parameter_names() {
+        let mut p = FitPage::new(2, "A".to_owned());
+        p.compartments = Compartments::Two;
+        p.input = Input::FirstOrder;
+        assert!(!p.automatic_estimates());
+        p.seed_placeholders();
+        assert_eq!(p.model().id, "pk2.oral_1");
+        assert_eq!(p.pending.len(), 5);
+        assert!(!p.starting_values_set());
+        let run = p.run_params();
+        assert_eq!(run["model"], "pk2.oral_1");
+        assert_eq!(
+            run["initial"],
+            json!({ "cl": 2.0, "vc": 10.0, "q": 4.0, "vp": 8.0, "ka": 2.0 })
+        );
+        // A value the person set stays when the set changes and the name is still there.
+        p.initial.insert("vc".to_owned(), 12.5);
+        p.pending.remove("vc");
+        p.set = ParameterSet::Micro;
+        p.seed_placeholders();
+        let mut names: Vec<&str> = p.initial.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["k10", "k12", "k21", "ka", "vc"]);
+        assert_eq!(p.initial["vc"], 12.5);
+        assert!(!p.pending.contains("vc") && p.pending.contains("k10"));
+        p.accept_placeholders();
+        assert!(p.starting_values_set());
+        p.preview.dose = Some(100.0);
+        let sim = p.simulate_params(24.0).unwrap();
+        assert_eq!(sim["model"], "pk2.oral_1");
+        assert_eq!(sim["params"]["k21"], 0.5);
+        // Values of a one-compartment model are dropped.
+        let mut q = page();
+        q.compartments = Compartments::Two;
+        q.seed_placeholders();
+        assert!(!q.initial.contains_key("v") && q.initial.contains_key("cl"));
     }
 
     #[test]

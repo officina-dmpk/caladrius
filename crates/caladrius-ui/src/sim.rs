@@ -2,7 +2,7 @@
 //! engine's `model.simulate` (no worksheet needed). It reuses the model and parameter controls of
 //! the fit page. The curve is redrawn at every change; "Save as analysis" stores it in the project.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use egui::{RichText, Ui};
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::fit::defaults::PREVIEW_POINTS;
 use crate::fitplots;
 use crate::fmt;
 use crate::model::{Simulation, WorksheetInfo, read};
-use crate::modelinfo::{self, Input, ModelInfo};
+use crate::modelinfo::{self, Compartments, Input, ModelInfo, ParameterSet};
 use crate::modelpick;
 use crate::plot::{self, Dot, LineSet, PointSet, Tone, Weight};
 use crate::plotdata::Pt;
@@ -32,13 +32,25 @@ pub mod example {
 }
 
 /// The derived values shown under the curve, in order.
-const SECONDARY: [&str; 9] = [
+const SECONDARY: [&str; 21] = [
     "half_life",
+    "half_life_alpha",
     "cl",
+    "vc",
+    "q",
+    "vp",
+    "k10",
+    "k12",
+    "k21",
+    "a",
+    "b",
+    "alpha",
+    "beta",
     "auc_inf",
     "mrt",
     "mrt_system",
     "vss",
+    "vz",
     "c0",
     "tmax_pred",
     "cmax_pred",
@@ -52,11 +64,17 @@ pub struct SimPage {
     /// The worksheet whose units the page uses: the one selected when the page was opened.
     #[serde(default)]
     pub worksheet: Option<u64>,
+    #[serde(default)]
+    pub compartments: Compartments,
     pub input: Input,
     pub lag: bool,
+    /// For two compartments: which complete set of parameters the values are in.
+    #[serde(default)]
+    pub set: ParameterSet,
     pub duration: f64,
     pub dose: f64,
-    /// Parameter values by engine name (`v`, `k`, `ka`, `tlag`).
+    /// Parameter values by engine name (`v`, `k`, `ka`, `tlag`; for two compartments the three
+    /// sets, of which the chosen one is used).
     pub params: BTreeMap<String, f64>,
     /// The curve runs from 0 to this time.
     pub end: f64,
@@ -74,19 +92,30 @@ impl Default for SimPage {
 
 impl SimPage {
     pub fn new() -> SimPage {
+        let mut params = BTreeMap::from([
+            ("v".to_owned(), example::V),
+            ("k".to_owned(), example::K),
+            ("ka".to_owned(), example::KA),
+            ("tlag".to_owned(), example::TLAG),
+        ]);
+        // The three sets of two compartments, from the public worked example of the specification.
+        for set in ParameterSet::ALL {
+            for name in set.names() {
+                if let Some(x) = ParameterSet::example(name) {
+                    params.insert((*name).to_owned(), x);
+                }
+            }
+        }
         SimPage {
             analysis: None,
             worksheet: None,
+            compartments: Compartments::default(),
             input: Input::default(),
             lag: false,
+            set: ParameterSet::default(),
             duration: example::DURATION,
             dose: example::DOSE,
-            params: BTreeMap::from([
-                ("v".to_owned(), example::V),
-                ("k".to_owned(), example::K),
-                ("ka".to_owned(), example::KA),
-                ("tlag".to_owned(), example::TLAG),
-            ]),
+            params,
             end: example::END,
             result: None,
             error: None,
@@ -105,8 +134,12 @@ impl SimPage {
             .and_then(modelinfo::by_id)?;
         let mut page = SimPage::new();
         page.analysis = view.get("id").and_then(Value::as_u64);
+        page.compartments = model.compartments;
         page.input = model.input;
         page.lag = model.lag;
+        if let Some(map) = input.get("params").and_then(Value::as_object) {
+            page.set = ParameterSet::of(map.keys().map(String::as_str));
+        }
         page.dose = input.get("dose").and_then(Value::as_f64)?;
         if let Some(map) = input.get("params").and_then(Value::as_object) {
             for (k, x) in map {
@@ -129,16 +162,33 @@ impl SimPage {
     }
 
     pub fn model(&self) -> &'static ModelInfo {
-        modelinfo::pick(self.input, self.lag)
+        modelinfo::pick(self.compartments, self.input, self.lag)
+    }
+
+    /// What the model controls hold.
+    pub fn choice(&self) -> modelpick::Choice {
+        modelpick::Choice {
+            compartments: self.compartments,
+            input: self.input,
+            lag: self.lag,
+            set: self.set,
+        }
+    }
+
+    pub fn set_choice(&mut self, choice: modelpick::Choice) {
+        self.compartments = choice.compartments;
+        self.input = choice.input;
+        self.lag = choice.lag;
+        self.set = choice.set;
     }
 
     /// `model.simulate` for what the page holds.
     pub fn params(&self, store: bool) -> Value {
         let model = self.model();
         let mut params: BTreeMap<String, f64> = model
-            .parameters
-            .iter()
-            .filter_map(|n| self.params.get(*n).map(|x| ((*n).to_owned(), *x)))
+            .parameters_in(self.set)
+            .into_iter()
+            .filter_map(|n| self.params.get(n).map(|x| (n.to_owned(), *x)))
             .collect();
         if self.input.has_duration() {
             params.insert("dur".to_owned(), self.duration);
@@ -254,7 +304,9 @@ pub fn central(
     let mut changed = false;
 
     section(ui, tokens, "Model", |ui| {
-        changed |= modelpick::picker(ui, tokens, &mut page.input, &mut page.lag, "Parameters");
+        let mut choice = page.choice();
+        changed |= modelpick::picker(ui, tokens, &mut choice, "Parameters");
+        page.set_choice(choice);
         if page.input.has_duration() {
             ui.horizontal(|ui| {
                 ui.label("Duration of the input");
@@ -268,9 +320,14 @@ pub fn central(
             ui.label("Dose");
             changed |= unit_field(ui, &mut page.dose, 0.0..=1.0e12, &units.dose);
         });
-        let model = page.model();
-        changed |=
-            modelpick::parameter_rows(ui, tokens, "simulation", model, &mut page.params, info);
+        let rows = modelpick::Rows::of("simulation", &page.choice(), info);
+        changed |= modelpick::parameter_rows(
+            ui,
+            tokens,
+            &rows,
+            &mut page.params,
+            None::<&mut BTreeSet<String>>,
+        );
     });
 
     section(ui, tokens, "Time", |ui| {

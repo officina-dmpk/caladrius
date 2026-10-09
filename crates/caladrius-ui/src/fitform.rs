@@ -82,7 +82,9 @@ pub fn central(
     });
 
     section(ui, tokens, "Model and dose", |ui| {
-        if modelpick::picker(ui, tokens, &mut page.input, &mut page.lag, "Fitted") {
+        let mut choice = page.choice();
+        if modelpick::picker(ui, tokens, &mut choice, "Fitted") {
+            page.set_choice(choice);
             regenerate = true;
         }
         if page.input.has_duration() {
@@ -132,7 +134,7 @@ pub fn central(
 
     ui.add_space(tokens.spacing.medium);
     ui.horizontal(|ui| {
-        let ready = page.preview.error.is_none() && !page.initial.is_empty();
+        let ready = page.preview.error.is_none() && page.starting_values_set();
         let text = if page.view.is_some() {
             "Fit again"
         } else {
@@ -140,7 +142,9 @@ pub fn central(
         };
         if ui
             .add_enabled(ready, tokens.primary_button(text))
-            .on_disabled_hover_text("Fix the starting values first: the message above says what")
+            .on_disabled_hover_text(
+                "Set the starting values first (or fix the message above, if there is one)",
+            )
             .clicked()
         {
             actions.push(Action::RunFit);
@@ -173,30 +177,61 @@ fn starting_values(
     if let Some(message) = &page.start_error {
         error_box(ui, tokens, message);
     }
-    let model = page.model();
+    let automatic = page.automatic_estimates();
+    if !automatic {
+        // One sentence, and every value is asked for (specs/fit.md OF-08).
+        ui.label(
+            RichText::new(
+                "Starting values cannot be generated from the data for two compartments: set a value for every parameter below.",
+            )
+            .color(c.text.color()),
+        );
+    }
     if page.initial.is_empty() && page.start_error.is_none() {
         ui.label(
             RichText::new("No starting values yet: they are generated from the data.")
                 .color(c.text_muted.color()),
         );
-    } else if modelpick::parameter_rows(
-        ui,
-        tokens,
-        "starting",
-        model,
-        &mut page.initial,
-        Some(info),
-    ) {
-        *changed = true;
+    } else {
+        let rows = modelpick::Rows::of("starting", &page.choice(), Some(info));
+        let FitPage {
+            initial, pending, ..
+        } = &mut *page;
+        if modelpick::parameter_rows(ui, tokens, &rows, initial, Some(pending)) {
+            *changed = true;
+        }
     }
     ui.horizontal(|ui| {
-        if ui.button("Generate from the data").clicked() {
-            *regenerate = true;
+        if automatic {
+            if ui.button("Generate from the data").clicked() {
+                *regenerate = true;
+            }
+            ui.label(
+                RichText::new("Edit a value and the curve on the plot follows.")
+                    .color(c.text_muted.color()),
+            );
+        } else {
+            let waiting = page.pending.len();
+            if waiting > 0
+                && ui
+                    .button("Use the values shown")
+                    .on_hover_text(
+                        "They come from the worked example of the specification, not from your data",
+                    )
+                    .clicked()
+            {
+                page.accept_placeholders();
+                *changed = true;
+            }
+            let hint = if waiting > 0 {
+                format!(
+                    "{waiting} still to set (shown muted); the curve follows each edit."
+                )
+            } else {
+                "Edit a value and the curve on the plot follows.".to_owned()
+            };
+            ui.label(RichText::new(hint).color(c.text_muted.color()));
         }
-        ui.label(
-            RichText::new("Edit a value and the curve on the plot follows.")
-                .color(c.text_muted.color()),
-        );
     });
     if let Some(message) = page
         .preview

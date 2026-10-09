@@ -13,6 +13,7 @@ use crate::fitplots;
 use crate::fmt;
 use crate::import::{self, PendingImport};
 use crate::model::{Overview, Status, Table, WorksheetInfo, read};
+use crate::modelinfo::Compartments;
 use crate::nca::{self, NcaPage};
 use crate::palette::{self, CommandLine, PaletteState};
 use crate::projectfile::{FileState, Guarded};
@@ -34,6 +35,10 @@ pub enum Action {
     NewFit,
     /// A new model simulation (no worksheet needed).
     NewSimulation,
+    /// A new model fit with this number of compartments picked.
+    NewFitWith(Compartments),
+    /// A new model simulation with this number of compartments picked.
+    NewSimulationWith(Compartments),
     /// The fit page changed: show the live curve again; `regenerate` also asks for new starting
     /// values from the data (the subject, model or dose changed).
     FitChanged {
@@ -486,6 +491,8 @@ impl UiApp {
                 Action::NewAnalysis => self.new_analysis(),
                 Action::NewFit => self.new_fit(),
                 Action::NewSimulation => self.new_simulation(),
+                Action::NewFitWith(c) => self.new_fit_with(c),
+                Action::NewSimulationWith(c) => self.new_simulation_with(c),
                 Action::FitChanged { regenerate } => self.fit_changed(regenerate),
                 Action::RunFit => self.run_fit(),
                 Action::SimChanged => self.sim_changed(),

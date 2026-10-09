@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::app::{Notice, NoticeKind, Selection, UiApp};
 use crate::fit::{self, FitPage};
 use crate::fmt;
+use crate::modelinfo::Compartments;
 use crate::sim::SimPage;
 
 impl UiApp {
@@ -43,6 +44,11 @@ impl UiApp {
 
     /// A new fit page for the worksheet in view, with starting values generated from its data.
     pub(crate) fn new_fit(&mut self) {
+        self.new_fit_with(Compartments::One);
+    }
+
+    /// A new fit page with this number of compartments picked.
+    pub(crate) fn new_fit_with(&mut self, compartments: Compartments) {
         let worksheet = match &self.state.selection {
             Selection::Worksheet(id) => Some(*id),
             _ => self.overview.worksheets.first().map(|w| w.id),
@@ -60,6 +66,7 @@ impl UiApp {
         self.state.nca = None;
         self.state.sim = None;
         let mut page = FitPage::new(id, subject);
+        page.compartments = compartments;
         // The defaults of the settings, for what differs from the engine's.
         page.options = self.settings.fit_options();
         page.weighting.clone_from(&self.settings.fit.weighting);
@@ -79,13 +86,18 @@ impl UiApp {
         self.refresh_sheet(page.worksheet);
         page.preview.dose = page.view.as_ref().and_then(|v| v.dose);
         if page.initial.is_empty() {
-            if let Some(row) = page.ok().and_then(|ok| ok.trace.first()) {
-                let names = page.model().parameters;
-                page.initial = names
-                    .iter()
-                    .zip(&row.estimates)
-                    .map(|(n, x)| ((*n).to_owned(), *x))
-                    .collect();
+            let from_trace = page.ok().and_then(|ok| {
+                let row = ok.trace.first()?;
+                Some(
+                    ok.parameters
+                        .iter()
+                        .cloned()
+                        .zip(row.estimates.iter().copied())
+                        .collect(),
+                )
+            });
+            if let Some(initial) = from_trace {
+                page.initial = initial;
             }
         }
         let generate = page.initial.is_empty();
@@ -102,7 +114,15 @@ impl UiApp {
     /// The page changed: generate the starting values again when asked, then redraw the live curve.
     pub(crate) fn fit_changed(&mut self, regenerate: bool) {
         if regenerate {
-            if let Some(page) = self.state.fit.as_ref() {
+            // The engine generates starting values for one compartment only (specs/fit.md OF-08);
+            // for two, the page asks the person for every one and offers placeholders to edit.
+            let automatic = self.state.fit.as_ref().map(FitPage::automatic_estimates);
+            if automatic == Some(false) {
+                if let Some(page) = self.state.fit.as_mut() {
+                    page.seed_placeholders();
+                    page.start_error = None;
+                }
+            } else if let Some(page) = self.state.fit.as_ref() {
                 let answer = self.ask("fit.initial_estimates", page.initial_params());
                 if let Some(page) = self.state.fit.as_mut() {
                     match answer {
@@ -112,6 +132,7 @@ impl UiApp {
                         }
                         Err(message) => {
                             page.initial.clear();
+                            page.pending.clear();
                             page.start_error = Some(message);
                         }
                     }
@@ -131,14 +152,14 @@ impl UiApp {
             .as_ref()
             .map(|s| fit::observed(&s.info, &s.table, &page.subject))
             .unwrap_or_default();
-        let simulate = fit::last_time(&observed).and_then(|end| page.simulate_params(end));
+        let end = fit::last_time(&observed);
         let complete = page
-            .model()
-            .parameters
+            .parameters()
             .iter()
             .all(|n| page.initial.contains_key(*n));
         let evaluate = page.evaluate_params();
-        let simulated = simulate.map(|p| self.ask("model.simulate", p));
+        // The objective first: it also tells the dose the worksheet holds, which the curve needs
+        // when no starting values were generated (two compartments).
         let evaluated = if complete {
             self.ask("fit.evaluate", evaluate)
         } else {
@@ -147,6 +168,17 @@ impl UiApp {
                     .to_owned(),
             )
         };
+        if let (Some(page), Ok(v)) = (self.state.fit.as_mut(), &evaluated) {
+            if let Some(dose) = v.get("dose").and_then(Value::as_f64) {
+                page.preview.dose = Some(dose);
+            }
+        }
+        let simulate = self
+            .state
+            .fit
+            .as_ref()
+            .and_then(|page| end.and_then(|e| page.simulate_params(e)));
+        let simulated = simulate.map(|p| self.ask("model.simulate", p));
         if let Some(page) = self.state.fit.as_mut() {
             page.adopt_preview(simulated, evaluated);
         }
@@ -178,11 +210,17 @@ impl UiApp {
 
     /// A new simulation page, drawn at once. It takes its units from the selected worksheet.
     pub(crate) fn new_simulation(&mut self) {
+        self.new_simulation_with(Compartments::One);
+    }
+
+    /// A new simulation page with this number of compartments picked.
+    pub(crate) fn new_simulation_with(&mut self, compartments: Compartments) {
         let worksheet = self.selected_worksheet();
         if let Some(id) = worksheet {
             self.refresh_sheet(id);
         }
         let mut page = SimPage::new();
+        page.compartments = compartments;
         page.worksheet =
             worksheet.filter(|id| self.sheet.as_ref().is_some_and(|s| s.info.id == *id));
         self.state.nca = None;

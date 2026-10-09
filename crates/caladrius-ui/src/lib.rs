@@ -47,6 +47,8 @@ pub use theme::{ThemeMode, Tokens};
 #[cfg(test)]
 mod tests_palette;
 #[cfg(test)]
+mod tests_pk2;
+#[cfg(test)]
 mod tests_project;
 #[cfg(test)]
 mod tests_settings;

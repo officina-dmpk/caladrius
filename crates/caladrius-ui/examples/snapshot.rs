@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use caladrius_ui::modelinfo::{Compartments, Input, ParameterSet};
 use caladrius_ui::{Action, Selection, ThemeMode, UiApp};
 use egui_kittest::Harness;
 use serde_json::json;
@@ -27,9 +28,19 @@ fn out_dir() -> PathBuf {
     dir
 }
 
+/// The scenes whose page is longer than one screen are drawn on a taller canvas.
+fn size_of(name: &str) -> (f32, f32) {
+    if name.starts_with("35-") || name.starts_with("36-") {
+        (SIZE.0, 2000.0)
+    } else {
+        SIZE
+    }
+}
+
 fn render(name: &str, mut app: UiApp) -> Result<(), String> {
+    let size = size_of(name);
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(SIZE.0, SIZE.1))
+        .with_size(egui::vec2(size.0, size.1))
         .with_pixels_per_point(1.25)
         .build_state(|ctx, app: &mut UiApp| app.ui(ctx), {
             // One frame first so the theme is applied before the scene is drawn.
@@ -48,6 +59,62 @@ fn with_oral() -> UiApp {
     let mut app = UiApp::new();
     app.load_csv("oral-dose.csv", ORAL.as_bytes());
     app.perform(vec![Action::ImportConfirm]);
+    app
+}
+
+/// A simulated two-compartment profile (public parameters of the specification's worked example:
+/// cl 2, vc 10, q 4, vp 8, dose 100) with a 1 % alternating error, imported as a worksheet. The
+/// concentrations are the engine's `model.simulate`.
+fn with_pk2_profile() -> UiApp {
+    const TIMES: [f64; 14] = [
+        0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 36.0, 48.0,
+    ];
+    let mut app = UiApp::new();
+    let sim = app.engine_mut().execute(
+        "model.simulate",
+        json!({ "model": "pk2.iv_bolus", "dose": 100.0,
+                "params": { "cl": 2, "vc": 10, "q": 4, "vp": 8 }, "times": TIMES }),
+    );
+    let conc: Vec<f64> = sim
+        .ok()
+        .and_then(|v| v["conc"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(serde_json::Value::as_f64)
+        .collect();
+    let mut csv = String::from(
+        "Time (h),Conc (mg/L),Dose (mg)
+",
+    );
+    for (i, (t, c)) in TIMES.iter().zip(conc).enumerate() {
+        let noise = if i % 2 == 0 { 1.01 } else { 0.99 };
+        csv.push_str(&format!(
+            "{t},{},100
+",
+            c * noise
+        ));
+    }
+    app.load_csv("two-compartment-bolus.csv", csv.as_bytes());
+    app.perform(vec![Action::ImportConfirm]);
+    app
+}
+
+/// The fit page with the two-compartment intravenous bolus model picked; `start` are the values
+/// the person set (placeholders are shown muted when it is `None`).
+fn pk2_fit(start: Option<[(&str, f64); 4]>) -> UiApp {
+    let mut app = with_pk2_profile();
+    app.perform(vec![Action::NewFitWith(Compartments::Two)]);
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = Input::Bolus;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    if let Some(values) = start {
+        if let Some(page) = app.state.fit.as_mut() {
+            page.initial = values.into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+            page.accept_placeholders();
+        }
+        app.perform(vec![Action::FitChanged { regenerate: false }]);
+    }
     app
 }
 
@@ -301,6 +368,40 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
         },
     ]);
     scenes.push(("33-nca-decimal-comma-six-digits", app));
+
+    // ---- two compartments (T-034b) ----
+    let start = [("cl", 1.6), ("vc", 11.0), ("q", 3.2), ("vp", 9.0)];
+    // The page before any value is set: the sentence, muted placeholders, the live curve.
+    scenes.push(("34-fit-two-compartments-setup", pk2_fit(None)));
+
+    let mut app = pk2_fit(Some(start));
+    app.perform(vec![Action::RunFit]);
+    scenes.push(("35-fit-two-compartments-results", app));
+
+    let mut app = pk2_fit(Some(start));
+    app.perform(vec![Action::RunFit]);
+    app.state.mode = ThemeMode::Dark;
+    app.state.log_axis = true;
+    scenes.push(("36-fit-two-compartments-results-dark-semilog", app));
+
+    let mut app = pk2_fit(None);
+    app.state.mode = ThemeMode::Dark;
+    scenes.push(("37-fit-two-compartments-setup-dark", app));
+
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulationWith(Compartments::Two)]);
+    scenes.push(("38-simulation-two-compartments-oral", app));
+
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulationWith(Compartments::Two)]);
+    if let Some(page) = app.state.sim.as_mut() {
+        page.input = Input::Bolus;
+        page.set = ParameterSet::Macro;
+    }
+    app.perform(vec![Action::SimChanged]);
+    app.state.mode = ThemeMode::Dark;
+    app.state.log_axis = true;
+    scenes.push(("39-simulation-two-compartments-macro-dark", app));
 
     scenes
 }

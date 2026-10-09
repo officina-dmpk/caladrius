@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{Action, Selection, UiApp};
 use crate::fmt;
+use crate::modelinfo::Compartments;
 use crate::theme::Tokens;
 
 /// Ctrl+K (Cmd+K on a Mac).
@@ -197,10 +198,23 @@ impl UiApp {
             Action::NewFit,
         ));
         out.push(ui(
+            "new_fit_two",
+            format!("New two-compartment fit{from}"),
+            format!("Fit a two-compartment model (clearances, micro- or macro-constants) to this worksheet; you give every starting value{needs}"),
+            Action::NewFitWith(Compartments::Two),
+        ));
+        out.push(ui(
             "new_simulation",
             "New model simulation".to_owned(),
             "Draw a model's curve for a dose and parameters, no data needed".to_owned(),
             Action::NewSimulation,
+        ));
+        out.push(ui(
+            "new_simulation_two",
+            "New two-compartment simulation".to_owned(),
+            "Draw the curve of a two-compartment model for a dose and parameters, no data needed"
+                .to_owned(),
+            Action::NewSimulationWith(Compartments::Two),
         ));
         out.push(ui(
             "theme",

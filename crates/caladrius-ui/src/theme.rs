@@ -128,6 +128,10 @@ pub struct Sizes {
     pub hit_radius: f32,
     pub diagram_width: f32,
     pub diagram_height: f32,
+    /// The taller diagram of two compartments (a second row for the peripheral one).
+    pub diagram_height_two: f32,
+    /// The distance between the two rows of the two-compartment diagram.
+    pub diagram_row_gap: f32,
     pub diagram_box_width: f32,
     pub diagram_box_height: f32,
     pub diagram_arrow: f32,
