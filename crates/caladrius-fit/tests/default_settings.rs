@@ -39,6 +39,7 @@ struct Agreement {
     beyond: usize,
     worst: (f64, String),
     worst_wrss: (f64, String),
+    worst_se: (f64, String),
     most_iterations: usize,
 }
 
@@ -70,6 +71,9 @@ fn measure(options: &FitOptions) -> Agreement {
                 if quantity == "wrss" && gap > a.worst_wrss.0 {
                     a.worst_wrss = (gap, format!("{name} subject {subject}"));
                 }
+                if quantity.starts_with("se.") && !secondary && gap > a.worst_se.0 {
+                    a.worst_se = (gap, format!("{name} subject {subject} {quantity}"));
+                }
                 if !quantity.starts_with("estimate.") || secondary {
                     continue;
                 }
@@ -87,7 +91,7 @@ fn measure(options: &FitOptions) -> Agreement {
 fn print(title: &str, a: &Agreement) {
     println!(
         "{title}: {} fits, {} of {} estimates beyond 1e-4, worst {:.2e} ({}), worst WRSS {:.2e} ({}), \
-         at most {} iterations, {} not converged {:?}",
+         worst SE {:.2e} ({}), at most {} iterations, {} not converged {:?}",
         a.fits,
         a.beyond,
         a.estimates,
@@ -95,6 +99,8 @@ fn print(title: &str, a: &Agreement) {
         a.worst.1,
         a.worst_wrss.0,
         a.worst_wrss.1,
+        a.worst_se.0,
+        a.worst_se.1,
         a.most_iterations,
         a.not_converged.len(),
         a.not_converged
@@ -104,7 +110,7 @@ fn print(title: &str, a: &Agreement) {
 /// The gate of T-040: with the default options every reference fit converges within the default
 /// 50 iterations and every estimate lies within 1e-4 relative of the exact minimum. Measured on
 /// 2026-10-09: 185 fits, 0 of 490 estimates beyond 1e-4, worst 7.4e-6 (Indometh `inv_y`, subject
-/// 2, k), at most 22 iterations.
+/// 2, k), worst standard error 9.2e-6, at most 22 iterations.
 #[test]
 fn the_default_settings_reach_the_exact_minimum_on_every_reference_fit() {
     let a = measure(&FitOptions::default());
