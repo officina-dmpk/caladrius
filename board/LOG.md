@@ -50,3 +50,4 @@
 - 2026-10-09 T-038 (PR #2, external): docs/screens gallery (14 PNGs from the snapshot example, synthetic data) and a three-picture strip in the README; merged b237ced.
 - 2026-10-09 Q-014 answered by the human: option 2 (exact minimum by default, reference_conventions preset); card T-040.
 - 2026-10-09 T-039 (PR #3, external): cargo xtask review (eight read-only consistency rules between README, specs, Cargo.toml/CITATION.cff and docs/conformance.md; CI step after lint, notes do not fail); 105 xtask tests; reviewed by the reviewer agent (board/messages/2026-10-09-reviewer-orchestrator-pr3.md): approve with follow-ups (T-041).
+- 2026-10-09 T-041 (interface): xtask review follow-ups: strict can pass (no note on agreement), new rule review-pk2-readme with fixtures, 22 new failure-path tests (127 in xtask), .get indexing, real line numbers, versions fails on unreadable, exact release_drift message; review 0 failures 1 note (drift since v0.1.0); commit 2fee9b9.
