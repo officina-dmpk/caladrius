@@ -6,11 +6,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::FitStatus;
 use crate::engine::{EXACT_FIT, Problem};
 use crate::flags::{self, FitFlag};
 use crate::linalg::{Mat, inverse_gram_from_r, least_squares, symmetric_eigenvalues};
 use crate::stats::{f_quantile, student_t_quantile};
+use crate::{Derivatives, FitStatus};
 
 /// One row of the minimisation trace (FIT-OUT-11).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +78,9 @@ pub struct FitResult {
     partials: Vec<Vec<f64>>,
     #[serde(default)]
     flags: Vec<FitFlag>,
+    /// How the partial derivatives were formed (`auto` resolved; FIT-JAC-01, JAC-02).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    derivatives: Option<Derivatives>,
 }
 
 impl FitResult {
@@ -148,6 +151,13 @@ impl FitResult {
     /// Quality flags (FIT-FLG-01): what to check; they never change a number.
     pub fn flags(&self) -> &[FitFlag] {
         &self.flags
+    }
+
+    /// How the partial derivatives were formed: `Analytic` or `ForwardDifference`, never `Auto`
+    /// (FIT-JAC-01, JAC-02); the standard errors follow that Jacobian (FIT-JAC-03). `None` for a
+    /// result saved before this was recorded.
+    pub fn derivatives(&self) -> Option<Derivatives> {
+        self.derivatives
     }
 }
 
@@ -335,6 +345,7 @@ pub(crate) fn build(
         trace,
         partials,
         flags,
+        derivatives: Some(problem.options.derivatives),
     }
 }
 

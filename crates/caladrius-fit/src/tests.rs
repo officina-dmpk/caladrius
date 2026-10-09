@@ -12,10 +12,12 @@ use crate::*;
 const T: [f64; 5] = [0.5, 1.0, 2.0, 4.0, 8.0];
 const Y: [f64; 5] = [9.31, 7.92, 6.85, 4.31, 2.11];
 
+/// The worked examples of `specs/fit.md` section 11 are stated with the stop ε = 1e-4 of the
+/// reference conventions (T-040 kept them as the preset).
 fn spec(weighting: Weighting, tight: bool) -> FitInput {
     let mut options = FitOptions {
         derivatives: Derivatives::Analytic,
-        ..FitOptions::default()
+        ..FitOptions::reference_conventions()
     };
     if tight {
         options.convergence = 1e-10;
@@ -178,7 +180,7 @@ fn statuses_and_options() {
     let r = run(&i).unwrap();
     assert_eq!(r.status(), FitStatus::Converged);
     close(&r, "estimate.v", 9.9186407);
-    // Forward differences (the default) reach the same minimum.
+    // Forward differences (the reference conventions) reach the same minimum.
     let mut i = spec(Weighting::Uniform, true);
     i.options.derivatives = Derivatives::ForwardDifference;
     close(&run(&i).unwrap(), "estimate.k", 0.20405768);
@@ -239,7 +241,7 @@ fn input_and_result_round_trip_through_json() {
     assert!(serde_json::from_str::<FitOptions>(r#"{"max_iteration":3}"#).is_err());
     let o: FitOptions = serde_json::from_str(r#"{"max_iterations":3}"#).unwrap();
     assert_eq!(o.max_iterations, 3);
-    assert_eq!(o.increment, 0.001);
+    assert_eq!(o.increment, 1e-5);
 }
 
 // ---- T-011a review fixes ----

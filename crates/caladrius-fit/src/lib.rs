@@ -84,12 +84,34 @@ impl Weighting {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Derivatives {
-    /// Forward differences with the relative `increment` (the default).
+    /// Closed forms when the model has them for the fitted parameters, otherwise forward
+    /// differences with the relative `increment` (the default, FIT-JAC-01). The result says which
+    /// was used ([`FitResult::derivatives`]).
     #[default]
+    Auto,
+    /// Forward differences with the relative `increment`.
     ForwardDifference,
     /// Closed forms, in the (v, k) parameterisation: pk1.iv_bolus, pk1.iv_infusion, pk1.oral_1,
-    /// pk1.oral_1_lag, pk1.oral_0 and pk1.oral_0_lag, for any subset of fitted parameters.
+    /// pk1.oral_1_lag, pk1.oral_0 and pk1.oral_0_lag, for any subset of fitted parameters, and
+    /// every pk2 model; refused (never replaced) when the model has none.
     Analytic,
+}
+
+/// A named set of the five iteration settings of [`FitOptions`]: `derivatives`, `increment`,
+/// `criterion`, `convergence`, `max_iterations` (`specs/fit.md` FIT-JAC-01, FIT-CNV-01, CNV-02;
+/// `specs/differences.md` D-04).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FitPreset {
+    /// Caladrius's defaults (Q-014): closed-form derivatives when the model has them, else forward
+    /// differences of relative increment 1e-5; relative decrease of WRSS below 1e-10; 50
+    /// iterations. On the 185 reference fits they reach the exact minimum within 1e-4 relative.
+    #[default]
+    Default,
+    /// The assumed defaults of the reference software (`AGENTS.md` section 6): forward
+    /// differences of relative increment 0.001, relative decrease below 0.0001, 50 iterations.
+    /// Estimates then lie up to about 5e-3 relative from the exact minimum (D-03).
+    ReferenceConventions,
 }
 
 /// Convergence criterion (FIT-CNV-01).
@@ -104,17 +126,20 @@ pub enum Criterion {
     RelativeOffset,
 }
 
-/// Options of a fit. The defaults are those of `AGENTS.md` section 6 (status `assumed`).
+/// Options of a fit. The defaults are the preset [`FitPreset::Default`]; the assumed defaults of
+/// the reference software are the preset [`FitPreset::ReferenceConventions`]. In JSON, the key
+/// `preset` chooses the starting values of the five iteration settings and any of them given
+/// explicitly replaces the preset's value; the options are then stored as plain values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(from = "OptionsInput")]
 pub struct FitOptions {
-    /// Partial derivatives.
+    /// Partial derivatives (`auto`).
     pub derivatives: Derivatives,
-    /// Relative increment of the forward differences (0.001), > 0 and <= 0.1.
+    /// Relative increment of the forward differences (1e-5), > 0 and <= 0.1.
     pub increment: f64,
-    /// Convergence criterion.
+    /// Convergence criterion (relative decrease).
     pub criterion: Criterion,
-    /// Threshold of the criterion (0.0001), >= 0 and <= 0.1.
+    /// Threshold of the criterion (1e-10), >= 0 and <= 0.1.
     pub convergence: f64,
     /// Maximum number of accepted iterations (50), at most 100 000.
     pub max_iterations: usize,
@@ -169,17 +194,69 @@ impl Default for FlagThresholds {
 
 impl Default for FitOptions {
     fn default() -> Self {
+        Self::preset(FitPreset::Default)
+    }
+}
+
+impl FitOptions {
+    /// The options of a preset; everything outside the five iteration settings at its default.
+    /// The values of both presets are written here and nowhere else (golden rule 5).
+    pub fn preset(preset: FitPreset) -> Self {
+        let (derivatives, increment, convergence) = match preset {
+            FitPreset::Default => (Derivatives::Auto, 1e-5, 1e-10),
+            FitPreset::ReferenceConventions => (Derivatives::ForwardDifference, 0.001, 0.0001),
+        };
         Self {
-            derivatives: Derivatives::ForwardDifference,
-            increment: 0.001,
+            derivatives,
+            increment,
             criterion: Criterion::RelativeDecrease,
-            convergence: 0.0001,
+            convergence,
             max_iterations: 50,
             confidence_level: 0.95,
             n_curve: 1000,
             fixed: BTreeMap::new(),
             bounds: BTreeMap::new(),
             flags: FlagThresholds::default(),
+        }
+    }
+
+    /// The preset [`FitPreset::ReferenceConventions`] (the defaults before Q-014).
+    pub fn reference_conventions() -> Self {
+        Self::preset(FitPreset::ReferenceConventions)
+    }
+}
+
+/// [`FitOptions`] as read from JSON: a preset, then the values given explicitly.
+#[derive(Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct OptionsInput {
+    preset: FitPreset,
+    derivatives: Option<Derivatives>,
+    increment: Option<f64>,
+    criterion: Option<Criterion>,
+    convergence: Option<f64>,
+    max_iterations: Option<usize>,
+    confidence_level: Option<f64>,
+    n_curve: Option<usize>,
+    fixed: BTreeMap<String, f64>,
+    bounds: BTreeMap<String, Bounds>,
+    flags: FlagThresholds,
+}
+
+impl From<OptionsInput> for FitOptions {
+    fn from(input: OptionsInput) -> Self {
+        let base = FitOptions::preset(input.preset);
+        Self {
+            derivatives: input.derivatives.unwrap_or(base.derivatives),
+            increment: input.increment.unwrap_or(base.increment),
+            criterion: input.criterion.unwrap_or(base.criterion),
+            convergence: input.convergence.unwrap_or(base.convergence),
+            max_iterations: input.max_iterations.unwrap_or(base.max_iterations),
+            confidence_level: input.confidence_level.unwrap_or(base.confidence_level),
+            n_curve: input.n_curve.unwrap_or(base.n_curve),
+            fixed: input.fixed,
+            bounds: input.bounds,
+            flags: input.flags,
         }
     }
 }
@@ -278,5 +355,7 @@ pub fn run_model(model: &dyn FitModel, input: &FitInput) -> Result<FitResult, Fi
 mod tests;
 #[cfg(test)]
 mod tests_outputs;
+#[cfg(test)]
+mod tests_presets;
 #[cfg(test)]
 mod tests_stopping;

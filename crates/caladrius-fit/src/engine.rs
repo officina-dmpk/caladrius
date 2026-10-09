@@ -236,7 +236,7 @@ impl<'a> Problem<'a> {
             lower.push(lo);
             upper.push(hi);
         }
-        let problem = Self {
+        let mut problem = Self {
             model,
             model_id: input.model.id().to_string(),
             dose: input.dose,
@@ -272,21 +272,28 @@ impl<'a> Problem<'a> {
                 time: problem.time.get(index).copied().unwrap_or(f64::NAN),
             });
         }
-        if o.derivatives == Derivatives::Analytic
-            && problem
-                .model
-                .analytic_derivatives(
-                    problem.dose,
-                    &problem.params(&problem.theta0),
-                    &problem.time,
-                    &problem.names,
-                )
-                .is_none()
-        {
-            return Err(FitError::AnalyticDerivativesUnavailable {
-                model: problem.model_id.clone(),
-            });
-        }
+        // FIT-JAC-01, JAC-02: `analytic` is refused without closed forms (never replaced); `auto`
+        // is resolved here, once, so the iterations and the result use one method.
+        let closed_forms = problem
+            .model
+            .analytic_derivatives(
+                problem.dose,
+                &problem.params(&problem.theta0),
+                &problem.time,
+                &problem.names,
+            )
+            .is_some();
+        problem.options.derivatives = match (o.derivatives, closed_forms) {
+            (Derivatives::Analytic, false) => {
+                return Err(FitError::AnalyticDerivativesUnavailable {
+                    model: problem.model_id.clone(),
+                });
+            }
+            (Derivatives::Auto, true) | (Derivatives::Analytic, true) => Derivatives::Analytic,
+            (Derivatives::Auto, false) | (Derivatives::ForwardDifference, _) => {
+                Derivatives::ForwardDifference
+            }
+        };
         Ok(problem)
     }
 
@@ -482,10 +489,12 @@ impl<'a> Problem<'a> {
         // the WRSS is the minimum. With forward differences of increment h the Jacobian is only
         // good to O(h), so the gain it predicts at the true minimum is O(h²)·WRSS: a smaller
         // predicted gain that no step can realise is the error of the derivatives, not a failure
-        // (T-030b). The floor is h² only when it exceeds ε (never with the defaults, 1e-6 < 1e-4).
+        // (T-030b). The floor is h² only when it exceeds ε (never with the presets: 1e-6 < 1e-4 for
+        // the reference conventions, 1e-10 = ε for the default's forward-difference fallback).
         let gain_floor = match self.options.derivatives {
             Derivatives::ForwardDifference => eps.max(self.options.increment.powi(2)),
-            Derivatives::Analytic => eps,
+            // `auto` is resolved in `new`; it cannot reach here.
+            Derivatives::Analytic | Derivatives::Auto => eps,
         };
         let p = theta.len();
         let mut lambda = 0.0;
