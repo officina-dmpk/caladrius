@@ -310,7 +310,14 @@ pub(crate) fn jacobian(input: &ModelInput) -> Result<Jacobian, ModelError> {
                 "beta" => p.b / input.dose * at_beta.rate,
                 other => match psi_gradient(&p, other) {
                     Some(grad) => grad.iter().zip(c_psi).map(|(g, c)| g * c).sum(),
-                    None => 0.0,
+                    // Unreachable after `prepare`, which refuses every other name; an error
+                    // rather than a silent zero column all the same.
+                    None => {
+                        return Err(ModelError::ParameterNotInModel {
+                            name: other.to_string(),
+                            model: input.model.id().to_string(),
+                        });
+                    }
                 },
             };
             column.push(value);
@@ -326,6 +333,31 @@ pub(crate) fn jacobian(input: &ModelInput) -> Result<Jacobian, ModelError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ModelId;
+
+    /// A parameter name the model does not have is refused by the Jacobian, never a zero column.
+    #[test]
+    fn the_jacobian_refuses_a_wrong_parameter_name() {
+        for wrong in ["volume", "v", "k10", "ka"] {
+            let mut params: BTreeMap<String, f64> =
+                [("cl", 2.0), ("vc", 10.0), ("q", 4.0), ("vp", 8.0)]
+                    .iter()
+                    .map(|(n, x)| (n.to_string(), *x))
+                    .collect();
+            params.insert(wrong.to_string(), 1.0);
+            let input = ModelInput {
+                model: ModelId::Pk2IvBolus,
+                dose: 100.0,
+                params,
+                times: vec![1.0],
+            };
+            let e = jacobian(&input).unwrap_err();
+            assert!(
+                e.to_string().contains(&format!("`{wrong}`")),
+                "{wrong}: {e}"
+            );
+        }
+    }
 
     /// The 8-point Gauss–Legendre rule integrates every polynomial of degree <= 15 exactly on
     /// [−1, 1]: ∫ x^k dx = 2/(k + 1) for even k, 0 for odd k.

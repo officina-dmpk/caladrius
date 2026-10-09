@@ -140,7 +140,9 @@ impl FitModel for ModelId {
 
 /// The closed-form columns of a two-compartment model for the fitted `names` (fixed parameters
 /// are values in `params`, not columns); `None` when the model refuses the parameters or a name has
-/// no column.
+/// no column. The trait returns an `Option`, so the fit reports `AnalyticDerivativesUnavailable`,
+/// whose message for a `pk2.*` model names the parameter sets (the model error itself is reported
+/// earlier, by the first prediction, for the same parameters).
 fn two_compartment_columns(
     model: ModelId,
     dose: f64,
@@ -314,6 +316,26 @@ mod tests {
         }
         let e = crate::run(&input(&[])).unwrap_err();
         assert!(e.to_string().contains("two-compartment"), "{e}");
+    }
+
+    /// Without closed-form derivatives the message of a two-compartment model names its parameter
+    /// sets, not the (v, k) advice of one compartment.
+    #[test]
+    fn the_message_without_closed_forms_fits_the_number_of_compartments() {
+        let pk2 = crate::FitError::AnalyticDerivativesUnavailable {
+            model: "pk2.oral_1".to_string(),
+        }
+        .to_string();
+        assert!(
+            pk2.contains("pk2.oral_1") && pk2.contains("cl, vc, q, vp"),
+            "{pk2}"
+        );
+        assert!(!pk2.contains("`k`") && !pk2.contains("(v, k)"), "{pk2}");
+        let pk1 = crate::FitError::AnalyticDerivativesUnavailable {
+            model: "pk1.iv_infusion".to_string(),
+        }
+        .to_string();
+        assert!(pk1.contains("(v, k)"), "{pk1}");
     }
 
     /// The closed forms agree with central differences of the model itself.
