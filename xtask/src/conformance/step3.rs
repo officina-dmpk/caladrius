@@ -485,28 +485,6 @@ mod tests {
         report.total()
     }
 
-    /// Two-compartment derivative cases whose oracle expects an exact 0 for `d_alpha` at late times
-    /// where the derivative is a tiny non-zero number (about 1e-52 to 1e-228, below the resolution
-    /// of the oracle's 256-bit differences). The engine returns the true value; the oracle agent is
-    /// asked to correct the files (`board/messages/2026-10-09-engine-oracle-pk2-derivative-zeros.md`,
-    /// card T-033). Only the `d_alpha` rows of these cases may fail, and they must fail: when the
-    /// files are corrected this list goes stale and the test says so.
-    const PENDING_ORACLE_CORRECTION: [&str; 13] = [
-        "model_pk2_deriv_iv_bolus_base_macro",
-        "model_pk2_deriv_iv_bolus_distribution_macro",
-        "model_pk2_deriv_iv_infusion_base_macro",
-        "model_pk2_deriv_iv_infusion_distribution_macro",
-        "model_pk2_deriv_oral_0_base_macro",
-        "model_pk2_deriv_oral_0_distribution_macro",
-        "model_pk2_deriv_oral_0_lag_base_macro",
-        "model_pk2_deriv_oral_0_lag_distribution_macro",
-        "model_pk2_deriv_oral_1_base_macro",
-        "model_pk2_deriv_oral_1_distribution_macro",
-        "model_pk2_deriv_oral_1_ka_eq_alpha_macro",
-        "model_pk2_deriv_oral_1_lag_base_macro",
-        "model_pk2_deriv_oral_1_lag_distribution_macro",
-    ];
-
     #[test]
     fn every_model_case_is_fully_validated() {
         let reports = model_reports().unwrap();
@@ -529,21 +507,7 @@ mod tests {
                 };
                 assert_eq!(names.get(..first.len()), Some(first), "{}", r.name);
             }
-            if PENDING_ORACLE_CORRECTION.contains(&r.name.as_str()) {
-                for (name, c) in &r.parameters {
-                    if name == "d_alpha" {
-                        assert!(
-                            c.validated < c.expected,
-                            "{}: remove it from the list",
-                            r.name
-                        );
-                    } else {
-                        assert_eq!(c.validated, c.expected, "{} {name}", r.name);
-                    }
-                }
-            } else {
-                assert_eq!(t.validated, t.expected, "{}", r.name);
-            }
+            assert_eq!(t.validated, t.expected, "{}", r.name);
         }
     }
 
