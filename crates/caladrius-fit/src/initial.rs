@@ -153,6 +153,17 @@ pub fn initial_estimates(
                 out.insert("tlag".to_string(), tlag);
             }
         }
+        ModelId::Pk2IvBolus
+        | ModelId::Pk2IvInfusion
+        | ModelId::Pk2Oral1
+        | ModelId::Pk2Oral1Lag
+        | ModelId::Pk2Oral0
+        | ModelId::Pk2Oral0Lag => {
+            // FIT-INI-01 has no stripping rule for two compartments yet (specs/fit.md OF-08).
+            return Err(unavailable(
+                "automatic initial estimates are not available for two-compartment models yet; give an initial value for every parameter",
+            ));
+        }
         ModelId::IvInfusion | ModelId::Oral0 | ModelId::Oral0Lag => {
             // FIT-INI-04: terminal phase after the end of the input.
             let dur = fixed.get("dur").copied().ok_or_else(|| {

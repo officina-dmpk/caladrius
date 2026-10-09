@@ -63,11 +63,75 @@ pub enum ModelError {
         /// What could not be represented.
         what: String,
     },
+    /// `q`, `vp` or `k12` is 0: the model has one compartment (MOD-2C-05 item 1).
+    OneCompartment {
+        /// The parameter that is 0.
+        name: String,
+        /// The model id.
+        model: String,
+    },
+    /// Parameters of two parameterisations of a two-compartment model (MOD-2C-02, 2C-05 item 4).
+    MixedParameterSets {
+        /// A parameter of the first set found.
+        first: String,
+        /// A parameter of another set.
+        second: String,
+        /// The model id.
+        model: String,
+    },
+    /// No parameter of any set of a two-compartment model.
+    NoParameterSet {
+        /// The model id.
+        model: String,
+    },
+    /// Macro set with `alpha` <= `beta` (MOD-2C-05 item 2): the engine does not sort.
+    AlphaNotAboveBeta {
+        /// `alpha` given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        alpha: f64,
+        /// `beta` given.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        beta: f64,
+    },
+    /// Macro set with a dose of 0: vc = dose / (a + b) is undefined (MOD-2C-05 item 2).
+    MacroWithoutDose,
+    /// A quantity derived from valid parameters is not a finite number > 0 (MOD-2C-05 item 3).
+    DerivedOutOfRange {
+        /// The derived quantity, e.g. `k21`.
+        name: String,
+        /// How it is derived, e.g. `q / vp`.
+        from: String,
+        /// Its value.
+        #[serde(
+            serialize_with = "crate::float::ser",
+            deserialize_with = "crate::float::de"
+        )]
+        value: f64,
+    },
+    /// The two exponents cannot be told apart in double precision: k12·k21 underflows
+    /// (MOD-2C-05 item 3).
+    DegenerateExponents {
+        /// The model id.
+        model: String,
+    },
 }
+
+/// The parameter sets of a two-compartment model, for the messages.
+const PK2_SETS: &str = "cl, vc, q, vp (the default), or k10, k12, k21, vc, or a, b, alpha, beta";
 
 impl fmt::Display for ModelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnknownParameter { name, model } if model.starts_with("pk2.") => write!(
+                f,
+                "unknown parameter `{name}` for model {model}; use one set of {PK2_SETS}, and the input parameters of the model (ka, dur, tlag)"
+            ),
             Self::UnknownParameter { name, model } => write!(
                 f,
                 "unknown parameter `{name}` for model {model}; use v, cl or k, and the input parameters of the model (ka, dur, tlag)"
@@ -105,7 +169,39 @@ impl fmt::Display for ModelError {
             ),
             Self::Overflow { what } => write!(
                 f,
-                "{what} is too large or undefined in double precision; rescale V, CL or the dose (for example change the units)"
+                "{what} is too large or undefined in double precision (overflow: not a finite number); rescale V, CL or the dose (for example change the units)"
+            ),
+            Self::OneCompartment { name, model } => write!(
+                f,
+                "parameter `{name}` = 0 makes {model} a one-compartment model; use the pk1 model of the same route, or give `{name}` > 0"
+            ),
+            Self::MixedParameterSets {
+                first,
+                second,
+                model,
+            } => write!(
+                f,
+                "parameters `{first}` and `{second}` belong to different parameter sets of {model}; give exactly one set: {PK2_SETS}"
+            ),
+            Self::NoParameterSet { model } => write!(
+                f,
+                "model {model} needs one complete parameter set: {PK2_SETS}"
+            ),
+            Self::AlphaNotAboveBeta { alpha, beta } => write!(
+                f,
+                "`alpha` = {alpha} must be larger than `beta` = {beta}: alpha is the faster exponent; swap alpha with beta (and a with b) if they are the other way round"
+            ),
+            Self::MacroWithoutDose => write!(
+                f,
+                "the macro set (a, b, alpha, beta) needs a dose > 0, since vc = dose / (a + b); give the dose or use the clearance set"
+            ),
+            Self::DerivedOutOfRange { name, from, value } => write!(
+                f,
+                "the derived `{name}` = {from} = {value} is not a finite number > 0 (overflow or underflow); rescale the parameters (for example change the units)"
+            ),
+            Self::DegenerateExponents { model } => write!(
+                f,
+                "the two exponents of {model} cannot be told apart in double precision (k12 x k21 underflows); the data describe a one-compartment model: use the pk1 model of the same route"
             ),
         }
     }

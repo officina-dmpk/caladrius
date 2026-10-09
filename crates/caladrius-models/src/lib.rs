@@ -8,14 +8,18 @@
 //! Layer L0: closed-form pharmacokinetic model solutions (bolus, infusion, first- and zero-order absorption, lag time).
 //!
 //! Behaviour: `specs/models.md` (rule ids `MOD-…` are cited in the code and the tests). One input
-//! value, one [`run`], results by name, like `caladrius-nca`.
+//! value, one [`run`], results by name, like `caladrius-nca`. One compartment (`pk1.*`, sections 3
+//! to 8) and two compartments (`pk2.*`, section 11).
 
 mod curves;
 mod error;
 mod float;
 mod jacobian;
+mod kernel;
 mod model;
 mod params;
+mod params2;
+mod two;
 
 use std::collections::BTreeMap;
 
@@ -36,7 +40,9 @@ pub struct ModelInput {
     /// Effective dose F × D (MOD-GEN-03), finite and >= 0; 0 gives 0 everywhere.
     pub dose: f64,
     /// Parameters by the names of MOD-VOC-01: `v`; exactly one of `cl` and `k`; `ka`
-    /// (first-order input); `dur` (infusion, zero-order input); `tlag` (lag models).
+    /// (first-order input); `dur` (infusion, zero-order input); `tlag` (lag models). Two
+    /// compartments: exactly one set of MOD-2C-02 (`cl, vc, q, vp`, `k10, k12, k21, vc` or
+    /// `a, b, alpha, beta`) instead of `v` and `cl` or `k`.
     pub params: BTreeMap<String, f64>,
     /// Times since the dose, in any order, finite; a time before the dose (or the lag) gives 0.
     pub times: Vec<f64>,
@@ -47,6 +53,9 @@ pub struct ModelInput {
 pub struct ModelOutput {
     conc: Vec<f64>,
     auc: Vec<f64>,
+    /// AUMC(0, t) per time; computed for the two-compartment models (empty for one compartment).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    aumc: Vec<f64>,
     secondary: BTreeMap<String, f64>,
 }
 
@@ -61,12 +70,32 @@ impl ModelOutput {
         &self.auc
     }
 
+    /// First moment AUMC(0, t) = ∫₀ᵗ s·C(s) ds about the dose time, at each input time
+    /// (MOD-2C-14); empty for the one-compartment models.
+    pub fn aumc(&self) -> &[f64] {
+        &self.aumc
+    }
+
     /// Secondary parameter by name (MOD-SEC-02, MOD-VOC-01): `v`, `k`, `cl`, `half_life`,
     /// `auc_inf`, `mrt_system` (1/k, the disposition MRT), `mrt` (profile MRT, MOD-SEC-02), `vss`
     /// (= V for one compartment, MOD-IVB-02), and the input parameters
     /// (`ka`, `dur`, `tlag`, `rate`); bolus: `c0`; models with a peak: `tmax_pred`, `cmax_pred`.
-    /// `None` when the model has no such quantity.
+    /// Two compartments (MOD-2C-20): the three sets (`cl, vc, q, vp`, `k10, k12, k21`,
+    /// `a, b, alpha, beta`; `a`, `b` the intravenous coefficients), `w_alpha`, `w_beta`,
+    /// `half_life` (ln 2/beta), `half_life_alpha`, `vss`, `vz`, `v_extrap`, `auc_inf`, `aumc_inf`,
+    /// `mrt_system`, `mrt`, `c0`, `tmax_pred`, `cmax_pred`, `a_oral`, `b_oral` (first-order input
+    /// with ka at least 1 % away from both exponents). `aumc[i]` is AUMC(0, t) at the i-th input
+    /// time ([`ModelOutput::aumc`]). `None` when the model has no such quantity.
     pub fn get(&self, name: &str) -> Option<f64> {
+        if let Some(index) = name
+            .strip_prefix("aumc[")
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            return index
+                .parse::<usize>()
+                .ok()
+                .and_then(|i| self.aumc.get(i).copied());
+        }
         self.secondary.get(name).copied()
     }
 
@@ -79,6 +108,9 @@ impl ModelOutput {
 /// Evaluates `input`. Parameters and times are checked first (MOD-GEN-04); the message of the
 /// error names what to fix.
 pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
+    if input.model.compartments() == 2 {
+        return two::run(input);
+    }
     let p = params::resolve(input.model, &input.params)?;
     let dose = input.dose;
     if !(dose.is_finite() && dose >= 0.0) {
@@ -148,6 +180,7 @@ pub fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
     Ok(ModelOutput {
         conc,
         auc,
+        aumc: Vec::new(),
         secondary,
     })
 }

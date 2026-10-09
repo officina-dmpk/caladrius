@@ -1,9 +1,11 @@
 //! Partial derivatives of the concentration with respect to the parameters (`specs/fit.md`
 //! FIT-JAC-01, JAC-02), for the fitting crate and for tests.
 //!
-//! Forward differences are the default of the fit. Analytic derivatives exist in the spec for the
-//! IV bolus only (FIT-JAC-02); for the other models `Analytic` falls back to forward differences
-//! with the default increment, and the result says which method was used.
+//! Forward differences are the default of the fit. Analytic derivatives: the one-compartment IV
+//! bolus (FIT-JAC-02) and every two-compartment model in every parameter set (MOD-2C-17 to 19);
+//! for the other one-compartment models `Analytic` falls back to forward differences with the
+//! default increment (their closed forms live in `caladrius-fit`), and the result says which
+//! method was used.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +27,8 @@ pub enum Derivatives {
         )]
         increment: f64,
     },
-    /// Closed form where `specs/fit.md` gives it (IV bolus), else forward differences with
-    /// [`DEFAULT_INCREMENT`].
+    /// Closed form where the specs give it (one-compartment IV bolus, every two-compartment
+    /// model), else forward differences with [`DEFAULT_INCREMENT`].
     Analytic,
 }
 
@@ -46,6 +48,7 @@ pub fn jacobian(input: &ModelInput, method: Derivatives) -> Result<Jacobian, Mod
     let base = run(input)?;
     match method {
         Derivatives::Analytic if input.model == ModelId::IvBolus => Ok(bolus(input, base.conc())),
+        Derivatives::Analytic if input.model.compartments() == 2 => crate::two::jacobian(input),
         Derivatives::Analytic => forward(input, base.conc(), DEFAULT_INCREMENT),
         Derivatives::ForwardDifference { increment } => {
             if !(increment.is_finite() && increment > 0.0) {

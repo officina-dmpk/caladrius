@@ -13,7 +13,7 @@ pub(crate) fn g(z: f64) -> f64 {
 }
 
 /// 1 − g(z) for z ≥ 0 = z/2! − z²/3! + z³/4! − …, without cancellation for small z.
-fn one_minus_g(z: f64) -> f64 {
+pub(crate) fn one_minus_g(z: f64) -> f64 {
     if z < 0.1 {
         let (mut sum, mut term) = (0.0, z / 2.0);
         for n in 1..=20 {
@@ -27,7 +27,7 @@ fn one_minus_g(z: f64) -> f64 {
 }
 
 /// q(y) = 1 − e^−y·(1 + y) for y ≥ 0 = Σ_{n≥2} (−1)^n (n − 1) yⁿ/n!, without cancellation.
-fn q(y: f64) -> f64 {
+pub(crate) fn q(y: f64) -> f64 {
     if y.is_infinite() {
         return 1.0;
     }
