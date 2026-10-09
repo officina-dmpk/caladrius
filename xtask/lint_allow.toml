@@ -117,6 +117,12 @@ reason = "T-032 property tests of the two-compartment models (limit convergence,
 
 [[allow]]
 rule = "tolerance-literal"
+file = "crates/caladrius-models/tests/oracle_models_md.rs"
+contains = "1e-9 * value.abs()"
+reason = "T-047 convention test (OM-17 (e)): the engine must differ from the printed branch of S-36 by more than 1e-9 relative; a separation from a wrong value, not an engine tolerance (the oracle comparisons use Tolerance::MODEL_VALUES)."
+
+[[allow]]
+rule = "tolerance-literal"
 file = "crates/caladrius-nca/tests/flags.rs"
 contains = "0.6370368"
 reason = "Quality-flag example: a value printed in the spec to 7 decimals, compared to 1e-6 (the NCA tolerance NCA_VS_PKNCA is 1e-6 relative); candidate to move to the testkit constant."

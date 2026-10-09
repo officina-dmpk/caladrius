@@ -319,7 +319,9 @@ fn steady_state(
         secondary.insert(name.to_string(), value);
     };
     put("cmax_ss", cmax);
-    if unique {
+    // A flat profile has no peak time: τ = T (a continuous infusion) or a zero dose (as the
+    // single dose of two compartments, card T-032).
+    if unique && dose > 0.0 {
         let shifted = peak + phi;
         put(
             "tmax_ss",
@@ -599,6 +601,31 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(e.contains("`dose_dur[0]`") && e.contains("`dur`"), "{e}");
+    }
+
+    /// A zero dose at steady state gives exact zeros, no peak time and no accumulation ratio.
+    #[test]
+    fn a_zero_dose_at_steady_state_is_flat() {
+        let mut zero = input(
+            ModelId::Pk2Oral1,
+            &[
+                ("cl", 2.0),
+                ("vc", 10.0),
+                ("q", 4.0),
+                ("vp", 8.0),
+                ("ka", 2.0),
+            ],
+            &[0.0, 3.0],
+        )
+        .with_regimen(&Regimen::SteadyState { tau: 12.0 });
+        zero.dose = 0.0;
+        let r = run_model(&zero).unwrap();
+        assert_eq!(r.conc(), [0.0, 0.0]);
+        assert_eq!(r.auc(), [0.0, 0.0]);
+        assert_eq!(r.get("cmax_ss"), Some(0.0));
+        for name in ["tmax_ss", "accum_cmax", "accum_auc", "accum_c[1]"] {
+            assert_eq!(r.get(name), None, "{name}");
+        }
     }
 
     /// A schedule of an input with a duration may take the model's `dur` for every dose.
