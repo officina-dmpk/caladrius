@@ -22,6 +22,7 @@ mod params;
 mod params2;
 mod regimen;
 mod steady;
+mod superpose;
 mod two;
 
 use std::collections::BTreeMap;
@@ -32,6 +33,7 @@ pub use error::ModelError;
 pub use jacobian::{DEFAULT_INCREMENT, Derivatives, Jacobian, jacobian};
 pub use model::ModelId;
 pub use regimen::{DoseEvent, MAX_REGULAR_DOSES, Regimen, is_regimen_parameter};
+pub use superpose::MAX_DOSE_EVALUATIONS;
 
 use model::Input;
 

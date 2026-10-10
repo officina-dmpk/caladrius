@@ -179,6 +179,17 @@ pub enum ModelError {
         /// Why, and what to use instead.
         reason: String,
     },
+    /// A schedule or regular regimen whose superposition needs more than
+    /// [`crate::MAX_DOSE_EVALUATIONS`] evaluations of one dose at one time (MOD-MD-01, card T-051):
+    /// the doses that still contribute at the times given, summed over the times.
+    SuperpositionTooLarge {
+        /// Number of doses of the regimen.
+        doses: usize,
+        /// Number of evaluation times.
+        times: usize,
+        /// The limit on the evaluations.
+        limit: u64,
+    },
 }
 
 /// The parameter sets of a two-compartment model, for the messages.
@@ -279,6 +290,14 @@ impl fmt::Display for ModelError {
             Self::DerivativesUnavailable { model, reason } => write!(
                 f,
                 "closed-form derivatives of {model} are unavailable: {reason}"
+            ),
+            Self::SuperpositionTooLarge {
+                doses,
+                times,
+                limit,
+            } => write!(
+                f,
+                "dosing regimen: {doses} doses at {times} times need more than {limit} evaluations of one dose at one time (the doses still contribute at the times given); give fewer times or fewer doses, or use the steady state (`tau` alone) for a long regular regimen"
             ),
             Self::DegenerateExponents { model } => write!(
                 f,

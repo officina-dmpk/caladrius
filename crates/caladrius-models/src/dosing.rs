@@ -13,22 +13,27 @@ use crate::kernel::Kernel;
 use crate::model::{Input, ModelId};
 use crate::regimen::{DoseEvent, Regimen, is_regimen_parameter};
 use crate::steady::{Steady, bisect};
+use crate::superpose::superpose;
 use crate::{ModelError, ModelInput, ModelOutput, params, params2};
 
 /// The disposition as kernel terms: C = Σ weight·Φ(rate)/volume, and the input parameters.
-struct Terms {
-    input: Input,
-    /// (weight, rate) of each exponential mode.
-    modes: Vec<(f64, f64)>,
-    volume: f64,
+pub(crate) struct Terms {
+    pub(crate) input: Input,
+    /// (weight, rate) of each exponential mode; weights > 0, rates > 0.
+    pub(crate) modes: Vec<(f64, f64)>,
+    pub(crate) volume: f64,
     cl: f64,
-    ka: f64,
-    dur: f64,
-    tlag: f64,
+    pub(crate) ka: f64,
+    pub(crate) dur: f64,
+    pub(crate) tlag: f64,
 }
 
 impl Terms {
-    fn new(model: ModelId, params: &BTreeMap<String, f64>, dose: f64) -> Result<Terms, ModelError> {
+    pub(crate) fn new(
+        model: ModelId,
+        params: &BTreeMap<String, f64>,
+        dose: f64,
+    ) -> Result<Terms, ModelError> {
         let input = model.input();
         if model.compartments() == 2 {
             let p = params2::resolve(model, params, dose)?;
@@ -55,7 +60,7 @@ impl Terms {
         }
     }
 
-    fn combine(&self, each: impl Fn(f64) -> f64) -> f64 {
+    pub(crate) fn combine(&self, each: impl Fn(f64) -> f64) -> f64 {
         self.modes
             .iter()
             .map(|&(w, rate)| w * each(rate))
@@ -63,8 +68,9 @@ impl Terms {
             / self.volume
     }
 
-    /// Concentration and area of one dose at `t` on the clock of the dose times.
-    fn dose_at(&self, dose: &DoseEvent, t: f64) -> (f64, f64) {
+    /// Concentration and area of one dose at `t` on the clock of the dose times: the sums of
+    /// [`Terms::combine`], in the same order, with each kernel evaluated once.
+    pub(crate) fn dose_at(&self, dose: &DoseEvent, t: f64) -> (f64, f64) {
         let kernel = Kernel {
             input: self.input,
             dose: dose.amount,
@@ -72,10 +78,11 @@ impl Terms {
             dur: dose.dur.unwrap_or(self.dur),
         };
         let s = (t - dose.time) - self.tlag;
-        (
-            self.combine(|rate| kernel.conc_auc(rate, s).0),
-            self.combine(|rate| kernel.conc_auc(rate, s).1),
-        )
+        let (c, a) = self.modes.iter().fold((0.0, 0.0), |(c, a), &(w, rate)| {
+            let (dc, da) = kernel.conc_auc(rate, s);
+            (c + w * dc, a + w * da)
+        });
+        (c / self.volume, a / self.volume)
     }
 
     fn steady(&self, dose: f64, tau: f64) -> Steady {
@@ -181,7 +188,7 @@ pub(crate) fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
             });
         }
         Regimen::Schedule { doses } => {
-            let (conc, auc) = superpose(&terms, doses, &input.times);
+            let (conc, auc) = superpose(&terms, doses, &input.times)?;
             let total: f64 = doses.iter().map(|d| d.amount).sum();
             secondary.insert("auc_inf".to_string(), total / terms.cl);
             (conc, auc, Vec::new())
@@ -194,7 +201,7 @@ pub(crate) fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
                     dur: None,
                 })
                 .collect();
-            let (conc, auc) = superpose(&terms, &doses, &input.times);
+            let (conc, auc) = superpose(&terms, &doses, &input.times)?;
             secondary.insert("auc_inf".to_string(), f64::from(*n_doses) * dose / terms.cl);
             (conc, auc, Vec::new())
         }
@@ -219,21 +226,6 @@ pub(crate) fn run(input: &ModelInput) -> Result<ModelOutput, ModelError> {
         accum_c,
         secondary,
     })
-}
-
-/// MOD-MD-01: the sum over the doses of the single-dose concentrations and areas (each area from
-/// its own dose time), at each time.
-fn superpose(terms: &Terms, doses: &[DoseEvent], times: &[f64]) -> (Vec<f64>, Vec<f64>) {
-    times
-        .iter()
-        .map(|&t| {
-            doses
-                .iter()
-                .filter(|d| d.time <= t)
-                .map(|d| terms.dose_at(d, t))
-                .fold((0.0, 0.0), |(c, a), (dc, da)| (c + dc, a + da))
-        })
-        .unzip()
 }
 
 type Profiles = (Vec<f64>, Vec<f64>, Vec<Option<f64>>);
