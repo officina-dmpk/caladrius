@@ -25,9 +25,19 @@
 //! 0 (their exponential has underflowed, and so has the kernel's), the remaining concentrations are
 //! exactly 0 and nothing is compared.
 //!
-//! Golden rule 6 (never hang): the evaluations of one dose at one time are counted, and more than
-//! [`MAX_DOSE_EVALUATIONS`] is a readable refusal. Any regimen with doses × times within the limit
-//! is never refused; beyond it, the early exit usually keeps the count far below it.
+//! The test is made at the first dose visited and then every `CHECK_EVERY` = 8 doses, not at each:
+//! it costs about as much as one dose (one exponential per mode). Any spacing keeps the bound
+//! conservative: a drop is still made only where the criterion above holds, at the dose where it
+//! is tested, with the amount and elapsed time of that dose; testing less often only delays a drop
+//! by at most 7 doses, which are then summed exactly.
+//!
+//! Golden rule 6 (never hang): the evaluations of one dose at one time are counted, and the
+//! superposition is refused readably as soon as the count exceeds [`MAX_DOSE_EVALUATIONS`] = 10⁷.
+//! The rule is exact: a regimen is refused if and only if, after the early exit, it needs more than
+//! 10⁷ evaluations; since each (dose, time) pair is evaluated at most once, a regimen with
+//! doses × times ≤ 10⁷ is never refused, and beyond it the early exit usually keeps the count far
+//! below the limit. The count is checked at each evaluation, so the refusal comes after at most
+//! 10⁷ evaluations, about 2 s in a release build (card T-052b).
 
 use crate::ModelError;
 use crate::dosing::Terms;
@@ -35,9 +45,17 @@ use crate::model::Input;
 use crate::regimen::DoseEvent;
 
 /// Largest number of evaluations of one dose at one time in one superposition (the doses that
-/// still contribute, summed over the times). About 10 s to 25 s in a release build for a
-/// two-compartment model; every regimen with doses × times at most this limit is evaluated.
-pub const MAX_DOSE_EVALUATIONS: u64 = 100_000_000;
+/// still contribute, summed over the times); every regimen with doses × times at most this limit
+/// is evaluated. 10⁷ rather than the 10⁸ of card T-051, where a regimen whose doses never decay
+/// within the times waited 22 s in a release build before the refusal (two-compartment first-order
+/// input): at 10⁷ the refusal comes within about 2 s, and 10,000 doses × 1,000 times still pass
+/// whatever the rates (card T-052b).
+pub const MAX_DOSE_EVALUATIONS: u64 = 10_000_000;
+
+/// The early exit is tested at the first dose visited and then every `CHECK_EVERY` doses (module
+/// documentation): the bound is computed on one dose in eight, for at most seven extra
+/// evaluations per time once the remaining doses could be dropped.
+const CHECK_EVERY: usize = 8;
 
 /// The share of the running sums below which the doses not yet visited are dropped: 2⁻⁶², a
 /// thousandth of the last bit of a double (2⁻⁵²).
@@ -172,10 +190,12 @@ fn superpose_counted(
         let mut dropped = 0.0;
         for (j, dose) in sorted.iter().take(given).enumerate().rev() {
             let s = (t - dose.time) - terms.tlag;
-            let remaining = before.get(j + 1).copied().unwrap_or(f64::INFINITY);
-            if bound.exhausted(s, remaining, c_sum, a_sum) {
-                dropped = remaining;
-                break;
+            if visited.len() % CHECK_EVERY == 0 {
+                let remaining = before.get(j + 1).copied().unwrap_or(f64::INFINITY);
+                if bound.exhausted(s, remaining, c_sum, a_sum) {
+                    dropped = remaining;
+                    break;
+                }
             }
             evaluations += 1;
             if evaluations > limit {
@@ -254,7 +274,8 @@ mod tests {
 
     /// Every model of the crate, with fast and slow rates, ka near the elimination rate, a lag, an
     /// interval shorter than the input, unsorted records with zero amounts: the early exit gives
-    /// the plain sum at `MODEL_VALUES`, exact zeros where the plain sum is 0, and skips doses.
+    /// the plain sum at `MODEL_VALUES`, exact zeros where the plain sum is 0, and skips doses for
+    /// each of the 8 models (card T-052b: one model losing its exit fails the test).
     #[test]
     fn the_early_exit_gives_the_plain_sum() {
         let pk2 = [("cl", 2.0), ("vc", 10.0), ("q", 4.0), ("vp", 8.0)];
@@ -297,13 +318,20 @@ mod tests {
             dur: None,
         });
         let times = grid(1000, 700.0);
-        let mut skipped_somewhere = false;
+        let mut skipped: Vec<ModelId> = Vec::new();
         for (model, p) in &cases {
             let terms = terms(*model, p);
             for doses in [regular(100, 4.0, 100.0), schedule.clone()] {
                 let (c, a, n) = superpose_counted(&terms, &doses, &times, u64::MAX).unwrap();
                 let (pc, pa) = plain(&terms, &doses, &times);
-                skipped_somewhere |= n < (doses.len() * times.len()) as u64 / 2;
+                // The pairs (dose, time) of the plain sum: fewer evaluations means a drop.
+                let pairs: usize = times
+                    .iter()
+                    .map(|&t| doses.iter().filter(|d| d.time <= t).count())
+                    .sum();
+                if n < pairs as u64 && !skipped.contains(model) {
+                    skipped.push(*model);
+                }
                 for (i, (x, y)) in c.iter().zip(&pc).chain(a.iter().zip(&pa)).enumerate() {
                     assert!(
                         Tolerance::MODEL_VALUES.accepts(*x, *y),
@@ -312,7 +340,19 @@ mod tests {
                 }
             }
         }
-        assert!(skipped_somewhere);
+        let mut models: Vec<ModelId> = Vec::new();
+        for (model, _) in &cases {
+            if !models.contains(model) {
+                models.push(*model);
+            }
+        }
+        assert_eq!(models.len(), 8);
+        for model in &models {
+            assert!(
+                skipped.contains(model),
+                "{model:?}: the early exit never fired"
+            );
+        }
     }
 
     /// Long after the last dose everything has underflowed: exact zeros, the area to infinity,
@@ -357,16 +397,72 @@ mod tests {
         assert!(run(&input).is_ok());
     }
 
-    /// Card T-051: 10,000 doses at 10,000 times in under 1 s (26.6 s and 13.1 s with the plain
-    /// sum in a release build; 0.06 s and 0.02 s now, 0.19 s and 0.09 s in a debug build, so the
-    /// test runs in the default suite). Release timing:
+    /// Card T-052b: with doses that never decay within the times, the refusal at the crate's limit
+    /// comes after `MAX_DOSE_EVALUATIONS` evaluations. Ignored in the default suite (seconds in a
+    /// debug build); release timing:
+    /// `cargo test -p caladrius-models --release --lib -- --ignored refusal_at --nocapture`.
+    #[test]
+    #[ignore = "timing figure, run in release"]
+    fn refusal_at_the_crate_limit_is_prompt() {
+        let n: u32 = 10_000;
+        let tau = 12.0;
+        let last = tau * f64::from(n);
+        let count = MAX_DOSE_EVALUATIONS / u64::from(n) + 1;
+        let times: Vec<f64> = (0..count).map(|i| last + i as f64).collect();
+        let input = ModelInput {
+            model: ModelId::Pk2Oral1,
+            dose: 100.0,
+            params: params(&[
+                ("cl", 2e-5),
+                ("vc", 10.0),
+                ("q", 4.0),
+                ("vp", 8.0),
+                ("ka", 2.0),
+            ]),
+            times,
+        }
+        .with_regimen(&Regimen::Regular { tau, n_doses: n });
+        let start = Instant::now();
+        let e = run(&input).unwrap_err();
+        eprintln!("refused after {:?}: {e}", start.elapsed());
+        assert!(matches!(e, ModelError::SuperpositionTooLarge { .. }));
+    }
+
+    /// Card T-051: 10,000 doses at 10,000 times, 26.6 s (pk2 regular) and 13.1 s (pk1 schedule)
+    /// with the plain sum in a release build. Card T-052b: the gate is the evaluation count, which
+    /// is deterministic, not the wall clock of a possibly loaded runner: fewer than a hundredth of
+    /// the 10⁸ (dose, time) pairs. The time is printed in a release build only:
     /// `cargo test -p caladrius-models --release --lib -- superposition_of --nocapture`.
     #[test]
-    fn superposition_of_10000_doses_at_10000_times_runs_under_a_second() {
+    fn superposition_of_10000_doses_at_10000_times_evaluates_few_doses() {
         let n = 10_000;
         let tau = 12.0;
         let times: Vec<f64> = (0..n).map(|i| tau * i as f64).collect();
-        let pk2 = ModelInput {
+        let doses = regular(n, tau, 100.0);
+        let pk2 = terms(
+            ModelId::Pk2Oral1,
+            &[
+                ("cl", 2.0),
+                ("vc", 10.0),
+                ("q", 4.0),
+                ("vp", 8.0),
+                ("ka", 2.0),
+            ],
+        );
+        let pk1 = terms(ModelId::Oral1, &[("v", 10.0), ("cl", 2.0), ("ka", 1.0)]);
+        let pairs = (n * n) as u64;
+        for (name, terms) in [("pk2.oral_1", pk2), ("pk1.oral_1", pk1)] {
+            let start = Instant::now();
+            let (c, _, count) = superpose_counted(&terms, &doses, &times, u64::MAX).unwrap();
+            let elapsed = start.elapsed();
+            assert_eq!(c.len(), n);
+            assert!(count < pairs / 100, "{name}: {count} evaluations");
+            if cfg!(not(debug_assertions)) {
+                eprintln!("{name}: {count} evaluations, {elapsed:?}");
+            }
+        }
+        // Through `run`, with the crate's limit.
+        let input = ModelInput {
             model: ModelId::Pk2Oral1,
             dose: 100.0,
             params: params(&[
@@ -376,31 +472,12 @@ mod tests {
                 ("vp", 8.0),
                 ("ka", 2.0),
             ]),
-            times: times.clone(),
+            times,
         }
         .with_regimen(&Regimen::Regular {
             tau,
             n_doses: 10_000,
         });
-        let start = Instant::now();
-        let r = run(&pk2).unwrap();
-        let regular_time = start.elapsed();
-        assert_eq!(r.conc().len(), n);
-        let pk1 = ModelInput {
-            model: ModelId::Oral1,
-            dose: 100.0,
-            params: params(&[("v", 10.0), ("cl", 2.0), ("ka", 1.0)]),
-            times,
-        }
-        .with_regimen(&Regimen::Schedule {
-            doses: regular(n, tau, 100.0),
-        });
-        let start = Instant::now();
-        let r = run(&pk1).unwrap();
-        let schedule_time = start.elapsed();
-        assert_eq!(r.conc().len(), n);
-        eprintln!("pk2 regular: {regular_time:?}, pk1 schedule: {schedule_time:?}");
-        assert!(regular_time.as_secs_f64() < 1.0, "{regular_time:?}");
-        assert!(schedule_time.as_secs_f64() < 1.0, "{schedule_time:?}");
+        assert_eq!(run(&input).unwrap().conc().len(), n);
     }
 }

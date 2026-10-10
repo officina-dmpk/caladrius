@@ -297,7 +297,7 @@ impl fmt::Display for ModelError {
                 limit,
             } => write!(
                 f,
-                "dosing regimen: {doses} doses at {times} times need more than {limit} evaluations of one dose at one time (the doses still contribute at the times given); give fewer times or fewer doses, or use the steady state (`tau` alone) for a long regular regimen"
+                "dosing regimen: {doses} doses at {times} times need more than {limit} evaluations of one dose at one time (the doses that still contribute at each time, summed over the times; a regimen is refused only beyond {limit}, so doses x times at most {limit} always runs); give fewer times or fewer doses, or use the steady state (`tau` alone) for a long regular regimen"
             ),
             Self::DegenerateExponents { model } => write!(
                 f,
