@@ -116,7 +116,7 @@ cargo xtask wasm     # checks that layers L0 to L3 compile for wasm32-unknown-un
 | Specification | confirmed by oracle | documented, untested | assumed | observed |
 |---|---|---|---|---|
 | `specs/nca.md` | 44 | 15 | 12 | 5 |
-| `specs/models.md` | 37 | 13 | 11 | 0 |
+| `specs/models.md` | 52 | 2 | 11 | 0 |
 | `specs/fit.md` | 18 | 3 | 21 | 0 |
 | `specs/ux.md` | 0 | 12 | 26 | 0 |
 
