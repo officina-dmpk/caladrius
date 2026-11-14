@@ -186,4 +186,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-178 | No fixed cap on parallel subagents; the fallback read of AGENTS.md removed | orchestrator | done | T-177 |
 | T-179 | The orchestrator runs at high effort, not max | orchestrator | done | |
 | T-160 | specs/vpc.md, the visual predictive check (brick 4, if time allows) | reader | done | T-157, T-170, T-162 |
-| T-188 | Oracle tests for the T-154 review, blocker 1: two-stage start, statuses, the three covariance kinds, bounds and fixed Omega | oracle | in progress | T-154 |
+| T-188 | Oracle tests for the T-154 review, blocker 1: two-stage start, statuses, the three covariance kinds, bounds and fixed Omega | oracle | to review | T-154 |
