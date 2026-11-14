@@ -1,0 +1,466 @@
+{
+  "schema": 1,
+  "kind": "pop_fit_exact",
+  "id": "fit_q1_boundary",
+  "family": "d_fit_exact",
+  "description": "q = 1 with lambda-hat <= sigma-hat^2: omega-hat = 0 and sigma-hat^2 = (W + B) / N, the maximum is on the boundary",
+  "precision_bits": 256,
+  "digits": 50,
+  "design": {
+    "shape": "q1",
+    "omega_shape": "diagonal",
+    "m": 8,
+    "n_per_subject": 5,
+    "n_observations": 40,
+    "times": [
+      "0.5",
+      "1",
+      "2",
+      "4",
+      "8"
+    ],
+    "z_powers": [
+      0
+    ],
+    "generator": {
+      "seed": 39001,
+      "base_seed": 39001,
+      "draws_skipped": 0,
+      "rule": "set.seed(seed, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\"); per subject: the random effects, then rnorm(n, 0, sigma); y = theta1 + theta2 t + Z eta + error, rounded to 3 decimals",
+      "truth": {
+        "theta": [
+          "10",
+          "-0.8"
+        ],
+        "omega": [
+          [
+            "0.02"
+          ]
+        ],
+        "sigma": "1.2"
+      }
+    }
+  },
+  "model": {
+    "name": "identity_linear",
+    "random_effects": [
+      "intercept"
+    ],
+    "theta": {
+      "theta1": "10",
+      "theta2": "-0.8"
+    },
+    "omega": [
+      [
+        "0.02"
+      ]
+    ],
+    "error_model": "additive",
+    "xi": {
+      "a": "1.2"
+    },
+    "z_powers": [
+      0
+    ]
+  },
+  "starts": [
+    {
+      "name": "generating_values",
+      "model": {
+        "name": "identity_linear",
+        "random_effects": [
+          "intercept"
+        ],
+        "theta": {
+          "theta1": "10",
+          "theta2": "-0.8"
+        },
+        "omega": [
+          [
+            "0.02"
+          ]
+        ],
+        "error_model": "additive",
+        "xi": {
+          "a": "1.2"
+        },
+        "z_powers": [
+          0
+        ]
+      }
+    },
+    {
+      "name": "far",
+      "model": {
+        "name": "identity_linear",
+        "random_effects": [
+          "intercept"
+        ],
+        "theta": {
+          "theta1": "3",
+          "theta2": "0.5"
+        },
+        "omega": [
+          [
+            "2"
+          ]
+        ],
+        "error_model": "additive",
+        "xi": {
+          "a": "3"
+        },
+        "z_powers": [
+          0
+        ]
+      }
+    }
+  ],
+  "subjects": [
+    {
+      "id": "S1",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "11.516",
+        "9.362",
+        "9.679",
+        "7.247",
+        "3.868"
+      ]
+    },
+    {
+      "id": "S2",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "9.344",
+        "10.552",
+        "8.173",
+        "8.905",
+        "2.805"
+      ]
+    },
+    {
+      "id": "S3",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "11.448",
+        "8.299",
+        "9.441",
+        "5.975",
+        "3.381"
+      ]
+    },
+    {
+      "id": "S4",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "10.249",
+        "9.684",
+        "6.769",
+        "6.251",
+        "5.148"
+      ]
+    },
+    {
+      "id": "S5",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "9.896",
+        "9.287",
+        "8.898",
+        "8.222",
+        "3.665"
+      ]
+    },
+    {
+      "id": "S6",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "8.462",
+        "8.886",
+        "8.697",
+        "7.991",
+        "4.339"
+      ]
+    },
+    {
+      "id": "S7",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "11.130",
+        "8.100",
+        "8.277",
+        "5.040",
+        "3.215"
+      ]
+    },
+    {
+      "id": "S8",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "10.273",
+        "9.733",
+        "7.047",
+        "9.600",
+        "3.296"
+      ]
+    }
+  ],
+  "expected": {
+    "kind": "boundary",
+    "method": "closed_form",
+    "ofv_convention_of_values": "full",
+    "theta1": "10.345218750000000000000000000000000000000000000000",
+    "theta2": "-0.81982862903225806451612903225806451612903225806452",
+    "omega": [
+      [
+        "0.0000000000000000000000000000000000000000000000000"
+      ]
+    ],
+    "sigma": "1.0542243921490415453269291658936923701773290991190",
+    "sigma2": "1.1113890690020161290322580645161290322580645161290",
+    "ofv_full": "117.73950851534660804618144231544705737897120878418",
+    "ofv_no_2pi": "44.224425858972788703755063402997646190059410893153",
+    "n_ln_2pi": "73.515082656373819342426378912449411188911797891023",
+    "at_bound": [
+      "omega_full[0][0]"
+    ],
+    "sign_conditions": [
+      {
+        "parameter": "omega_full[0][0]",
+        "gradient": 18.606853976830358
+      }
+    ]
+  },
+  "exact_reference": {
+    "method": "closed_form",
+    "polish_iterations": null,
+    "polish_last_step": null,
+    "stationarity_gradient_max": 1.0916117053639378e-74,
+    "objective_minus_closed_form": 0,
+    "closed_form_applies": true,
+    "closed_form_kind": "boundary"
+  },
+  "tolerance_basis": {
+    "basis": "free_block",
+    "parameters": [
+      "theta1",
+      "theta2",
+      "xi.a"
+    ],
+    "rinv_diag": [
+      0.031836666039120255,
+      0.001867253140124355,
+      0.0069461816812626011
+    ],
+    "note": "diagonal of the inverse of R = the Hessian of the OFV (natural parameters, 256 bits): the OFV excess of an error d is d' R d / 2, so |d_j| <= sqrt(2 * eps * rinv_j) for an OFV excess of at most eps"
+  },
+  "standard_errors": {
+    "parameters": [
+      "theta1",
+      "theta2",
+      "xi.a"
+    ],
+    "r": [
+      0.25233575267536013,
+      0.061110606937328893,
+      0.11786587021918263
+    ],
+    "s": [
+      0.32800086465747053,
+      0.082070503011704057,
+      0.19138381181520353
+    ],
+    "sandwich": [
+      0.19793915068969944,
+      0.047259426422320124,
+      0.081937966174302865
+    ],
+    "note": "recorded, not asserted; the standard errors (square roots of the diagonals) of the covariance matrices of the natural parameters (variances, covariances, xi.a = sigma); r = 2 R^-1, s = 4 S^-1, sandwich = R^-1 S R^-1 (POP-COV-01); on a boundary the free block, conditional on the bound (POP-COV-03)",
+    "r_positive_definite": true
+  },
+  "references": {
+    "exact": {
+      "method": "closed_form"
+    },
+    "nlme": {
+      "tight": {
+        "theta": [
+          10.345218750000008,
+          -0.81982862903225828
+        ],
+        "omega": [
+          [
+            1.1024472122729617e-09
+          ]
+        ],
+        "sigma": 1.054224391896488,
+        "ofv": 117.73950853585973
+      },
+      "default": {
+        "theta": [
+          10.345218750000008,
+          -0.81982862903225828
+        ],
+        "omega": [
+          [
+            7.1604746413654204e-10
+          ]
+        ],
+        "sigma": 1.0542243919850067,
+        "ofv": 117.73950852867009
+      }
+    },
+    "direct": {
+      "best_parameterisation": "logs",
+      "theta": [
+        10.345218788452662,
+        -0.81982863553219631
+      ],
+      "omega": [
+        [
+          2.6707529791826365e-15
+        ]
+      ],
+      "sigma2": 1.1113890677945089,
+      "ofv": 117.73950851534667,
+      "runs": {
+        "n_runs": 10,
+        "n_near_best": 10,
+        "ofv_spread": 5.7127635955112055e-12,
+        "ofv_spread_near": 5.7127635955112055e-12,
+        "theta_spread_near": 1.1203029082196281e-07,
+        "omega_spread_near": 7.9343650010861118e-14,
+        "sigma2_spread_near": 5.9951739972419205e-07
+      }
+    },
+    "signed_difference_from_exact": {
+      "names": [
+        "theta1",
+        "theta2",
+        "omega_full[0][0]",
+        "xi.a",
+        "ofv"
+      ],
+      "nlme_tight": {
+        "theta1": 7.1054273576010019e-15,
+        "theta2": -2.2204460492503131e-16,
+        "omega_full[0][0]": 1.1024472122729617e-09,
+        "xi.a": -2.5255353364173061e-10,
+        "ofv": 2.0513112986009219e-08
+      },
+      "nlme_default": {
+        "theta1": 7.1054273576010019e-15,
+        "theta2": -2.2204460492503131e-16,
+        "omega_full[0][0]": 7.1604746413654204e-10,
+        "xi.a": -1.640347857545521e-10,
+        "ofv": 1.332347210336593e-08
+      },
+      "direct": {
+        "theta1": 3.8452661499377427e-08,
+        "theta2": -6.49993825430073e-09,
+        "omega_full[0][0]": 2.6707529791826365e-15,
+        "xi.a": -5.7269922137948015e-10,
+        "ofv": 5.6843418860808015e-14
+      }
+    },
+    "worst_disagreement": {
+      "note": "worst absolute difference by group among nlme (tight), the direct maximisation and each other; the exact point is reference 1",
+      "nlme_tight_vs_exact": {
+        "theta": 7.1054273576010019e-15,
+        "omega": 1.1024472122729617e-09,
+        "sigma": 2.5255353364173061e-10,
+        "ofv": 2.0513112986009219e-08
+      },
+      "nlme_default_vs_exact": {
+        "theta": 7.1054273576010019e-15,
+        "omega": 7.1604746413654204e-10,
+        "sigma": 1.640347857545521e-10,
+        "ofv": 1.332347210336593e-08
+      },
+      "direct_vs_exact": {
+        "theta": 3.8452661499377427e-08,
+        "omega": 2.6707529791826365e-15,
+        "sigma": 5.7269922137948015e-10,
+        "ofv": 5.6843418860808015e-14
+      },
+      "nlme_tight_vs_direct": {
+        "theta": 3.845265439395007e-08,
+        "omega": 1.1024445415199826e-09,
+        "sigma": 3.2014568773774954e-10,
+        "ofv": 2.0513056142590358e-08
+      },
+      "worst_of_the_three": {
+        "theta": 3.8452661499377427e-08,
+        "omega": 1.1024472122729617e-09,
+        "sigma": 5.7269922137948015e-10,
+        "ofv": 2.0513112986009219e-08
+      }
+    }
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "gmp": "0.7.5.1",
+    "jsonlite": "2.0.0",
+    "digest": "0.6.39",
+    "RNGkind": "Mersenne-Twister/Inversion/Rejection",
+    "precision_bits": 256,
+    "nlme": "3.1.168"
+  }
+}

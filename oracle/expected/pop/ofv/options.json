@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "kind": "pop_ofv_options",
+  "generated_by": "oracle/scripts/pop_ofv.R",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "gmp": "0.7.5.1",
+    "jsonlite": "2.0.0",
+    "digest": "0.6.39",
+    "RNGkind": "Mersenne-Twister/Inversion/Rejection",
+    "precision_bits": 256
+  },
+  "mode": "optim BFGS from three starts (0, +0.3 omega, -0.3 omega), reltol 1e-14; Newton with 256-bit jets to a gradient below 1e-70",
+  "seeds": "synthetic data: set.seed(seed) in Mersenne-Twister/Inversion/Rejection, seeds in the cases"
+}

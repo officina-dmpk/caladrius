@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "kind": "pop_exact",
+  "id": "lin_px1",
+  "family": "a_linear",
+  "description": "PX1 of specs/population.md: intercept random effect, 3 subjects, 4 observations each, Omega 0.5, sigma^2 0.25",
+  "precision_bits": 256,
+  "digits": 50,
+  "frozen_sigma": "none",
+  "model": {
+    "name": "identity_linear",
+    "random_effects": [
+      "intercept"
+    ],
+    "theta": {
+      "theta1": "1",
+      "theta2": "1"
+    },
+    "omega": [
+      [
+        "0.5"
+      ]
+    ],
+    "error_model": "additive",
+    "xi": {
+      "a": "0.5"
+    },
+    "z_powers": [
+      0
+    ]
+  },
+  "subjects": [
+    {
+      "id": "S1",
+      "dose": "1",
+      "time": [
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "2.1",
+        "2.9",
+        "5.2",
+        "9.1"
+      ]
+    },
+    {
+      "id": "S2",
+      "dose": "1",
+      "time": [
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "1.4",
+        "2.2",
+        "4.1",
+        "7.6"
+      ]
+    },
+    {
+      "id": "S3",
+      "dose": "1",
+      "time": [
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "y": [
+        "3.0",
+        "4.1",
+        "5.9",
+        "10.4"
+      ]
+    }
+  ],
+  "expected": {
+    "n_obs": 12,
+    "n_ln_2pi": "22.054524796912145802727913673734823356673539367307",
+    "conventions": {
+      "full": "OFV as computed",
+      "no_2pi": "OFV - n_obs * ln(2 pi)"
+    },
+    "per_subject": [
+      {
+        "id": "S1",
+        "eta_hat": [
+          "0.066666666666666666666666666666666666666666666666667"
+        ],
+        "ofv_full": {
+          "linearised": "4.2035553984940388416952713934245799835821598298657",
+          "fo": "4.2035553984940388416952713934245799835821598298657",
+          "laplace_full": "4.2035553984940388416952713934245799835821598298657",
+          "laplace_expected": "4.2035553984940388416952713934245799835821598298657",
+          "laplace_no_variance": "4.2035553984940388416952713934245799835821598298657"
+        }
+      },
+      {
+        "id": "S2",
+        "eta_hat": [
+          "-0.82222222222222222222222222222222222222222222222222"
+        ],
+        "ofv_full": {
+          "linearised": "6.9146665096051499528063825045356910946932709409768",
+          "fo": "6.9146665096051499528063825045356910946932709409768",
+          "laplace_full": "6.9146665096051499528063825045356910946932709409768",
+          "laplace_expected": "6.9146665096051499528063825045356910946932709409768",
+          "laplace_no_variance": "6.9146665096051499528063825045356910946932709409768"
+        }
+      },
+      {
+        "id": "S3",
+        "eta_hat": [
+          "0.97777777777777777777777777777777777777777777777778"
+        ],
+        "ofv_full": {
+          "linearised": "6.7146665096051499528063825045356910946932709409768",
+          "fo": "6.7146665096051499528063825045356910946932709409768",
+          "laplace_full": "6.7146665096051499528063825045356910946932709409768",
+          "laplace_expected": "6.7146665096051499528063825045356910946932709409768",
+          "laplace_no_variance": "6.7146665096051499528063825045356910946932709409768"
+        }
+      }
+    ],
+    "total_full": {
+      "linearised": "17.832888417704338747308036402495962172968701711819",
+      "fo": "17.832888417704338747308036402495962172968701711819",
+      "laplace_full": "17.832888417704338747308036402495962172968701711819",
+      "laplace_expected": "17.832888417704338747308036402495962172968701711819",
+      "laplace_no_variance": "17.832888417704338747308036402495962172968701711819"
+    },
+    "total_no_2pi": {
+      "linearised": "-4.2216363792078070554198772712388611837048376554874",
+      "fo": "-4.2216363792078070554198772712388611837048376554874",
+      "laplace_full": "-4.2216363792078070554198772712388611837048376554874",
+      "laplace_expected": "-4.2216363792078070554198772712388611837048376554874",
+      "laplace_no_variance": "-4.2216363792078070554198772712388611837048376554874"
+    }
+  },
+  "checks": {
+    "mode_gradient_max_abs_256bit": "4.92e-76",
+    "identity_linearised_vs_no_variance_max_abs": "1.38e-76",
+    "identity_linearised_vs_expected_max_abs": "1.38e-76",
+    "laplace_full_minus_linearised_max_abs": "1.38e-76",
+    "fo_minus_linearised_max_abs": "0",
+    "unit_roundoff_256bit": "8.64e-78",
+    "closed_form_route": "C = Z Omega Z' + s2 I by Cholesky; OFV = n ln 2pi + ln|C| + w'w, w = L^-1 (y - a); eta_hat = Omega Z' C^-1 (y - a)",
+    "closed_form_vs_linearised_max_abs": "0",
+    "closed_form_vs_fo_max_abs": "0",
+    "closed_form_vs_laplace_full_max_abs": "1.38e-76",
+    "closed_form_vs_laplace_expected_max_abs": "1.38e-76",
+    "closed_form_vs_laplace_no_variance_max_abs": "1.38e-76",
+    "closed_form_eta_vs_mode_max_abs": "1.08e-78",
+    "closed_form_ofv_total_full": "17.832888417704338747308036402495962172968701711819"
+  }
+}

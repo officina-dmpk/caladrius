@@ -1,0 +1,619 @@
+{
+  "schema": 1,
+  "kind": "pop_fit_exact",
+  "id": "fit_q2_diag",
+  "family": "d_fit_exact",
+  "description": "q = 2, diagonal Omega, m = 12: no closed form, the maximum of (omega_1, omega_2, sigma^2) polished at 256 bits",
+  "precision_bits": 256,
+  "digits": 50,
+  "design": {
+    "shape": "diag",
+    "omega_shape": "diagonal",
+    "m": 12,
+    "n_per_subject": 6,
+    "n_observations": 72,
+    "times": [
+      "0.5",
+      "1",
+      "2",
+      "4",
+      "6",
+      "8"
+    ],
+    "z_powers": [
+      0,
+      1
+    ],
+    "generator": {
+      "seed": 41001,
+      "base_seed": 41001,
+      "draws_skipped": 0,
+      "rule": "set.seed(seed, kind = \"Mersenne-Twister\", normal.kind = \"Inversion\", sample.kind = \"Rejection\"); per subject: the random effects, then rnorm(n, 0, sigma); y = theta1 + theta2 t + Z eta + error, rounded to 3 decimals",
+      "truth": {
+        "theta": [
+          "10",
+          "-0.8"
+        ],
+        "omega": [
+          [
+            "4",
+            "0"
+          ],
+          [
+            "0",
+            "0.09"
+          ]
+        ],
+        "sigma": "0.9"
+      }
+    }
+  },
+  "model": {
+    "name": "identity_linear",
+    "random_effects": [
+      "intercept",
+      "slope"
+    ],
+    "theta": {
+      "theta1": "10",
+      "theta2": "-0.8"
+    },
+    "omega": [
+      [
+        "4",
+        "0"
+      ],
+      [
+        "0",
+        "0.09"
+      ]
+    ],
+    "error_model": "additive",
+    "xi": {
+      "a": "0.9"
+    },
+    "z_powers": [
+      0,
+      1
+    ]
+  },
+  "starts": [
+    {
+      "name": "generating_values",
+      "model": {
+        "name": "identity_linear",
+        "random_effects": [
+          "intercept",
+          "slope"
+        ],
+        "theta": {
+          "theta1": "10",
+          "theta2": "-0.8"
+        },
+        "omega": [
+          [
+            "4",
+            "0"
+          ],
+          [
+            "0",
+            "0.09"
+          ]
+        ],
+        "error_model": "additive",
+        "xi": {
+          "a": "0.9"
+        },
+        "z_powers": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "far",
+      "model": {
+        "name": "identity_linear",
+        "random_effects": [
+          "intercept",
+          "slope"
+        ],
+        "theta": {
+          "theta1": "3",
+          "theta2": "0.5"
+        },
+        "omega": [
+          [
+            "1",
+            "0"
+          ],
+          [
+            "0",
+            "1"
+          ]
+        ],
+        "error_model": "additive",
+        "xi": {
+          "a": "2"
+        },
+        "z_powers": [
+          0,
+          1
+        ]
+      }
+    }
+  ],
+  "subjects": [
+    {
+      "id": "S1",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "9.510",
+        "9.705",
+        "9.557",
+        "6.845",
+        "4.822",
+        "5.265"
+      ]
+    },
+    {
+      "id": "S2",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "11.449",
+        "9.420",
+        "8.984",
+        "5.973",
+        "5.335",
+        "4.674"
+      ]
+    },
+    {
+      "id": "S3",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "6.796",
+        "6.284",
+        "5.057",
+        "3.958",
+        "1.778",
+        "0.194"
+      ]
+    },
+    {
+      "id": "S4",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "6.822",
+        "6.944",
+        "6.099",
+        "5.064",
+        "3.026",
+        "2.688"
+      ]
+    },
+    {
+      "id": "S5",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "16.040",
+        "14.828",
+        "14.634",
+        "9.630",
+        "8.888",
+        "9.957"
+      ]
+    },
+    {
+      "id": "S6",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "8.606",
+        "9.693",
+        "8.509",
+        "5.871",
+        "4.105",
+        "0.824"
+      ]
+    },
+    {
+      "id": "S7",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "13.563",
+        "11.504",
+        "11.257",
+        "9.052",
+        "6.744",
+        "5.913"
+      ]
+    },
+    {
+      "id": "S8",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "5.988",
+        "6.007",
+        "3.022",
+        "0.178",
+        "-2.017",
+        "-5.251"
+      ]
+    },
+    {
+      "id": "S9",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "8.166",
+        "8.149",
+        "9.069",
+        "5.032",
+        "4.836",
+        "2.558"
+      ]
+    },
+    {
+      "id": "S10",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "11.230",
+        "10.269",
+        "9.529",
+        "7.941",
+        "6.675",
+        "3.663"
+      ]
+    },
+    {
+      "id": "S11",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "10.071",
+        "10.037",
+        "10.525",
+        "10.493",
+        "8.688",
+        "9.468"
+      ]
+    },
+    {
+      "id": "S12",
+      "dose": "1",
+      "time": [
+        "0.5",
+        "1",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "y": [
+        "8.319",
+        "9.686",
+        "8.354",
+        "5.819",
+        "6.249",
+        "5.277"
+      ]
+    }
+  ],
+  "expected": {
+    "kind": "interior",
+    "method": "newton",
+    "ofv_convention_of_values": "full",
+    "theta1": "10.119144596292805529374803644360666038328620797989",
+    "theta2": "-0.83209849198868991517436380772855796418473138548539",
+    "omega": [
+      [
+        "5.8552559128855494079993540314254304383132165007045",
+        "0"
+      ],
+      [
+        "0",
+        "0.086252380951278420296971507368356105183664982591436"
+      ]
+    ],
+    "sigma": "0.83816091102572688301483752906196052727636052069753",
+    "sigma2": "0.70251371277147645641047517226078275772458183432493",
+    "ofv_full": "248.75731487942887579138808468811893862610362740138",
+    "ofv_no_2pi": "116.43016609795600097502060264570999848606239119754",
+    "n_ln_2pi": "132.32714878147287481636748204240894014004123620384",
+    "at_bound": [],
+    "sign_conditions": []
+  },
+  "exact_reference": {
+    "method": "newton",
+    "polish_iterations": 5,
+    "polish_last_step": 6.1081607968728041e-76,
+    "stationarity_gradient_max": 1.4232405778795645e-74,
+    "objective_minus_closed_form": null,
+    "closed_form_applies": false,
+    "closed_form_kind": "no_closed_form"
+  },
+  "tolerance_basis": {
+    "basis": "all_parameters",
+    "parameters": [
+      "theta1",
+      "theta2",
+      "omega_full[0][0]",
+      "omega_full[1][1]",
+      "xi.a"
+    ],
+    "rinv_diag": [
+      0.2573494217038067,
+      0.0042559733465214354,
+      3.1484712620858075,
+      0.0008645125799624779,
+      0.0036190652203165435
+    ],
+    "note": "diagonal of the inverse of R = the Hessian of the OFV (natural parameters, 256 bits): the OFV excess of an error d is d' R d / 2, so |d_j| <= sqrt(2 * eps * rinv_j) for an OFV excess of at most eps"
+  },
+  "standard_errors": {
+    "parameters": [
+      "theta1",
+      "theta2",
+      "omega_full[0][0]",
+      "omega_full[1][1]",
+      "xi.a"
+    ],
+    "r": [
+      0.71742514829605286,
+      0.092260211863201741,
+      2.509370941923815,
+      0.041581548310818776,
+      0.085077202825628251
+    ],
+    "s": [
+      1.089862985836983,
+      0.1077296997307778,
+      3.8870819314907563,
+      0.036852929344688562,
+      0.10820940119350746
+    ],
+    "sandwich": [
+      0.7111292567733204,
+      0.091450566024699115,
+      2.455510561793274,
+      0.051799098450223284,
+      0.11972207522226418
+    ],
+    "note": "recorded, not asserted; the standard errors (square roots of the diagonals) of the covariance matrices of the natural parameters (variances, covariances, xi.a = sigma); r = 2 R^-1, s = 4 S^-1, sandwich = R^-1 S R^-1 (POP-COV-01); on a boundary the free block, conditional on the bound (POP-COV-03)",
+    "r_positive_definite": true
+  },
+  "references": {
+    "exact": {
+      "method": "newton"
+    },
+    "nlme": {
+      "tight": {
+        "theta": [
+          10.119144596292806,
+          -0.83209849198868957
+        ],
+        "omega": [
+          {
+            "(Intercept)": 5.8552559128855561,
+            "t": 0
+          },
+          {
+            "(Intercept)": 0,
+            "t": 0.086252380951278476
+          }
+        ],
+        "sigma": 0.83816091102572732,
+        "ofv": 248.75731487942892
+      },
+      "default": {
+        "theta": [
+          10.119144596292806,
+          -0.83209849198868968
+        ],
+        "omega": [
+          {
+            "(Intercept)": 5.8552558888562665,
+            "t": 0
+          },
+          {
+            "(Intercept)": 0,
+            "t": 0.086252380060007794
+          }
+        ],
+        "sigma": 0.83816091229159795,
+        "ofv": 248.75731487942892
+      }
+    },
+    "direct": {
+      "best_parameterisation": "logs",
+      "theta": [
+        10.119144570437756,
+        -0.83209849044706485
+      ],
+      "omega": [
+        [
+          5.8552562645589896,
+          0
+        ],
+        [
+          0,
+          0.086252384106470806
+        ]
+      ],
+      "sigma2": 0.70251370313487793,
+      "ofv": 248.75731487942892,
+      "runs": {
+        "n_runs": 10,
+        "n_near_best": 10,
+        "ofv_spread": 2.502756046851573e-08,
+        "ofv_spread_near": 2.502756046851573e-08,
+        "theta_spread_near": 3.1612861661756142e-07,
+        "omega_spread_near": 9.0771564202896116e-06,
+        "sigma2_spread_near": 4.9305981664193865e-07
+      }
+    },
+    "signed_difference_from_exact": {
+      "names": [
+        "theta1",
+        "theta2",
+        "omega_full[0][0]",
+        "omega_full[1][1]",
+        "xi.a",
+        "ofv"
+      ],
+      "nlme_tight": {
+        "theta1": 0,
+        "theta2": 3.3306690738754696e-16,
+        "omega_full[0][0]": 7.1054273576010019e-15,
+        "omega_full[1][1]": 5.5511151231257827e-17,
+        "xi.a": 4.4408920985006262e-16,
+        "ofv": 2.8421709430404007e-14
+      },
+      "nlme_default": {
+        "theta1": 0,
+        "theta2": 2.2204460492503131e-16,
+        "omega_full[0][0]": -2.4029282563731158e-08,
+        "omega_full[1][1]": -8.9127062674609903e-10,
+        "xi.a": 1.2658710746293877e-09,
+        "ofv": 2.8421709430404007e-14
+      },
+      "direct": {
+        "theta1": -2.5855049656797746e-08,
+        "theta2": 1.5416250498390127e-09,
+        "omega_full[0][0]": 3.5167344059061634e-07,
+        "omega_full[1][1]": 3.1551923851402819e-09,
+        "xi.a": -5.748656661808127e-09,
+        "ofv": 2.8421709430404007e-14
+      }
+    },
+    "worst_disagreement": {
+      "note": "worst absolute difference by group among nlme (tight), the direct maximisation and each other; the exact point is reference 1",
+      "nlme_tight_vs_exact": {
+        "theta": 3.3306690738754696e-16,
+        "omega": 7.1054273576010019e-15,
+        "sigma": 4.4408920985006262e-16,
+        "ofv": 2.8421709430404007e-14
+      },
+      "nlme_default_vs_exact": {
+        "theta": 2.2204460492503131e-16,
+        "omega": 2.4029282563731158e-08,
+        "sigma": 1.2658710746293877e-09,
+        "ofv": 2.8421709430404007e-14
+      },
+      "direct_vs_exact": {
+        "theta": 2.5855049656797746e-08,
+        "omega": 3.5167344059061634e-07,
+        "sigma": 5.748656661808127e-09,
+        "ofv": 2.8421709430404007e-14
+      },
+      "nlme_tight_vs_direct": {
+        "theta": 2.5855049656797746e-08,
+        "omega": 3.5167343348518898e-07,
+        "sigma": 5.7486571058973368e-09,
+        "ofv": 0
+      },
+      "worst_of_the_three": {
+        "theta": 2.5855049656797746e-08,
+        "omega": 3.5167344059061634e-07,
+        "sigma": 5.7486571058973368e-09,
+        "ofv": 2.8421709430404007e-14
+      }
+    }
+  },
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "gmp": "0.7.5.1",
+    "jsonlite": "2.0.0",
+    "digest": "0.6.39",
+    "RNGkind": "Mersenne-Twister/Inversion/Rejection",
+    "precision_bits": 256,
+    "nlme": "3.1.168"
+  }
+}

@@ -1,0 +1,364 @@
+{
+  "schema": 1,
+  "kind": "pop_second_look_saemix",
+  "informational": true,
+  "generated_by": "oracle/scripts/pop_saemix.R",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "saemix": "3.5",
+    "jsonlite": "2.0.0",
+    "RNGkind": "Mersenne-Twister/Inversion/Rejection",
+    "seed": 632545
+  },
+  "note": "second look, never pass/fail: stochastic-approximation EM estimates (typical values on the natural scale, Omega of the log-normal effects, respar = (a, b) of saemix), started at the parameters of the case; the minus2ll values are saemix's importance-sampling and linearisation approximations, with their own constant convention",
+  "cases": [
+    {
+      "id": "syn_iv_additive",
+      "model": "pk1.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 50.3066733161892,
+        "cl": 6.58681608324163
+      },
+      "omega_hat": [
+        [
+          0.108517254649282,
+          0
+        ],
+        [
+          0,
+          0.0452906641912456
+        ]
+      ],
+      "respar": [
+        0.117025512429145,
+        0
+      ],
+      "minus2ll_is": -15.6437171117823,
+      "minus2ll_lin": -15.6435233465024
+    },
+    {
+      "id": "syn_iv_proportional",
+      "model": "pk1.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 64.1616509500714,
+        "cl": 5.20105883822465
+      },
+      "omega_hat": [
+        [
+          0.120961749144296,
+          0
+        ],
+        [
+          0,
+          0.0389030883052186
+        ]
+      ],
+      "respar": [
+        0,
+        0.104936751159335
+      ],
+      "minus2ll_is": -22.7165141512206,
+      "minus2ll_lin": -22.8871182844969
+    },
+    {
+      "id": "syn_oral_additive",
+      "model": "pk1.oral_1",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 50.1204265898407,
+        "cl": 4.05975502345214,
+        "ka": 1.22873007359021
+      },
+      "omega_hat": [
+        [
+          0.0240767104050335,
+          0
+        ],
+        [
+          0,
+          0.0643335049978617
+        ]
+      ],
+      "respar": [
+        0.134184211111445,
+        0
+      ],
+      "minus2ll_is": -15.7058180338395,
+      "minus2ll_lin": -15.7951576184644
+    },
+    {
+      "id": "syn_oral_proportional",
+      "model": "pk1.oral_1",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 44.6032641789601,
+        "cl": 5.27265655339972,
+        "ka": 1.04286282150949
+      },
+      "omega_hat": [
+        [
+          0.0295654572576511,
+          0
+        ],
+        [
+          0,
+          0.00922183489388217
+        ]
+      ],
+      "respar": [
+        0,
+        0.0680299031984919
+      ],
+      "minus2ll_is": -48.8435676897571,
+      "minus2ll_lin": -48.8137923507001
+    },
+    {
+      "id": "syn_pk2_additive",
+      "model": "pk2.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "cl": 5.58984010842954,
+        "vc": 19.7100366354555,
+        "q": 7.96216753830806,
+        "vp": 41.840267060035
+      },
+      "omega_hat": [
+        [
+          0.0617939661554505,
+          0
+        ],
+        [
+          0,
+          0.0171921278271725
+        ]
+      ],
+      "respar": [
+        0.107583840525677,
+        0
+      ],
+      "minus2ll_is": -21.2269158983745,
+      "minus2ll_lin": -21.2203019162569
+    },
+    {
+      "id": "syn_pk2_proportional",
+      "model": "pk2.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 30,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "cl": 5.08984394369866,
+        "vc": 19.942656537459,
+        "q": 7.74442861204389,
+        "vp": 39.8054115276884
+      },
+      "omega_hat": [
+        [
+          0.0525902399669356,
+          0
+        ],
+        [
+          0,
+          0.0223638233752226
+        ]
+      ],
+      "respar": [
+        0,
+        0.0484252685783279
+      ],
+      "minus2ll_is": -57.0935611293346,
+      "minus2ll_lin": -57.1298831774756
+    },
+    {
+      "id": "theoph_additive",
+      "model": "pk1.oral_1",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v",
+        "ka"
+      ],
+      "n_obs": 120,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 31.7075458897131,
+        "cl": 2.73471763132647,
+        "ka": 1.59033766784282
+      },
+      "omega_hat": [
+        [
+          0.0750296829262709,
+          0,
+          0
+        ],
+        [
+          0,
+          0.0166057385512843,
+          0
+        ],
+        [
+          0,
+          0,
+          0.403440347627294
+        ]
+      ],
+      "respar": [
+        0.739020737749894,
+        0
+      ],
+      "minus2ll_is": 345.517979138992,
+      "minus2ll_lin": 343.817489759697
+    },
+    {
+      "id": "theoph_proportional",
+      "model": "pk1.oral_1",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v",
+        "ka"
+      ],
+      "n_obs": 120,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "v": 32.3231925629859,
+        "cl": 2.74334921882665,
+        "ka": 1.52039021711332
+      },
+      "omega_hat": [
+        [
+          0.0582979733081159,
+          0,
+          0
+        ],
+        [
+          0,
+          0.0140442484055292,
+          0
+        ],
+        [
+          0,
+          0,
+          0.411651098473407
+        ]
+      ],
+      "respar": [
+        0,
+        0.160761512401916
+      ],
+      "minus2ll_is": 352.843141601266,
+      "minus2ll_lin": 344.884209007824
+    },
+    {
+      "id": "indometh_additive",
+      "model": "pk2.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 66,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "cl": 8.96378779176171,
+        "vc": 7.37740473963205,
+        "q": 6.27890036393769,
+        "vp": 7.58592224280758
+      },
+      "omega_hat": [
+        [
+          0.0562263060723041,
+          0
+        ],
+        [
+          0,
+          0.0563846969138644
+        ]
+      ],
+      "respar": [
+        0.0790473711427171,
+        0
+      ],
+      "minus2ll_is": -112.687062504556,
+      "minus2ll_lin": -112.550429406896
+    },
+    {
+      "id": "indometh_proportional",
+      "model": "pk2.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 66,
+      "seed": 632545,
+      "converged": true,
+      "theta_hat": {
+        "cl": 7.91792650102933,
+        "vc": 9.32246849952821,
+        "q": 5.27157713171234,
+        "vp": 17.687624675559
+      },
+      "omega_hat": [
+        [
+          0.0298296729333014,
+          0
+        ],
+        [
+          0,
+          0.000455575543652387
+        ]
+      ],
+      "respar": [
+        0,
+        0.193108648259288
+      ],
+      "minus2ll_is": -158.326093542729,
+      "minus2ll_lin": -159.193173569204
+    }
+  ]
+}

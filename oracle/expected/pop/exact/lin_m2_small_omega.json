@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "pop_exact",
+  "id": "lin_m2_small_omega",
+  "family": "a_linear",
+  "description": "m = 2 subjects, Omega = 1e-6 (near the collapse of POP-EST-04)",
+  "precision_bits": 256,
+  "digits": 50,
+  "frozen_sigma": "none",
+  "model": {
+    "name": "identity_linear",
+    "random_effects": [
+      "intercept"
+    ],
+    "theta": {
+      "theta1": "1",
+      "theta2": "1"
+    },
+    "omega": [
+      [
+        "0.000001"
+      ]
+    ],
+    "error_model": "additive",
+    "xi": {
+      "a": "0.5"
+    },
+    "z_powers": [
+      0
+    ]
+  },
+  "subjects": [
+    {
+      "id": "S1",
+      "dose": "1",
+      "time": [
+        "1",
+        "2",
+        "4"
+      ],
+      "y": [
+        "2.12",
+        "3.06",
+        "4.95"
+      ]
+    },
+    {
+      "id": "S2",
+      "dose": "1",
+      "time": [
+        "1",
+        "2",
+        "4"
+      ],
+      "y": [
+        "1.85",
+        "3.1",
+        "5.2"
+      ]
+    }
+  ],
+  "expected": {
+    "n_obs": 6,
+    "n_ln_2pi": "11.027262398456072901363956836867411678336769683653",
+    "conventions": {
+      "full": "OFV as computed",
+      "no_2pi": "OFV - n_obs * ln(2 pi)"
+    },
+    "per_subject": [
+      {
+        "id": "S1",
+        "eta_hat": [
+          "5.1999376007487910145078259060891269304768342779887e-7"
+        ],
+        "ofv_full": {
+          "linearised": "1.4367598453996099312362689850436016551995596180168",
+          "fo": "1.4367598453996099312362689850436016551995596180168",
+          "laplace_full": "1.4367598453996099312362689850436016551995596180168",
+          "laplace_expected": "1.4367598453996099312362689850436016551995596180168",
+          "laplace_no_variance": "1.4367598453996099312362689850436016551995596180168"
+        }
+      },
+      {
+        "id": "S2",
+        "eta_hat": [
+          "5.9999280008639896321244145070259156890117318592177e-7"
+        ],
+        "ofv_full": {
+          "linearised": "1.6447597558006851183340238119856783502792186621083",
+          "fo": "1.6447597558006851183340238119856783502792186621083",
+          "laplace_full": "1.6447597558006851183340238119856783502792186621083",
+          "laplace_expected": "1.6447597558006851183340238119856783502792186621083",
+          "laplace_no_variance": "1.6447597558006851183340238119856783502792186621083"
+        }
+      }
+    ],
+    "total_full": {
+      "linearised": "3.0815196012002950495702927970292800054787782801251",
+      "fo": "3.0815196012002950495702927970292800054787782801251",
+      "laplace_full": "3.0815196012002950495702927970292800054787782801251",
+      "laplace_expected": "3.0815196012002950495702927970292800054787782801251",
+      "laplace_no_variance": "3.0815196012002950495702927970292800054787782801251"
+    },
+    "total_no_2pi": {
+      "linearised": "-7.9457427972557778517936640398381316728579914035283",
+      "fo": "-7.9457427972557778517936640398381316728579914035283",
+      "laplace_full": "-7.9457427972557778517936640398381316728579914035283",
+      "laplace_expected": "-7.9457427972557778517936640398381316728579914035283",
+      "laplace_no_variance": "-7.9457427972557778517936640398381316728579914035283"
+    }
+  },
+  "checks": {
+    "mode_gradient_max_abs_256bit": "1.55e-76",
+    "identity_linearised_vs_no_variance_max_abs": "5.18e-77",
+    "identity_linearised_vs_expected_max_abs": "5.18e-77",
+    "laplace_full_minus_linearised_max_abs": "5.18e-77",
+    "fo_minus_linearised_max_abs": "0",
+    "unit_roundoff_256bit": "8.64e-78",
+    "closed_form_route": "C = Z Omega Z' + s2 I by Cholesky; OFV = n ln 2pi + ln|C| + w'w, w = L^-1 (y - a); eta_hat = Omega Z' C^-1 (y - a)",
+    "closed_form_vs_linearised_max_abs": "0",
+    "closed_form_vs_fo_max_abs": "0",
+    "closed_form_vs_laplace_full_max_abs": "5.18e-77",
+    "closed_form_vs_laplace_expected_max_abs": "5.18e-77",
+    "closed_form_vs_laplace_no_variance_max_abs": "5.18e-77",
+    "closed_form_eta_vs_mode_max_abs": "1.65e-83",
+    "closed_form_ofv_total_full": "3.0815196012002950495702927970292800054787782801251"
+  }
+}

@@ -1,0 +1,468 @@
+{
+  "schema": 1,
+  "kind": "pop_second_look_nlme",
+  "informational": true,
+  "generated_by": "oracle/scripts/pop_nlme.R",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "nlme": "3.1.168",
+    "jsonlite": "2.0.0"
+  },
+  "note": "second look, never pass/fail: Lindstrom-Bates ML estimates on the log scale (fixed effects are ln theta, Omega is the variance of the log-scale effects), started at the parameters of the case; minus2ll is nlme's own approximation, without the constant convention of any other tool",
+  "cases": [
+    {
+      "id": "syn_iv_additive",
+      "model": "pk1.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lv": 3.91202300542815,
+        "lcl": 1.6094379124341
+      },
+      "converged": true,
+      "iterations": 2,
+      "minus2ll": -15.5906609756833,
+      "fixed_log_theta": {
+        "lv": 3.91464741745998,
+        "lcl": 1.88785318371963
+      },
+      "theta_hat": {
+        "v": 50.1313929407845,
+        "cl": 6.6051733554229
+      },
+      "omega_hat": [
+        [
+          0.106479446237308,
+          0
+        ],
+        [
+          0,
+          0.0452000814548171
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv"
+      ],
+      "sigma_hat": 0.116680422521158
+    },
+    {
+      "id": "syn_iv_proportional",
+      "model": "pk1.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lv": 3.91202300542815,
+        "lcl": 1.6094379124341
+      },
+      "converged": true,
+      "iterations": 6,
+      "minus2ll": -22.659377889283,
+      "fixed_log_theta": {
+        "lv": 4.15506932546564,
+        "lcl": 1.67679120791036
+      },
+      "theta_hat": {
+        "v": 63.7563843356405,
+        "cl": 5.3483666108559
+      },
+      "omega_hat": [
+        [
+          0.109763867204677,
+          0
+        ],
+        [
+          0,
+          0.0384722800873919
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv"
+      ],
+      "sigma_hat": 0.106303614211747
+    },
+    {
+      "id": "syn_oral_additive",
+      "model": "pk1.oral_1",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lv": 3.91202300542815,
+        "lcl": 1.6094379124341,
+        "lka": 0.182321556793955
+      },
+      "converged": true,
+      "iterations": 3,
+      "minus2ll": -15.7573068783927,
+      "fixed_log_theta": {
+        "lv": 3.9074137285468,
+        "lcl": 1.4038189536965,
+        "lka": 0.199883343337994
+      },
+      "theta_hat": {
+        "v": 49.7700664766557,
+        "cl": 4.07071619677203,
+        "ka": 1.22126028170201
+      },
+      "omega_hat": [
+        [
+          0.0276053740589402,
+          0
+        ],
+        [
+          0,
+          0.0638927366339383
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv"
+      ],
+      "sigma_hat": 0.132422301379594
+    },
+    {
+      "id": "syn_oral_proportional",
+      "model": "pk1.oral_1",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lv": 3.91202300542815,
+        "lcl": 1.6094379124341,
+        "lka": 0.182321556793955
+      },
+      "converged": true,
+      "iterations": 5,
+      "minus2ll": -48.8027005684171,
+      "fixed_log_theta": {
+        "lv": 3.79241652162704,
+        "lcl": 1.66619394253637,
+        "lka": 0.0299110261305106
+      },
+      "theta_hat": {
+        "v": 44.363476147859,
+        "cl": 5.29198780874719,
+        "ka": 1.0303628545049
+      },
+      "omega_hat": [
+        [
+          0.0290483507434398,
+          0
+        ],
+        [
+          0,
+          0.00887166031537543
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv"
+      ],
+      "sigma_hat": 0.0679469686316966
+    },
+    {
+      "id": "syn_pk2_additive",
+      "model": "pk2.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lcl": 1.6094379124341,
+        "lvc": 2.99573227355399,
+        "lq": 2.07944154167984,
+        "lvp": 3.68887945411394
+      },
+      "converged": true,
+      "iterations": 2,
+      "minus2ll": -21.0819178695836,
+      "fixed_log_theta": {
+        "lcl": 1.75817765567986,
+        "lvc": 2.9793833274594,
+        "lq": 2.05602200307348,
+        "lvp": 3.65680588590248
+      },
+      "theta_hat": {
+        "cl": 5.80185477764518,
+        "vc": 19.6756794515746,
+        "q": 7.81482056340832,
+        "vp": 38.737413336121
+      },
+      "omega_hat": [
+        [
+          0.0591254730750753,
+          0
+        ],
+        [
+          0,
+          0.0172210158683598
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lvc"
+      ],
+      "sigma_hat": 0.107709851185833
+    },
+    {
+      "id": "syn_pk2_proportional",
+      "model": "pk2.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 30,
+      "start_log_theta": {
+        "lcl": 1.6094379124341,
+        "lvc": 2.99573227355399,
+        "lq": 2.07944154167984,
+        "lvp": 3.68887945411394
+      },
+      "converged": true,
+      "iterations": 5,
+      "minus2ll": -57.1307329052571,
+      "fixed_log_theta": {
+        "lcl": 1.62815247413731,
+        "lvc": 2.99423865783248,
+        "lq": 2.0455775610628,
+        "lvp": 3.6833983597627
+      },
+      "theta_hat": {
+        "cl": 5.09445388329237,
+        "vc": 19.9701499833461,
+        "q": 7.73362388831172,
+        "vp": 39.7813559775909
+      },
+      "omega_hat": [
+        [
+          0.0524264590347905,
+          0
+        ],
+        [
+          0,
+          0.0226826016502596
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lvc"
+      ],
+      "sigma_hat": 0.0483885230099017
+    },
+    {
+      "id": "theoph_additive",
+      "model": "pk1.oral_1",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "v",
+        "ka"
+      ],
+      "n_obs": 120,
+      "start_log_theta": {
+        "lv": 3.46573590279973,
+        "lcl": 1.02961941718116,
+        "lka": 0.405465108108164
+      },
+      "converged": true,
+      "iterations": 2,
+      "minus2ll": 344.272840275838,
+      "fixed_log_theta": {
+        "lv": 3.44858072593909,
+        "lcl": 1.01854828866706,
+        "lka": 0.443302837807437
+      },
+      "theta_hat": {
+        "v": 31.4557163302636,
+        "cl": 2.76917180648999,
+        "ka": 1.55784403698597
+      },
+      "omega_hat": [
+        [
+          0.0704923168073706,
+          0,
+          0
+        ],
+        [
+          0,
+          0.017578401067242,
+          0
+        ],
+        [
+          0,
+          0,
+          0.377751911940845
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv",
+        "lka"
+      ],
+      "sigma_hat": 0.738837827123283
+    },
+    {
+      "id": "theoph_proportional",
+      "model": "pk1.oral_1",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "v",
+        "ka"
+      ],
+      "n_obs": 120,
+      "start_log_theta": {
+        "lv": 3.46573590279973,
+        "lcl": 1.02961941718116,
+        "lka": 0.405465108108164
+      },
+      "converged": true,
+      "iterations": 7,
+      "minus2ll": 358.66789238264,
+      "fixed_log_theta": {
+        "lv": 3.44103251572166,
+        "lcl": 1.01209453311602,
+        "lka": 0.277206316916046
+      },
+      "theta_hat": {
+        "v": 31.219175822684,
+        "cl": 2.75135779404378,
+        "ka": 1.31943856545057
+      },
+      "omega_hat": [
+        [
+          0.0551777436426188,
+          0,
+          0
+        ],
+        [
+          0,
+          0.0140061470043291,
+          0
+        ],
+        [
+          0,
+          0,
+          0.381401388765892
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lv",
+        "lka"
+      ],
+      "sigma_hat": 0.166126153771662
+    },
+    {
+      "id": "indometh_additive",
+      "model": "pk2.iv_bolus",
+      "error_model": "additive",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 66,
+      "start_log_theta": {
+        "lcl": 2.07944154167984,
+        "lvc": 2.19722457733622,
+        "lq": 1.70474809223843,
+        "lvp": 2.77258872223978
+      },
+      "converged": true,
+      "iterations": 2,
+      "minus2ll": -112.502074653645,
+      "fixed_log_theta": {
+        "lcl": 2.19326987343658,
+        "lvc": 1.99684061677048,
+        "lq": 1.83064873800407,
+        "lvp": 2.02888158545092
+      },
+      "theta_hat": {
+        "cl": 8.96447795079266,
+        "vc": 7.36574807788294,
+        "q": 6.23793212979675,
+        "vp": 7.60557541408768
+      },
+      "omega_hat": [
+        [
+          0.0565274453231187,
+          0
+        ],
+        [
+          0,
+          0.0557237754370592
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lvc"
+      ],
+      "sigma_hat": 0.0792773579329868
+    },
+    {
+      "id": "indometh_proportional",
+      "model": "pk2.iv_bolus",
+      "error_model": "proportional",
+      "random_effects": [
+        "cl",
+        "vc"
+      ],
+      "n_obs": 66,
+      "start_log_theta": {
+        "lcl": 2.07944154167984,
+        "lvc": 2.19722457733622,
+        "lq": 1.70474809223843,
+        "lvp": 2.77258872223978
+      },
+      "converged": true,
+      "iterations": 7,
+      "minus2ll": -158.149363615186,
+      "fixed_log_theta": {
+        "lcl": 2.07875849809537,
+        "lvc": 2.17888993648401,
+        "lq": 1.67143268157751,
+        "lvp": 2.79450268475828
+      },
+      "theta_hat": {
+        "cl": 7.99453751709356,
+        "vc": 8.83649174526628,
+        "q": 5.31978389654074,
+        "vp": 16.354493391571
+      },
+      "omega_hat": [
+        [
+          0.0262376694283582,
+          0
+        ],
+        [
+          0,
+          5.15554155996756e-11
+        ]
+      ],
+      "omega_names": [
+        "lcl",
+        "lvc"
+      ],
+      "sigma_hat": 0.195257271624278
+    }
+  ]
+}

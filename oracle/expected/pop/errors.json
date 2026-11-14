@@ -1,0 +1,6289 @@
+{
+  "schema": 1,
+  "kind": "pop_errors",
+  "generated_by": "oracle/scripts/pop_errors.R",
+  "versions": {
+    "R": "R version 4.5.2 (2025-10-31 ucrt)",
+    "Rmpfr": "1.1.3",
+    "gmp": "0.7.5.1",
+    "jsonlite": "2.0.0",
+    "digest": "0.6.39",
+    "RNGkind": "Mersenne-Twister/Inversion/Rejection",
+    "precision_bits": 256
+  },
+  "note": "expected-error rows; 'request' is the population request in the vocabulary of specs/population.md (the adapter of crates/caladrius-fit/tests/oracle_pop.rs maps it); expect = refused: the error code (if given) is checked first, then every word of 'words' must occur in the message and none of 'must_not_contain'; 'control' is the same request with the stated change and must not be refused; expect = accepted: the request must not be refused",
+  "cases": [
+    {
+      "case": "pr1_unbounded_combined_s2",
+      "rule": "POP-INN-03.1; PX4",
+      "description": "subject S2 has sample 0 at time 0 where pk1.oral_1 predicts 0, combined error: the likelihood of S2 is unbounded; S1 and S3 are fine (check made for every subject, the error names S2)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0,
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              0.74,
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0,
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              0,
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "FIT-ML-13c (ml6e_y0_at_t0_combined_theoph2)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0,
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                0.74,
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0,
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                0,
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr1_unbounded_combined_sd_s2",
+      "rule": "POP-INN-03.1; PX4",
+      "description": "subject S2 has sample 0 at time 0 where pk1.oral_1 predicts 0, combined_sd error: the likelihood of S2 is unbounded; S1 and S3 are fine (check made for every subject, the error names S2)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined_sd",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0,
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              0.74,
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0,
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              0,
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "FIT-ML-13c (ml6e_y0_at_t0_combined_theoph2)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0,
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                0.74,
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0,
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                0,
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_leading_zero_combined",
+      "rule": "POP-INN-03.1",
+      "description": "pk1.oral_1_lag, combined: S2 has sample 0 at time 0.5, and the domain of tlag (typical value, no random effect) meets [t0, t_nz) of S2",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0.5",
+          "lag",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "FIT-ML-13c (ml6f_leading_zero_*)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1,
+            "tlag": 0.3
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_leading_zero_combined_sd",
+      "rule": "POP-INN-03.1",
+      "description": "pk1.oral_1_lag, combined_sd: S2 has sample 0 at time 0.5, and the domain of tlag (typical value, no random effect) meets [t0, t_nz) of S2",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined_sd",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0.5",
+          "lag",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "FIT-ML-13c (ml6f_leading_zero_*)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1,
+            "tlag": 0.3
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_leading_zero_proportional",
+      "rule": "POP-INN-03.1",
+      "description": "pk1.oral_1_lag, proportional: S2 has sample 0 at time 0.5, and the domain of tlag (typical value, no random effect) meets [t0, t_nz) of S2",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "proportional",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0.5",
+          "lag",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "FIT-ML-13c (ml6f_leading_zero_*)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1,
+            "tlag": 0.3
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_fixed_at_first_time",
+      "rule": "POP-INN-03.1",
+      "description": "tlag fixed at 0.5 = the time of the zero sample: the prediction there is 0 for every trial, combined error (ml6f_fixed_at_time)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ],
+        "fixed": {
+          "tlag": 0.5
+        }
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0.5",
+          "lag",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence"
+      },
+      "reuses": "FIT-ML-13c (ml6f_fixed_at_time_combined_oral_1_lag)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ],
+          "fixed": {
+            "tlag": 0.5
+          }
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_upper_equal_first_time",
+      "rule": "POP-INN-03.1",
+      "description": "upper bound of tlag equal to the time of the zero sample (ml6f_upper_equal)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ],
+        "bounds": {
+          "tlag": {
+            "upper": 0.5
+          }
+        }
+      },
+      "error": {
+        "code": "unbounded_likelihood",
+        "words": [
+          "in subject S2",
+          "time 0.5",
+          "lag",
+          "exclude",
+          "additive"
+        ],
+        "words_basis": "reused_sentence"
+      },
+      "reuses": "FIT-ML-13c (ml6f_upper_equal_combined_oral_1_lag)",
+      "control": {
+        "change": "error_model = additive",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1,
+            "tlag": 0.3
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ],
+          "bounds": {
+            "tlag": {
+              "upper": 0.5
+            }
+          }
+        }
+      }
+    },
+    {
+      "case": "pr1_lag_upper_below_first_time_accepted",
+      "rule": "POP-INN-03.1",
+      "description": "upper bound of tlag below the time of the zero sample: the prediction there is above 0, the zero sample is an ordinary observation, the request is NOT refused (path upper_bound_below_t0 of ml6f_lag_paths.json converges)",
+      "expect": "accepted",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ],
+        "bounds": {
+          "tlag": {
+            "upper": 0.4
+          }
+        }
+      },
+      "reuses": "FIT-ML-13c; oracle/expected/fit/ml/ml6f_lag_paths.json"
+    },
+    {
+      "case": "pr2_sigma_zero_proportional",
+      "rule": "POP-INN-03.2",
+      "description": "proportional error, S1 has sample 0.74 at time 0 where pk1.oral_1 predicts 0: sigma = 0 at eta = 0 (not rule 1: no lag, and proportional is not in rule 1 without a lag)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "proportional",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0,
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              0.74,
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "non_positive_sigma",
+        "words": [
+          "proportional",
+          "standard deviation of 0",
+          "time 0",
+          "subject S1"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "reuses": "FIT-ML-14b (ml6b_sigma_zero_proportional)",
+      "control": {
+        "change": "S1 without its row at time 0",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "proportional",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      },
+      "note": "the sentence of FIT-ML-14b with 'of subject S1' added after the time (POP-INN-03.2, decided 2026-11-08): the words are those of the individual rule plus 'subject S1'"
+    },
+    {
+      "case": "pr3_too_few_subjects_px4",
+      "rule": "POP-INN-03.3; PX4",
+      "description": "a dataset with one subject (PX4)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "too_few_subjects",
+        "words": [
+          "at least 2 subjects",
+          "this dataset has 1"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "reuses": "FIT-ML-14a (analogue)",
+      "control": {
+        "change": "two subjects",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr3_too_few_subjects_all_missing",
+      "rule": "POP-INN-03.3; POP-DAT-01",
+      "description": "two subjects, one with all observations missing: n_i = 0, it is not counted in m, so m = 1",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "too_few_subjects",
+        "words": [
+          "at least 2 subjects",
+          "this dataset has 1"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "control": {
+        "change": "S2 has observations",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr3_too_few_observations_additive",
+      "rule": "POP-INN-03.3",
+      "description": "P_theta,free = 2 (v, k), Q = 1 (additive), N = 3: N <= P + Q",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.iv_bolus",
+        "initial": {
+          "v": 10,
+          "k": 0.2
+        },
+        "random_effects": [
+          "v"
+        ],
+        "omega": [
+          [
+            0.09
+          ]
+        ],
+        "error_model": "additive",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1
+            ],
+            "y": [
+              9.6,
+              8.7
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5
+            ],
+            "y": [
+              10.4
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "too_few_observations",
+        "words": [
+          "3 parameters",
+          "from 3 observations"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "reuses": "FIT-ML-14a (analogue, ml6c_too_few_additive)",
+      "control": {
+        "change": "N = 4",
+        "request": {
+          "model": "pk1.iv_bolus",
+          "initial": {
+            "v": 10,
+            "k": 0.2
+          },
+          "random_effects": [
+            "v"
+          ],
+          "omega": [
+            [
+              0.09
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1
+              ],
+              "y": [
+                9.6,
+                8.7
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1
+              ],
+              "y": [
+                10.4,
+                9.1
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr3_too_few_observations_combined",
+      "rule": "POP-INN-03.3",
+      "description": "P_theta,free = 2, Q = 2 (combined), N = 4: N <= P + Q",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.iv_bolus",
+        "initial": {
+          "v": 10,
+          "k": 0.2
+        },
+        "random_effects": [
+          "v"
+        ],
+        "omega": [
+          [
+            0.09
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1
+            ],
+            "y": [
+              9.6,
+              8.7
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1
+            ],
+            "y": [
+              10.4,
+              9.1
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "too_few_observations",
+        "words": [
+          "4 parameters",
+          "from 4 observations"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "reuses": "FIT-ML-14a (analogue, ml6c_too_few_combined)",
+      "control": {
+        "change": "N = 5",
+        "request": {
+          "model": "pk1.iv_bolus",
+          "initial": {
+            "v": 10,
+            "k": 0.2
+          },
+          "random_effects": [
+            "v"
+          ],
+          "omega": [
+            [
+              0.09
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2
+              ],
+              "y": [
+                9.6,
+                8.7,
+                7.2
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1
+              ],
+              "y": [
+                10.4,
+                9.1
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr3_omega_not_counted_accepted",
+      "rule": "POP-INN-03.3",
+      "description": "N = 4 > P + Q = 3 with a full 2 x 2 block Omega (3 free elements): NOT refused (the elements of Omega are left out of the count on purpose); the covariance carries the flag few observations",
+      "expect": "accepted",
+      "request": {
+        "model": "pk1.iv_bolus",
+        "initial": {
+          "v": 10,
+          "k": 0.2
+        },
+        "random_effects": [
+          "v",
+          "k"
+        ],
+        "omega": [
+          [
+            0.09,
+            0.01
+          ],
+          [
+            0.01,
+            0.04
+          ]
+        ],
+        "error_model": "additive",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1
+            ],
+            "y": [
+              9.6,
+              8.7
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1
+            ],
+            "y": [
+              10.4,
+              9.1
+            ]
+          }
+        ],
+        "omega_shape": "block"
+      },
+      "note": "the fit is run in full (not evaluate_only) and the array flags of the covariance block of the answer holds few_observations (POP-INN-03.3, POP-COV-03, POP-API-01 item 4); the elements of Omega are left out of the refusal count but not of the flag",
+      "expect_flags": [
+        "few_observations"
+      ]
+    },
+    {
+      "case": "pr4_inner_failed_sentence",
+      "rule": "POP-INN-03.4; PX4",
+      "expect": "refused",
+      "constructible": false,
+      "description": "the inner problem of subject S3 does not converge at the starting parameters. No dataset and no request that the oracle can build and still be certain of this outcome is known: the row is the sentence only, to be exercised by a unit test of the engine with an injected failure (T-153), not by the oracle",
+      "request": null,
+      "error": {
+        "code": "inner_failed",
+        "words": [
+          "inner problem of subject S3",
+          "did not converge at the starting values",
+          "check the starting values, the model and the data of that subject"
+        ],
+        "words_basis": "spec_sentence"
+      }
+    },
+    {
+      "case": "pr5_unknown_method",
+      "rule": "POP-INN-03.5",
+      "description": "an unknown method",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {
+          "method": "mcem"
+        },
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "method"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "no method (the default)",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_unknown_error_model",
+      "rule": "POP-INN-03.5",
+      "description": "an unknown error_model",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "poisson",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "error_model"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "combined",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_missing_error_model",
+      "rule": "POP-INN-03.5",
+      "description": "a missing error_model",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "error_model"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "combined",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_unknown_ofv_convention",
+      "rule": "POP-INN-03.5",
+      "description": "an unknown ofv_convention",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {
+          "ofv_convention": "half"
+        },
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "ofv_convention"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "no_2pi",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {
+            "ofv_convention": "no_2pi"
+          },
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_unknown_omega_shape",
+      "rule": "POP-INN-03.5",
+      "description": "an unknown omega shape",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ],
+        "omega_shape": "banded"
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "omega"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "block",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0.01
+            ],
+            [
+              0.01,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ],
+          "omega_shape": "block"
+        }
+      }
+    },
+    {
+      "case": "pr5_unknown_covariance_kind",
+      "rule": "POP-INN-03.5",
+      "description": "an unknown covariance kind",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {
+          "covariance": "jackknife"
+        },
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "covariance"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "sandwich",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {
+            "covariance": "sandwich"
+          },
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_missing_random_effects",
+      "rule": "POP-INN-03.5",
+      "description": "a missing random_effects",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "random_effects"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "cl, v",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_initial_outside_domain",
+      "rule": "POP-INN-03.5",
+      "description": "an initial value outside its domain (v = -1, a volume)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": -1,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "`initial`",
+          "`v`"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "control": {
+        "change": "v = 32",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      },
+      "note": "the sentence of POP-INN-03.5: option `initial`: the typical value of `v` is -1, outside its domain; the backticks keep the word 'v' from matching inside 'invalid'"
+    },
+    {
+      "case": "pr5_omega_not_pd_diagonal",
+      "rule": "POP-INN-03.5",
+      "description": "a negative variance on the diagonal of the starting Omega",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            -0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "omega"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "0.04",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_omega_not_pd_block",
+      "rule": "POP-INN-03.5",
+      "description": "a block starting Omega that is not positive definite (covariance 0.1 > sqrt(0.04 * 0.04))",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.04,
+            0.1
+          ],
+          [
+            0.1,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ],
+        "omega_shape": "block"
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "omega"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "covariance 0.01",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.04,
+              0.01
+            ],
+            [
+              0.01,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ],
+          "omega_shape": "block"
+        }
+      }
+    },
+    {
+      "case": "pr5_duplicate_random_effect",
+      "rule": "POP-INN-03.5",
+      "description": "random_effects lists the same parameter twice (added after review)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "cl"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "cl"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "cl, v",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_random_effect_on_tlag_px4",
+      "rule": "POP-INN-03.5; POP-MOD-02; PX4",
+      "description": "a random effect on tlag (PX4)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1_lag",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "ka": 1,
+          "tlag": 0.3
+        },
+        "random_effects": [
+          "cl",
+          "tlag"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "additive",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.2,
+              4.3777174025217,
+              6.72161984031823,
+              7.63961664511019,
+              4.87084602057968,
+              3.00531317087968,
+              1.65075896707501,
+              0.36670445375844
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0,
+              3.79792491138336,
+              5.92874530938021,
+              6.76328785919108,
+              4.24622365507244,
+              2.55028470079971,
+              1.31887178825001,
+              0.151549503416764
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 100,
+            "time": [
+              0.5,
+              1,
+              2,
+              4,
+              6,
+              8,
+              12,
+              24
+            ],
+            "y": [
+              0.3,
+              3.71813242024502,
+              5.63587077844219,
+              6.38695907327197,
+              4.1216012895652,
+              2.59525623071974,
+              1.48698460942501,
+              0.436394553075088
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "random effect on `tlag`",
+          "not available in this version",
+          "give `tlag` as a shared typical value"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "control": {
+        "change": "tlag as a shared typical value",
+        "request": {
+          "model": "pk1.oral_1_lag",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "ka": 1,
+            "tlag": 0.3
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "additive",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.2,
+                4.3777174025217,
+                6.72161984031823,
+                7.63961664511019,
+                4.87084602057968,
+                3.00531317087968,
+                1.65075896707501,
+                0.36670445375844
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0,
+                3.79792491138336,
+                5.92874530938021,
+                6.76328785919108,
+                4.24622365507244,
+                2.55028470079971,
+                1.31887178825001,
+                0.151549503416764
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 100,
+              "time": [
+                0.5,
+                1,
+                2,
+                4,
+                6,
+                8,
+                12,
+                24
+              ],
+              "y": [
+                0.3,
+                3.71813242024502,
+                5.63587077844219,
+                6.38695907327197,
+                4.1216012895652,
+                2.59525623071974,
+                1.48698460942501,
+                0.436394553075088
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr5_random_effect_on_dur",
+      "rule": "POP-INN-03.5; POP-MOD-02",
+      "description": "a random effect on dur (the zero-order duration, same reason as tlag)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_0",
+        "initial": {
+          "v": 10,
+          "cl": 2,
+          "dur": 2
+        },
+        "random_effects": [
+          "cl",
+          "dur"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "random effect on `dur`",
+          "not available in this version",
+          "give `dur` as a shared typical value"
+        ],
+        "words_basis": "spec_sentence"
+      },
+      "control": {
+        "change": "dur as a shared typical value",
+        "request": {
+          "model": "pk1.oral_0",
+          "initial": {
+            "v": 10,
+            "cl": 2,
+            "dur": 2
+          },
+          "random_effects": [
+            "cl"
+          ],
+          "omega": [
+            [
+              0.09
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      },
+      "note": "the sentence of POP-INN-03.5; the model name pk1.oral_0 is the zero-order oral model with parameter dur (see specs/models.md MOD-AB0-01)"
+    },
+    {
+      "case": "pr6_dataset_refusal_addl",
+      "rule": "POP-INN-03.6; DAT-ERR-08; DAT-ERR-06",
+      "description": "event-layout dataset, subject 1 carries ADDL: the run refuses, naming the subject and the dataset's sentence; subjects 2 and 3 are fine",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.iv_bolus",
+        "initial": {
+          "v": 10,
+          "k": 0.2
+        },
+        "random_effects": [
+          "v"
+        ],
+        "omega": [
+          [
+            0.09
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "dataset_file": "data/pop/errors/refuse_addl_3.csv"
+      },
+      "error": {
+        "code": "unsupported_history",
+        "words": [
+          "subject 1",
+          "row 1 of subject 1",
+          "additional doses or a steady state (`addl`)",
+          "give each dose on its own row"
+        ],
+        "words_basis": "reused_sentence",
+        "must_not_contain": [
+          "subject 2",
+          "subject 3"
+        ]
+      },
+      "reuses": "DAT-ERR-08 (oracle/expected/data/refuse_addl.json: same first rows, hence the same row number)",
+      "control": {
+        "change": "exclude_subjects = [\"1\"]",
+        "request": {
+          "model": "pk1.iv_bolus",
+          "initial": {
+            "v": 10,
+            "k": 0.2
+          },
+          "random_effects": [
+            "v"
+          ],
+          "omega": [
+            [
+              0.09
+            ]
+          ],
+          "error_model": "combined",
+          "options": {
+            "exclude_subjects": [
+              "1"
+            ]
+          },
+          "dataset_file": "data/pop/errors/refuse_addl_3.csv"
+        }
+      },
+      "note": "the code is the dataset's own code of the first affected subject (POP-INN-03.6, decided 2026-11-08); read by exact name, [[\"code\"]] (the operator $ matches names partly)"
+    },
+    {
+      "case": "pr6_several_dose_rows",
+      "rule": "POP-INN-03.7; DAT-USE-02",
+      "description": "event-layout dataset, subject S2 has two dose rows (times 0 and 3), S1 and S3 one: the run refuses, naming S2 only",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.iv_bolus",
+        "initial": {
+          "v": 10,
+          "k": 0.2
+        },
+        "random_effects": [
+          "v"
+        ],
+        "omega": [
+          [
+            0.09
+          ]
+        ],
+        "error_model": "combined",
+        "options": {},
+        "dataset_file": "data/pop/errors/several_doses_3.csv"
+      },
+      "error": {
+        "code": "unsupported_history",
+        "words": [
+          "subject S2",
+          "2 dose rows",
+          "single dose",
+          "exclude_subjects"
+        ],
+        "words_basis": "spec_sentence",
+        "must_not_contain": [
+          "S1",
+          "S3"
+        ]
+      },
+      "reuses": "DAT-USE-01 (the NCA refuses more than one dose row); POP-DAT-01",
+      "control": {
+        "change": "the second dose row of S2 removed",
+        "request": {
+          "model": "pk1.iv_bolus",
+          "initial": {
+            "v": 10,
+            "k": 0.2
+          },
+          "random_effects": [
+            "v"
+          ],
+          "omega": [
+            [
+              0.09
+            ]
+          ],
+          "error_model": "combined",
+          "options": {},
+          "dataset_file": "data/pop/errors/several_doses_control_3.csv"
+        }
+      }
+    },
+    {
+      "case": "pr6_exclude_unknown_label",
+      "rule": "POP-INN-03.6; POP-DAT-01",
+      "description": "exclude_subjects names a label that is not in the dataset (a misspelt label would otherwise exclude nothing, silently)",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {
+          "exclude_subjects": [
+            "S9"
+          ]
+        },
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "S9"
+        ],
+        "words_basis": "rule_names_option"
+      },
+      "control": {
+        "change": "exclude_subjects = [\"S3\"]",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {
+            "exclude_subjects": [
+              "S3"
+            ]
+          },
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "pr6_exclude_unknown_label_among_valid",
+      "rule": "POP-INN-03.6",
+      "description": "one valid and one misspelt label: still refused, naming the misspelt one",
+      "expect": "refused",
+      "request": {
+        "model": "pk1.oral_1",
+        "initial": {
+          "v": 32,
+          "cl": 2.8,
+          "ka": 1.5
+        },
+        "random_effects": [
+          "cl",
+          "v"
+        ],
+        "omega": [
+          [
+            0.09,
+            0
+          ],
+          [
+            0,
+            0.04
+          ]
+        ],
+        "error_model": "combined",
+        "options": {
+          "exclude_subjects": [
+            "S3",
+            "s2"
+          ]
+        },
+        "subjects": [
+          {
+            "id": "S1",
+            "dose": 319.992,
+            "time": [
+              0.25,
+              0.57,
+              1.12,
+              2.02,
+              3.82,
+              5.1,
+              7.03,
+              9.05,
+              12.12,
+              24.37
+            ],
+            "y": [
+              2.84,
+              6.57,
+              10.5,
+              9.66,
+              8.58,
+              8.36,
+              7.47,
+              6.89,
+              5.94,
+              3.28
+            ]
+          },
+          {
+            "id": "S2",
+            "dose": 318.56,
+            "time": [
+              0.27,
+              0.52,
+              1,
+              1.92,
+              3.5,
+              5.02,
+              7.03,
+              9,
+              12,
+              24.3
+            ],
+            "y": [
+              1.72,
+              7.91,
+              8.31,
+              8.33,
+              6.85,
+              6.08,
+              5.4,
+              4.55,
+              3.01,
+              0.9
+            ]
+          },
+          {
+            "id": "S3",
+            "dose": 319.365,
+            "time": [
+              0.27,
+              0.58,
+              1.02,
+              2.02,
+              3.62,
+              5.08,
+              7.07,
+              9,
+              12.15,
+              24.17
+            ],
+            "y": [
+              4.4,
+              6.9,
+              8.2,
+              7.8,
+              7.5,
+              6.2,
+              5.3,
+              4.9,
+              3.7,
+              1.05
+            ]
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_option",
+        "words": [
+          "s2"
+        ],
+        "words_basis": "rule_names_option",
+        "must_not_contain": [
+          "S3"
+        ]
+      },
+      "control": {
+        "change": "the misspelt label removed (S3 only)",
+        "request": {
+          "model": "pk1.oral_1",
+          "initial": {
+            "v": 32,
+            "cl": 2.8,
+            "ka": 1.5
+          },
+          "random_effects": [
+            "cl",
+            "v"
+          ],
+          "omega": [
+            [
+              0.09,
+              0
+            ],
+            [
+              0,
+              0.04
+            ]
+          ],
+          "error_model": "combined",
+          "options": {
+            "exclude_subjects": [
+              "S3"
+            ]
+          },
+          "subjects": [
+            {
+              "id": "S1",
+              "dose": 319.992,
+              "time": [
+                0.25,
+                0.57,
+                1.12,
+                2.02,
+                3.82,
+                5.1,
+                7.03,
+                9.05,
+                12.12,
+                24.37
+              ],
+              "y": [
+                2.84,
+                6.57,
+                10.5,
+                9.66,
+                8.58,
+                8.36,
+                7.47,
+                6.89,
+                5.94,
+                3.28
+              ]
+            },
+            {
+              "id": "S2",
+              "dose": 318.56,
+              "time": [
+                0.27,
+                0.52,
+                1,
+                1.92,
+                3.5,
+                5.02,
+                7.03,
+                9,
+                12,
+                24.3
+              ],
+              "y": [
+                1.72,
+                7.91,
+                8.31,
+                8.33,
+                6.85,
+                6.08,
+                5.4,
+                4.55,
+                3.01,
+                0.9
+              ]
+            },
+            {
+              "id": "S3",
+              "dose": 319.365,
+              "time": [
+                0.27,
+                0.58,
+                1.02,
+                2.02,
+                3.62,
+                5.08,
+                7.07,
+                9,
+                12.15,
+                24.17
+              ],
+              "y": [
+                4.4,
+                6.9,
+                8.2,
+                7.8,
+                7.5,
+                6.2,
+                5.3,
+                4.9,
+                3.7,
+                1.05
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

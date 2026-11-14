@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "kind": "pop_exact",
+  "id": "nl_px5",
+  "family": "b_nonlinear",
+  "description": "PX5 of specs/population.md: one subject, three observations, y = 10 exp(-0.3 e^eta t), sigma^2 0.25, Omega 0.4",
+  "precision_bits": 256,
+  "digits": 50,
+  "frozen_sigma": "none",
+  "model": {
+    "name": "pk1.iv_bolus",
+    "random_effects": [
+      "cl"
+    ],
+    "theta": {
+      "v": "10",
+      "cl": "3"
+    },
+    "omega": [
+      [
+        "0.4"
+      ]
+    ],
+    "error_model": "additive",
+    "xi": {
+      "a": "0.5"
+    },
+    "z_powers": null
+  },
+  "subjects": [
+    {
+      "id": "S1",
+      "dose": "100",
+      "time": [
+        "1",
+        "2",
+        "5"
+      ],
+      "y": [
+        "6.9",
+        "4.4",
+        "1.6"
+      ]
+    }
+  ],
+  "expected": {
+    "n_obs": 3,
+    "n_ln_2pi": "5.5136311992280364506819784184337058391683848418267",
+    "conventions": {
+      "full": "OFV as computed",
+      "no_2pi": "OFV - n_obs * ln(2 pi)"
+    },
+    "per_subject": [
+      {
+        "id": "S1",
+        "eta_hat": [
+          "0.25010231433607601168105924834795075881657629973464"
+        ],
+        "ofv_full": {
+          "linearised": "5.6435953611963724299167875979979351204647969523106",
+          "fo": "5.7568004988914717258113931867449087456525579227050",
+          "laplace_full": "5.6291875626622148820899707879522897457853889054211",
+          "laplace_expected": "5.6435953611963724299167875979979351204647969523106",
+          "laplace_no_variance": "5.6435953611963724299167875979979351204647969523106",
+          "exact_marginal": "5.6260305361365706583333531974507301603574566559099"
+        }
+      }
+    ],
+    "total_full": {
+      "linearised": "5.6435953611963724299167875979979351204647969523106",
+      "fo": "5.7568004988914717258113931867449087456525579227050",
+      "laplace_full": "5.6291875626622148820899707879522897457853889054211",
+      "laplace_expected": "5.6435953611963724299167875979979351204647969523106",
+      "laplace_no_variance": "5.6435953611963724299167875979979351204647969523106",
+      "exact_marginal": "5.6260305361365706583333531974507301603574566559099"
+    },
+    "total_no_2pi": {
+      "linearised": "0.12996416196833597923480917956422928129641211048393",
+      "fo": "0.24316929966343527512941476831120290648417308087829",
+      "laplace_full": "0.11555636343417843140799236951858390661700406359435",
+      "laplace_expected": "0.12996416196833597923480917956422928129641211048393",
+      "laplace_no_variance": "0.12996416196833597923480917956422928129641211048393",
+      "exact_marginal": "0.11239933690853420765137477901702432118907181408321"
+    }
+  },
+  "checks": {
+    "mode_gradient_max_abs_256bit": "1.3e-75",
+    "identity_linearised_vs_no_variance_max_abs": "6.91e-77",
+    "identity_linearised_vs_expected_max_abs": "6.91e-77",
+    "laplace_full_minus_linearised_max_abs": "0.0144",
+    "fo_minus_linearised_max_abs": "0.113",
+    "unit_roundoff_256bit": "8.64e-78",
+    "exact_marginal_minus_linearised_max_abs": "0.0176",
+    "exact_marginal": {
+      "method": "trapezoidal rule on [-13 sd, 13 sd] of the prior, steps h and h/2, h = min(0.6 s_post, sd/2), 256-bit arithmetic",
+      "ofv_total_error_bound": "2.08e-22",
+      "per_subject": [
+        {
+          "ofv_error_bound": "2.08e-22",
+          "discretisation_rel": "1.04e-22",
+          "truncation_rel": "2.39e-37",
+          "nodes": 579,
+          "step": "0.0285",
+          "edge_log_ratio": "-224"
+        }
+      ]
+    }
+  }
+}
