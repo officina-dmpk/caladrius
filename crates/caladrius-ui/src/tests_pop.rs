@@ -335,6 +335,20 @@ fn a_stored_fit_opens_with_its_result_and_the_palette_offers_a_new_one() {
 }
 
 #[test]
+fn a_new_project_leaves_no_population_page_behind() {
+    let mut app = run_demo();
+    app.perform(vec![Action::NewProject, Action::GuardDiscard]);
+    assert!(app.overview.worksheets.is_empty() && app.overview.analyses.is_empty());
+    assert!(app.pop_page().is_none());
+    app.load_csv("theophylline_pop.csv", demo_csv().as_bytes());
+    app.perform(vec![Action::ImportConfirm, Action::NewAnalysis]);
+    assert!(app.pop_page().is_none());
+    assert!(app.nca_page().is_some());
+    let mut h = harness(app);
+    h.run();
+}
+
+#[test]
 fn every_part_draws_after_fo_in_both_themes_and_both_axes() {
     let mut app = with_demo();
     app.perform(vec![Action::NewPopFit]);

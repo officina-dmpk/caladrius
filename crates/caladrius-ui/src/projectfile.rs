@@ -302,6 +302,8 @@ impl UiApp {
         self.state.nca = None;
         self.state.fit = None;
         self.state.sim = None;
+        // A population fit of the old project would otherwise answer to the same analysis id.
+        self.state.pop = None;
         self.sheet = None;
         self.rejected = None;
         self.pending = None;
