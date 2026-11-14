@@ -177,7 +177,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-169 | caladrius-fit minors left by T-149 and T-151 (error.rs:298, the stale 13c comments, the A2 test) | engine | done | T-149, T-151 |
 | T-170 | specs/simulation.md round 2 after the simulator (T-158 and T-159 review items) | reader | done | T-159 |
 | T-171 | pk3 subnormal guards: unit_scale for a subnormal a+b+c, derived quantities must be normal numbers | engine | done | T-167 |
-| T-172 | Integrate brick 1 and brick 2: iter3/pk3 merged with iter3/ml on iter3/int | engine | to review | T-171, T-169 |
+| T-172 | Integrate brick 1 and brick 2: iter3/pk3 merged with iter3/ml on iter3/int | engine | done | T-171, T-169 |
 | T-173 | Oracle answers to the T-154 notes: at_bound counted as converged in the sealed recovery, q1 off-diagonal guard | oracle | done | T-154 |
 | T-174 | Triage of the cl bias of design A: independent FOCEI fit in R and saemix on the 200 sealed replicates | oracle | todo | T-154, T-152 |
 | T-175 | specs/models.md, the round left by T-167 and T-171 (pk3 macro path: magnitude rules, double-double floor, DerivedOutOfRange arms) | reader | done | T-167, T-171 |
