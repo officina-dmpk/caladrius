@@ -314,6 +314,14 @@ Bit-exact, with no tolerance: the KATs, the counters, the words, the uniforms, L
 
 Decision taken meanwhile: the T-168 and T-158 rules stand for the new tests. Nothing is written in `AGENTS.md` without a yes here.
 
+Added to Q-026 by T-188 (2026-11-14, `iter3/pop` 9f93d0f): one constant for the standard errors, used only by `oracle_pop_review.rs`.
+
+| constant | value | for | the measurement behind it |
+|---|---|---|---|
+| `POP_SE` | 1e-4 relative | the SEs of the three covariance kinds on the interior exact cases | worst engine error against the exact SEs, 3 cases × 2 starts: 1.34e-5 (sandwich), 1.98e-5 (r), 2.81e-5 (s); margin 3.6 |
+
+It does not cover a collapsed ω, since POP-COV-03 has no rule for it (Q-029 point 2). Decision taken meanwhile: the constant stands for the new tests. Nothing is written in `AGENTS.md` without a yes here.
+
 ## Q-027 (2026-11-08, orchestrator): the AS 241 constants in a published crate
 
 T-159 writes the inverse of the normal distribution (AS 241, Wichura 1988, Applied Statistics 37(3):477-484) in `crates/caladrius-fit/src/sim/normal.rs`, on `iter3/sim`. Its 48 coefficients come from the table in `specs/simulation.md`. That table was read from R's `src/nmath/qnorm.c`, which is under GPL-2 or GPL-3. The code itself is written from the spec, not taken from R. The T-159 review (Fable) checked that the 48 coefficients are the same doubles as the spec table.
@@ -356,11 +364,3 @@ T-174 (verdict (a), reviewed): on the 200 sealed replicates of `accurate`, an in
 - Option (a): fit the 200 replicates in R with the other FOCEI forms of OP-02 (the three POP-OBJ-04 Laplace forms) and against a fresh draw under a new seed, then decide which form the engine follows. The bias check stays red meanwhile. About one oracle card.
 - Option (b): record the shift as a documented method difference (`specs/differences.md`, D-xx: FOCEI against the exact likelihood on design A) and change the check of cl into a check against the R FOCEI reference, keeping saemix as the second look. Needs your yes, because it changes what the sealed test asserts.
 - Decision meanwhile: nothing changes; the check stays red with its numbers. Recommendation: (a) first, then (b) for the forms that keep a shift.
-
-Added to Q-026 by T-188 (2026-11-14, `iter3/pop` 9f93d0f): one constant for the standard errors, used only by `oracle_pop_review.rs`.
-
-| constant | value | for | the measurement behind it |
-|---|---|---|---|
-| `POP_SE` | 1e-4 relative | the SEs of the three covariance kinds on the interior exact cases | worst engine error against the exact SEs, 3 cases × 2 starts: 1.34e-5 (sandwich), 1.98e-5 (r), 2.81e-5 (s); margin 3.6 |
-
-It does not cover a collapsed ω, since POP-COV-03 has no rule for it (Q-029 point 2). Decision taken meanwhile: the constant stands for the new tests. Nothing is written in `AGENTS.md` without a yes here.
