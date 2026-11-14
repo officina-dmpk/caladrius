@@ -14,7 +14,7 @@
   - The pk3 sample needs initial estimates typed by hand: CL 2, Vc 10, Q2 5, Vp2 20, Q3 0.5, Vp3 40.
 - **The demo uses the new design** (Abdou, 2026-11-14): T-187, designed by Fable, on branch `claude/front-design-879a0b`, worktree `.claude/worktrees/front-design-879a0b`.
   - Browser: port 4174, served from that worktree.
-  - Window: `C:\Users\abdou\caladrius-t187\bin\caladrius-tauri.exe`.
+  - Window: `C:\Users\abdou\caladrius-t187\bin\caladrius-tauri.exe`, the simplest way to start on Monday. It is self-contained and lives outside every worktree. It was rebuilt at 5b8e24a, where the whole goodness-of-fit table, AIC included, shows without scrolling at 1440×900.
   - The old front of `front/int` is the fallback.
   - Merging the design into `front/int` (PR #22) is for Abdou to decide.
 - **Population PK:** no `pop.*` command exists (T-156 is not written), and `front/int` is built from `iter3/int`, not `iter3/pop`, so the front shows no population fit.
@@ -29,7 +29,7 @@
   - `iter3/pop` 9f93d0f;
   - `iter3/pop-triage` 363dadf;
   - `front/int` e3c7a3e (local branch, ahead of `origin`);
-  - `claude/front-design-879a0b`, the `front-design` session's branch.
+  - `claude/front-design-879a0b` 5b8e24a, the `front-design` session's branch (the demo front).
 - **Waiting for Abdou:** Q-026 (`POP_SE`), Q-029, Q-030; what the demo shows of Apothicaire; whether the engine fix round of T-154 and T-156 (`pop.fit`) come after the demo; the renumbering of the colliding card ids.
 
 **Before 2026-11-14, the project was paused.** The usage budget for the iterations was spent, and Abdou was changing how the project is run. The steps below describe the setup as it was on 2026-11-08.
