@@ -181,7 +181,7 @@ Same rules as before: vendor documentation was not used. S-36 (section 12 above)
 
 **Use in `specs/models.md`.** Section 14 (`MOD-3C-01` to `MOD-3C-27`) rests on S-36 pp. 37-40, on the textbooks at book level (S-17, S-18) and on derivations (D) checked by the reader (H18 to H23). Nothing from a commercial manual was used.
 
-## 14. Evidence from the reviews of the pk3 conversion (card T-175, 2026-11-08)
+## 15. Evidence from the reviews of the pk3 conversion (card T-175, 2026-11-08)
 
 Same rules as sections 6, 8 and 9, with one difference: the reader of this card was allowed to read `crates/caladrius-models/src/` (`params3.rs`, `dd.rs`, `error.rs`, and `roots3.rs` for one sentence) at 86ba8bc, to describe what the code does, and read the board notes below. Vendor documentation was not used. These are not hand checks of the reader (the keys H are the reader's own arithmetic): they are measurements made by reviewer agents in detached checkouts, against a high-precision reference computed on the macro doubles as given, and the reader did not re-run them. The reviewer and the reference differ by key: E-12 is Fable with Python `decimal` at 600 digits, E-13 is Fable with mpmath at 256 bits, E-14 is a Sonnet reviewer with mpmath at 300 bits. Their keys are E, like the other evidence the reader relies on. In `specs/models.md` a clause *measured* cites one of them; a clause *implemented* cites the code.
 
