@@ -349,3 +349,10 @@ The review (`board/messages/2026-11-14-review-T-154.md`) found no wrong estimate
    - Option (b): use a proportional error for the individual stage.
    - Decision meanwhile: unchanged; a `reader` round after the demo. Recommendation: (a).
 4. **Eleven "decisions taken meanwhile" live only in code comments**, and three contradict a spec sentence: `inner.rs:42` against POP-INN-02 (the polish condition), `outer.rs:63` against POP-COV-02 requirement 3, `mod.rs:758` against POP-EST-02 (a fixed ω = 0 is refused, the spec says it means no random effect). Decision meanwhile: the spec wins until a `reader` round amends it; the engine fix round aligns the code case by case, after the demo.
+
+## Q-030 (2026-11-14, orchestrator): the sealed bias check of `accurate` fails for an exact minimiser of POP-OBJ-02
+
+T-174 (verdict (a), reviewed): on the 200 sealed replicates of `accurate`, an independent R fit of the FOCEI objective of `specs/population.md` (POP-OBJ-02) agrees with the engine replicate by replicate and gives the same mean cl, 5.07955 against the truth 5 (limit 0.05382, z = 4.4). saemix, the exact likelihood by stochastic approximation, gives cl 5.0071 on the same data. The engine is not the cause; the check `sealed_recovery::accurate` fails because of the objective form. POP-ORA-04 forbids retuning the constants or the sealed data.
+- Option (a): fit the 200 replicates in R with the other FOCEI forms of OP-02 (the three POP-OBJ-04 Laplace forms) and against a fresh draw under a new seed, then decide which form the engine follows. The bias check stays red meanwhile. About one oracle card.
+- Option (b): record the shift as a documented method difference (`specs/differences.md`, D-xx: FOCEI against the exact likelihood on design A) and change the check of cl into a check against the R FOCEI reference, keeping saemix as the second look. Needs your yes, because it changes what the sealed test asserts.
+- Decision meanwhile: nothing changes; the check stays red with its numbers. Recommendation: (a) first, then (b) for the forms that keep a shift.

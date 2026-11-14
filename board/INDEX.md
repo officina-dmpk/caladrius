@@ -179,7 +179,7 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-171 | pk3 subnormal guards: unit_scale for a subnormal a+b+c, derived quantities must be normal numbers | engine | done | T-167 |
 | T-172 | Integrate brick 1 and brick 2: iter3/pk3 merged with iter3/ml on iter3/int | engine | done | T-171, T-169 |
 | T-173 | Oracle answers to the T-154 notes: at_bound counted as converged in the sealed recovery, q1 off-diagonal guard | oracle | done | T-154 |
-| T-174 | Triage of the cl bias of design A: independent FOCEI fit in R and saemix on the 200 sealed replicates | oracle | in progress | T-154, T-152 |
+| T-174 | Triage of the cl bias of design A: independent FOCEI fit in R and saemix on the 200 sealed replicates | oracle | done | T-154, T-152 |
 | T-175 | specs/models.md, the round left by T-167 and T-171 (pk3 macro path: magnitude rules, double-double floor, DerivedOutOfRange arms) | reader | done | T-167, T-171 |
 | T-176 | The published fit.run schema says what the ML fit takes and returns (objective, error_model, error_init, information, exact_fit) | engine | todo | T-172 |
 | T-177 | How agents are run: AGENTS.md imported by CLAUDE.md, subagents do not commit, Onizuka removed | orchestrator | done | |
