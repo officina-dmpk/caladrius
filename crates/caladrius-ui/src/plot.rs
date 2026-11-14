@@ -2,10 +2,12 @@
 //! linear or semi-log axis, and scatter plots of residuals. Every curve is passed in; nothing here
 //! evaluates a model. The grid is drawn from the `plot_grid` token, the series from the series tokens.
 
+use std::ops::RangeInclusive;
+
 use egui::{Color32, RichText, Ui};
 use egui_plot::{
-    GridMark, HLine, Legend, Line, MarkerShape, Plot, PlotBounds, PlotPoint, PlotPoints, Points,
-    VLine,
+    GridMark, HLine, Legend, Line, MarkerShape, Plot, PlotBounds, PlotPoint, PlotPoints,
+    PlotTransform, Points, VLine,
 };
 
 use crate::fmt;
@@ -117,7 +119,11 @@ fn pts(points: &[[f64; 2]]) -> impl Iterator<Item = Pt> + '_ {
     })
 }
 
-/// Axis ranges, ticks and the log transform of one plot.
+/// Axis ranges and the log transform of one plot. The range is the full one: where the plot
+/// opens and where a double click brings it back (`paint_grid` sets it; the plot itself keeps the
+/// range the person panned or zoomed to). The marks of the grid and of the axes are not
+/// stored: they follow the range that is visible (`marks`), so they stay round numbers when the
+/// person pans or zooms.
 #[derive(Debug, Clone)]
 pub struct Axes {
     pub x: (f64, f64),
@@ -125,41 +131,101 @@ pub struct Axes {
     pub log: bool,
     /// A logarithmic horizontal axis too (`x` in decades), for observed against predicted.
     pub x_log: bool,
-    x_ticks: Vec<f64>,
-    y_marks: Vec<(f64, bool)>,
-    x_step: f64,
-    y_step: f64,
 }
 
-fn step_of(ticks: &[f64]) -> f64 {
-    match ticks {
-        [a, b, ..] => (b - a).abs(),
-        _ => 1.0,
+/// Below this many decades visible, a logarithmic axis shows round numbers of its values (1, 2, 5
+/// times a power of ten) instead of decades.
+const LOG_ZOOMED_SPAN: f64 = 0.5;
+/// Below this many decades visible, the multiples 2 and 5 of each decade are labelled too.
+const LOG_LABELLED_SPAN: f64 = 1.5;
+
+/// The marks of an axis showing `lo..=hi`: round numbers (1, 2 or 5 times a power of ten) on a
+/// linear axis; on a logarithmic one (`lo` and `hi` are exponents) the decades and the multiples 2
+/// to 9 of each, or, when less than half a decade is visible, round numbers of the values.
+pub(crate) fn marks(log: bool, lo: f64, hi: f64) -> Vec<GridMark> {
+    if !(lo.is_finite() && hi.is_finite()) || hi <= lo {
+        return Vec::new();
+    }
+    if !log {
+        let ticks = plotdata::nice_ticks(lo, hi, 6);
+        let step = match ticks.as_slice() {
+            [a, b, ..] => (b - a).abs(),
+            _ => hi - lo,
+        };
+        return ticks
+            .into_iter()
+            .map(|value| GridMark {
+                value,
+                step_size: step,
+            })
+            .collect();
+    }
+    let span = hi - lo;
+    if span < LOG_ZOOMED_SPAN {
+        let (a, b) = (10f64.powf(lo), 10f64.powf(hi));
+        let ticks = plotdata::nice_ticks(a, b, 6);
+        let step = match ticks.as_slice() {
+            [first, second, ..] => (second - first).abs(),
+            _ => b - a,
+        };
+        return ticks
+            .into_iter()
+            .filter(|t| *t > 0.0)
+            .map(|t| GridMark {
+                value: t.log10(),
+                // The distance to the next mark in exponents: it sets how strong the mark is drawn.
+                step_size: step / (t * std::f64::consts::LN_10),
+            })
+            .collect();
+    }
+    plotdata::log_ticks(lo, hi)
+        .into_iter()
+        .map(|(value, major)| {
+            let labelled = span < LOG_LABELLED_SPAN && is_multiple(value, &[2.0, 5.0]);
+            GridMark {
+                value,
+                step_size: if major || labelled { 1.0 } else { 0.2 },
+            }
+        })
+        .collect()
+}
+
+/// Whether `10^exponent` is one of the given multiples of a power of ten.
+fn is_multiple(exponent: f64, multiples: &[f64]) -> bool {
+    let mantissa = 10f64.powf(exponent - exponent.floor());
+    multiples.iter().any(|m| (mantissa - m).abs() < 1e-6)
+}
+
+/// The label of a mark of a logarithmic axis, empty where the mark is not labelled: the decades,
+/// the multiples 2 and 5 when under one and a half decades are visible, every round number when
+/// under half a decade is.
+fn log_mark_label(value: f64, span: f64) -> String {
+    if (value - value.round()).abs() < 1e-9 {
+        plotdata::log_label(value.round())
+    } else if span < LOG_ZOOMED_SPAN
+        || (span < LOG_LABELLED_SPAN && is_multiple(value, &[2.0, 5.0]))
+    {
+        fmt::number(10f64.powf(value))
+    } else {
+        String::new()
+    }
+}
+
+/// A range the plot can open on: finite, with its end above its start.
+fn usable((lo, hi): (f64, f64)) -> (f64, f64) {
+    if lo.is_finite() && hi.is_finite() && lo < hi {
+        (lo, hi)
+    } else if lo.is_finite() {
+        (lo, lo + 1.0)
+    } else {
+        (0.0, 1.0)
     }
 }
 
 impl Axes {
     /// Axes for these ranges (on a log axis `y` is in decades).
     pub fn new(x: (f64, f64), y: (f64, f64), log: bool) -> Axes {
-        let x_ticks = plotdata::nice_ticks(x.0, x.1, 6);
-        let y_marks: Vec<(f64, bool)> = if log {
-            plotdata::log_ticks(y.0, y.1)
-        } else {
-            plotdata::nice_ticks(y.0, y.1, 6)
-                .into_iter()
-                .map(|v| (v, true))
-                .collect()
-        };
-        let y_step = if log {
-            1.0
-        } else {
-            step_of(&y_marks.iter().map(|m| m.0).collect::<Vec<f64>>())
-        };
         Axes {
-            x_step: step_of(&x_ticks),
-            x_ticks,
-            y_marks,
-            y_step,
             x,
             y,
             log,
@@ -167,15 +233,9 @@ impl Axes {
         }
     }
 
-    /// Axes whose horizontal axis is logarithmic as well (`x` in decades, ticks on the decades).
+    /// Axes whose horizontal axis is logarithmic as well (`x` in decades, marks on the decades).
     pub fn log_log(x: (f64, f64), y: (f64, f64)) -> Axes {
         let mut axes = Axes::new(x, y, true);
-        axes.x_ticks = plotdata::log_ticks(x.0, x.1)
-            .into_iter()
-            .filter(|(_, major)| *major)
-            .map(|(v, _)| v)
-            .collect();
-        axes.x_step = 1.0;
         axes.x_log = true;
         axes
     }
@@ -190,6 +250,9 @@ impl Axes {
         if self.log { conc.log10() } else { conc }
     }
 
+    /// The plot: it opens on the full range, drags to pan, zooms with Ctrl and the wheel or a
+    /// pinch, zooms to a box with a drag of the secondary button, and a double click brings the
+    /// full range back. The plain wheel is left to the page. The marks follow the visible range.
     pub(crate) fn plot(
         &self,
         id: &str,
@@ -199,80 +262,97 @@ impl Axes {
     ) -> Plot<'static> {
         let log = self.log;
         let x_log = self.x_log;
-        let x_marks: Vec<GridMark> = self
-            .x_ticks
-            .iter()
-            .map(|v| GridMark {
-                value: *v,
-                step_size: self.x_step,
-            })
-            .collect();
-        let y_grid: Vec<GridMark> = self
-            .y_marks
-            .iter()
-            .map(|(v, major)| GridMark {
-                value: *v,
-                step_size: if *major {
-                    self.y_step
-                } else {
-                    self.y_step / 5.0
-                },
-            })
-            .collect();
-        Plot::new(id.to_owned())
-            .height(height)
-            .x_axis_label(x_label)
-            .y_axis_label(y_label)
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_double_click_reset(false)
-            .show_grid(false)
-            .x_grid_spacer(move |_| x_marks.clone())
-            .y_grid_spacer(move |_| y_grid.clone())
-            .x_axis_formatter(move |mark, _| {
-                if !x_log {
-                    fmt::number(mark.value)
-                } else if (mark.value - mark.value.round()).abs() < 1e-9 {
-                    plotdata::log_label(mark.value.round())
-                } else {
-                    String::new()
-                }
-            })
-            .y_axis_formatter(move |mark, _| {
-                if log {
-                    if (mark.value - mark.value.round()).abs() < 1e-9 {
-                        plotdata::log_label(mark.value.round())
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    fmt::number(mark.value)
-                }
-            })
-            .label_formatter(move |_, v| {
-                let y = if log { 10f64.powf(v.y) } else { v.y };
-                format!("x = {}\ny = {}", fmt::number(v.x), fmt::number(y))
-            })
+        let x = usable(self.x);
+        let y = usable(self.y);
+        // The memory of a plot (what the person zoomed to) belongs to the range it opened on: when
+        // the data change, the plot opens on the new range.
+        let key = [x.0, x.1, y.0, y.1].map(f64::to_bits);
+        Plot::new(format!(
+            "{id}:{:x}:{:x}:{:x}:{:x}:{}{}",
+            key[0],
+            key[1],
+            key[2],
+            key[3],
+            u8::from(x_log),
+            u8::from(log)
+        ))
+        .height(height)
+        .x_axis_label(x_label)
+        .y_axis_label(y_label)
+        .allow_drag(true)
+        .allow_zoom(true)
+        .allow_scroll(false)
+        .allow_boxed_zoom(true)
+        .allow_double_click_reset(true)
+        .show_grid(false)
+        .x_grid_spacer(move |input| marks(x_log, input.bounds.0, input.bounds.1))
+        .y_grid_spacer(move |input| marks(log, input.bounds.0, input.bounds.1))
+        .x_axis_formatter(move |mark, range: &RangeInclusive<f64>| {
+            if x_log {
+                log_mark_label(mark.value, range.end() - range.start())
+            } else {
+                fmt::number(mark.value)
+            }
+        })
+        .y_axis_formatter(move |mark, range: &RangeInclusive<f64>| {
+            if log {
+                log_mark_label(mark.value, range.end() - range.start())
+            } else {
+                fmt::number(mark.value)
+            }
+        })
+        .label_formatter(move |_, v| {
+            let y = if log { 10f64.powf(v.y) } else { v.y };
+            format!("x = {}\ny = {}", fmt::number(v.x), fmt::number(y))
+        })
     }
 
+    /// Sets the full range when the plot opens and when the person double clicks it (the plot
+    /// keeps what they zoomed to by itself in between), then draws the grid for the range that is
+    /// visible now.
     pub(crate) fn paint_grid(&self, plot_ui: &mut egui_plot::PlotUi<'_>, tokens: &Tokens) {
-        plot_ui.set_plot_bounds(PlotBounds::from_min_max(
-            [self.x.0, self.y.0],
-            [self.x.1, self.y.1],
-        ));
+        let response = plot_ui.response().clone();
+        let opened = egui::Id::new(("plot-opened", response.id));
+        let seen = plot_ui
+            .ctx()
+            .data(|d| d.get_temp::<bool>(opened))
+            .unwrap_or(false);
+        let bounds = if seen && !response.double_clicked() {
+            plot_ui.plot_bounds()
+        } else {
+            let (x, y) = (usable(self.x), usable(self.y));
+            let full = PlotBounds::from_min_max([x.0, y.0], [x.1, y.1]);
+            plot_ui.set_plot_bounds(full);
+            plot_ui.ctx().data_mut(|d| d.insert_temp(opened, true));
+            full
+        };
         let grid = tokens.colors.plot_grid.color();
-        for v in &self.x_ticks {
-            plot_ui.vline(VLine::new("", *v).color(grid).width(tokens.stroke.thin));
-        }
-        for (v, major) in &self.y_marks {
-            let color = if *major {
+        // A little beyond the edges: the bounds are those of the start of the frame.
+        let reach = |lo: f64, hi: f64| (lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.1);
+        let (xl, xh) = reach(bounds.min()[0], bounds.max()[0]);
+        let tone = |log: bool, step: f64| {
+            if step >= 1.0 || !log {
                 grid
             } else {
                 grid.gamma_multiply(0.5)
-            };
-            plot_ui.hline(HLine::new("", *v).color(color).width(tokens.stroke.thin));
+            }
+        };
+        for m in marks(self.x_log, xl, xh) {
+            let color = tone(self.x_log, m.step_size);
+            plot_ui.vline(
+                VLine::new("", m.value)
+                    .color(color)
+                    .width(tokens.stroke.thin),
+            );
+        }
+        let (yl, yh) = reach(bounds.min()[1], bounds.max()[1]);
+        for m in marks(self.log, yl, yh) {
+            let color = tone(self.log, m.step_size);
+            plot_ui.hline(
+                HLine::new("", m.value)
+                    .color(color)
+                    .width(tokens.stroke.thin),
+            );
         }
     }
 }
@@ -350,6 +430,26 @@ pub fn profile(
     selectable: &[usize],
     height: f32,
 ) -> Option<Clicked> {
+    profile_view(
+        ui, tokens, id, labels, point_sets, line_sets, log, selectable, height,
+    )
+    .0
+}
+
+/// `profile`, and the transform of the plot: the range it shows (on a log axis the vertical one
+/// is in decades), which is what the person panned or zoomed to, or the full range.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn profile_view(
+    ui: &mut Ui,
+    tokens: &Tokens,
+    id: &str,
+    labels: (String, String),
+    point_sets: &[PointSet],
+    line_sets: &[LineSet],
+    log: bool,
+    selectable: &[usize],
+    height: f32,
+) -> (Option<Clicked>, PlotTransform) {
     let keep = |p: &[f64; 2]| p[0].is_finite() && p[1].is_finite() && (!log || p[1] > 0.0);
     let all: Vec<[f64; 2]> = point_sets
         .iter()
@@ -370,7 +470,7 @@ pub fn profile(
     let plot = axes
         .plot(id, height, labels.0, labels.1)
         .legend(Legend::default());
-    plot.show(ui, |plot_ui| {
+    let shown = plot.show(ui, |plot_ui| {
         axes.paint_grid(plot_ui, tokens);
         for l in line_sets {
             let line: Vec<[f64; 2]> = l
@@ -439,7 +539,7 @@ pub fn profile(
             }
         }
     });
-    clicked
+    (clicked, shown.transform)
 }
 
 /// A scatter plot of residuals (or any quantity) with a line at zero, on linear axes.

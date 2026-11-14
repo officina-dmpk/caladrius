@@ -133,6 +133,8 @@ pub struct Sizes {
     pub diagram_height: f32,
     /// The taller diagram of two compartments (a second row for the peripheral one).
     pub diagram_height_two: f32,
+    /// The tallest diagram, three compartments: a peripheral compartment above and one below.
+    pub diagram_height_three: f32,
     /// The distance between the two rows of the two-compartment diagram.
     pub diagram_row_gap: f32,
     pub diagram_box_width: f32,

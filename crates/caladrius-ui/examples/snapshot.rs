@@ -151,6 +151,64 @@ fn pk2_fit(start: Option<[(&str, f64); 4]>) -> UiApp {
     app
 }
 
+/// A simulated three-compartment profile (the public clearance set of the oracle's base case: cl 3,
+/// vc 8, q2 9.5, vp2 9.5, q3 6.3, vp3 31.5, dose 100) with a 1 % alternating error, imported as a
+/// worksheet. The concentrations are the engine's `model.simulate`.
+fn with_pk3_profile() -> UiApp {
+    const TIMES: [f64; 20] = [
+        0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 36.0,
+        48.0, 72.0, 96.0, 120.0,
+    ];
+    let mut app = UiApp::new();
+    let sim = app.engine_mut().execute(
+        "model.simulate",
+        json!({ "model": "pk3.iv_bolus", "dose": 100.0,
+                "params": { "cl": 3, "vc": 8, "q2": 9.5, "vp2": 9.5, "q3": 6.3, "vp3": 31.5 },
+                "times": TIMES }),
+    );
+    let conc: Vec<f64> = sim
+        .ok()
+        .and_then(|v| v["conc"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(serde_json::Value::as_f64)
+        .collect();
+    let mut csv = String::from(
+        "Time (h),Conc (mg/L),Dose (mg)
+",
+    );
+    for (i, (t, c)) in TIMES.iter().zip(conc).enumerate() {
+        let noise = if i % 2 == 0 { 1.01 } else { 0.99 };
+        csv.push_str(&format!(
+            "{t},{},100
+",
+            c * noise
+        ));
+    }
+    app.load_csv("three-compartment-bolus.csv", csv.as_bytes());
+    app.perform(vec![Action::ImportConfirm]);
+    app
+}
+
+/// The fit page with the three-compartment intravenous bolus model picked; `start` are the values
+/// the person set (placeholders are shown muted when it is `None`).
+fn pk3_fit(start: Option<[(&str, f64); 6]>) -> UiApp {
+    let mut app = with_pk3_profile();
+    app.perform(vec![Action::NewFitWith(Compartments::Three)]);
+    if let Some(page) = app.state.fit.as_mut() {
+        page.input = Input::Bolus;
+    }
+    app.perform(vec![Action::FitChanged { regenerate: true }]);
+    if let Some(values) = start {
+        if let Some(page) = app.state.fit.as_mut() {
+            page.initial = values.into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+            page.accept_placeholders();
+        }
+        app.perform(vec![Action::FitChanged { regenerate: false }]);
+    }
+    app
+}
+
 /// The saved file of a short session: an import, an analysis, a fit, a simulation, an edit of the
 /// data and the analysis run again, as the application writes it.
 fn saved_project() -> serde_json::Value {
@@ -713,6 +771,33 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
             ThemeMode::Light,
         ),
     ));
+
+    // ---- three compartments ----
+    let start3 = [
+        ("cl", 3.2),
+        ("vc", 8.5),
+        ("q2", 9.0),
+        ("vp2", 10.0),
+        ("q3", 6.0),
+        ("vp3", 30.0),
+    ];
+    // The model picker on three compartments: the diagram, the equation and the placeholders.
+    scenes.push(("64-fit-three-compartments-setup", pk3_fit(None)));
+    let mut app = pk3_fit(Some(start3));
+    app.perform(vec![Action::RunFit]);
+    scenes.push(("65-fit-three-compartments-results", app));
+    let mut app = pk3_fit(Some(start3));
+    app.perform(vec![Action::RunFit]);
+    app.state.mode = ThemeMode::Dark;
+    app.state.log_axis = true;
+    scenes.push(("66-fit-three-compartments-results-dark-semilog", app));
+    let mut app = UiApp::new();
+    app.perform(vec![Action::NewSimulationWith(Compartments::Three)]);
+    if let Some(page) = app.state.sim.as_mut() {
+        page.set = ParameterSet::Micro;
+    }
+    app.perform(vec![Action::SimChanged]);
+    scenes.push(("67-simulation-three-compartments-micro", app));
 
     scenes
 }

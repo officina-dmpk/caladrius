@@ -64,16 +64,18 @@ pub enum Compartments {
     #[default]
     One,
     Two,
+    Three,
 }
 
 impl Compartments {
-    pub const ALL: [Compartments; 2] = [Compartments::One, Compartments::Two];
+    pub const ALL: [Compartments; 3] = [Compartments::One, Compartments::Two, Compartments::Three];
 
     /// The way the choice is put to the person.
     pub fn label(self) -> &'static str {
         match self {
             Compartments::One => "One compartment",
             Compartments::Two => "Two compartments",
+            Compartments::Three => "Three compartments",
         }
     }
 
@@ -82,12 +84,26 @@ impl Compartments {
         match self {
             Compartments::One => 1,
             Compartments::Two => 2,
+            Compartments::Three => 3,
+        }
+    }
+
+    /// The names of the clearance set, the default set of the engine (empty for one compartment,
+    /// which has one set only).
+    pub fn clearance_names(self) -> &'static [&'static str] {
+        match self {
+            Compartments::One => &[],
+            Compartments::Two => &CLEARANCE_SET,
+            Compartments::Three => &CLEARANCE_SET_3,
         }
     }
 }
 
 /// The names of the clearance set of a two-compartment model (the default set of the engine).
 const CLEARANCE_SET: [&str; 4] = ["cl", "vc", "q", "vp"];
+
+/// The same for three compartments: two peripheral compartments, both attached to the central one.
+const CLEARANCE_SET_3: [&str; 6] = ["cl", "vc", "q2", "vp2", "q3", "vp3"];
 
 /// The parameters of a two-compartment model are given as one of three complete sets
 /// (`specs/models.md` MOD-2C-02). The engine's schemas list them in the description of the model
@@ -120,24 +136,50 @@ impl ParameterSet {
 
     /// The way the choice is put to the person.
     pub fn label(self) -> &'static str {
-        match self {
-            ParameterSet::Clearance => "Clearances and volumes (CL, Vc, Q, Vp)",
-            ParameterSet::Micro => "Micro-constants (k10, k12, k21, Vc)",
-            ParameterSet::Macro => "Macro-constants (A, B, α, β)",
+        self.label_in(Compartments::Two)
+    }
+
+    /// The same, with the names of the set for this number of compartments.
+    pub fn label_in(self, compartments: Compartments) -> &'static str {
+        let three = compartments == Compartments::Three;
+        match (self, three) {
+            (ParameterSet::Clearance, false) => "Clearances and volumes (CL, Vc, Q, Vp)",
+            (ParameterSet::Clearance, true) => "Clearances and volumes (CL, Vc, Q2, Vp2, Q3, Vp3)",
+            (ParameterSet::Micro, false) => "Micro-constants (k10, k12, k21, Vc)",
+            (ParameterSet::Micro, true) => "Micro-constants (k10, k12, k21, k13, k31, Vc)",
+            (ParameterSet::Macro, false) => "Macro-constants (A, B, α, β)",
+            (ParameterSet::Macro, true) => "Macro-constants (A, B, C, α, β, γ)",
         }
     }
 
-    /// The engine names of the set.
+    /// The engine names of the set for two compartments.
     pub fn names(self) -> &'static [&'static str] {
-        match self {
-            ParameterSet::Clearance => &CLEARANCE_SET,
-            ParameterSet::Micro => &["k10", "k12", "k21", "vc"],
-            ParameterSet::Macro => &["a", "b", "alpha", "beta"],
+        self.names_in(Compartments::Two)
+    }
+
+    /// The engine names of the set for two or three compartments (two for one, which has no sets).
+    pub fn names_in(self, compartments: Compartments) -> &'static [&'static str] {
+        let three = compartments == Compartments::Three;
+        match (self, three) {
+            (ParameterSet::Clearance, false) => &CLEARANCE_SET,
+            (ParameterSet::Clearance, true) => &CLEARANCE_SET_3,
+            (ParameterSet::Micro, false) => &["k10", "k12", "k21", "vc"],
+            (ParameterSet::Micro, true) => &["k10", "k12", "k21", "k13", "k31", "vc"],
+            (ParameterSet::Macro, false) => &["a", "b", "alpha", "beta"],
+            (ParameterSet::Macro, true) => &["a", "b", "c", "alpha", "beta", "gamma"],
         }
     }
 
     /// How the set gives the micro-constants, the two exponents and the two coefficients.
     pub fn relations(self) -> Vec<&'static str> {
+        self.relations_in(Compartments::Two)
+    }
+
+    /// The same for two or three compartments.
+    pub fn relations_in(self, compartments: Compartments) -> Vec<&'static str> {
+        if compartments == Compartments::Three {
+            return self.relations_three();
+        }
         match self {
             ParameterSet::Clearance => {
                 let mut lines = vec!["k10 = CL/Vc,   k12 = Q/Vc,   k21 = Q/Vp"];
@@ -156,14 +198,46 @@ impl ParameterSet {
         }
     }
 
+    fn relations_three(self) -> Vec<&'static str> {
+        const EXPONENTS_3: [&str; 2] = [
+            "α > β > γ are the three roots of the characteristic polynomial of the rate matrix",
+            "A + B + C = D/Vc",
+        ];
+        match self {
+            ParameterSet::Clearance => {
+                let mut lines = vec![
+                    "k10 = CL/Vc,   k12 = Q2/Vc,   k21 = Q2/Vp2",
+                    "k13 = Q3/Vc,   k31 = Q3/Vp3",
+                ];
+                lines.extend(EXPONENTS_3);
+                lines
+            }
+            ParameterSet::Micro => {
+                let mut lines = vec![
+                    "CL = k10·Vc,   Q2 = k12·Vc,   Vp2 = Vc·k12/k21",
+                    "Q3 = k13·Vc,   Vp3 = Vc·k13/k31",
+                ];
+                lines.extend(EXPONENTS_3);
+                lines
+            }
+            ParameterSet::Macro => vec![
+                "A + B + C = D/Vc, so Vc = D/(A + B + C): the dose D is required",
+                "A, B and C are the intravenous coefficients, for every route",
+            ],
+        }
+    }
+
     /// The set that a list of parameter names belongs to (the default when it is not recognised).
     pub fn of<'a>(names: impl IntoIterator<Item = &'a str>) -> ParameterSet {
         let names: Vec<&str> = names.into_iter().collect();
-        if names.iter().any(|n| matches!(*n, "k10" | "k12" | "k21")) {
+        if names
+            .iter()
+            .any(|n| matches!(*n, "k10" | "k12" | "k21" | "k13" | "k31"))
+        {
             ParameterSet::Micro
         } else if names
             .iter()
-            .any(|n| matches!(*n, "a" | "b" | "alpha" | "beta"))
+            .any(|n| matches!(*n, "a" | "b" | "c" | "alpha" | "beta" | "gamma"))
         {
             ParameterSet::Macro
         } else {
@@ -187,6 +261,16 @@ impl ParameterSet {
             "b" => 4.5,
             "alpha" => 1.0,
             "beta" => 0.1,
+            // The same worked example with a second peripheral compartment, for three
+            // compartments: a place to start, not an estimate.
+            "q2" => 4.0,
+            "vp2" => 8.0,
+            "q3" => 2.0,
+            "vp3" => 20.0,
+            "k13" => 0.2,
+            "k31" => 0.1,
+            "c" => 1.0,
+            "gamma" => 0.02,
             "ka" => 2.0,
             "tlag" => 0.5,
             _ => return None,
@@ -201,8 +285,8 @@ pub struct ModelInfo {
     pub compartments: Compartments,
     pub input: Input,
     pub lag: bool,
-    /// The parameters that are fitted (or simulated), by engine name; for two compartments, those
-    /// of the default (clearance) set.
+    /// The parameters that are fitted (or simulated), by engine name; for two or three
+    /// compartments, those of the default (clearance) set.
     pub parameters: &'static [&'static str],
     /// The equation, one line per piece.
     pub equation: &'static [&'static str],
@@ -211,28 +295,29 @@ pub struct ModelInfo {
 }
 
 impl ModelInfo {
-    /// The parameters of the model when a two-compartment model is given in `set` (a
+    /// The parameters of the model when a two- or three-compartment model is given in `set` (a
     /// one-compartment model has one set only).
     pub fn parameters_in(&self, set: ParameterSet) -> Vec<&'static str> {
         if self.compartments == Compartments::One {
             return self.parameters.to_vec();
         }
-        set.names()
+        let clearance = self.compartments.clearance_names();
+        set.names_in(self.compartments)
             .iter()
             .copied()
             .chain(
                 self.parameters
                     .iter()
                     .copied()
-                    .filter(|p| !CLEARANCE_SET.contains(p)),
+                    .filter(|p| !clearance.contains(p)),
             )
             .collect()
     }
 }
 
-/// The twelve models (`specs/models.md` MOD-GEN-05 and MOD-2C-20), in the order of the engine's
-/// catalogue.
-pub const MODELS: [ModelInfo; 12] = [
+/// The eighteen models (`specs/models.md` MOD-GEN-05, MOD-2C-20 and MOD-3C-25), in the order of
+/// the engine's catalogue.
+pub const MODELS: [ModelInfo; 18] = [
     ModelInfo {
         id: "pk1.iv_bolus",
         compartments: Compartments::One,
@@ -368,6 +453,72 @@ pub const MODELS: [ModelInfo; 12] = [
         ],
         note: "T is the absorption duration, fixed (not fitted); tlag is the lag time.",
     },
+    ModelInfo {
+        id: "pk3.iv_bolus",
+        compartments: Compartments::Three,
+        input: Input::Bolus,
+        lag: false,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3"],
+        equation: &["C(t) = A·e^(−α·t) + B·e^(−β·t) + C·e^(−γ·t)"],
+        note: "D is the dose. A, B, C and α > β > γ are the coefficients and the three exponents given by the parameter set; elimination is from the central compartment only. The coefficient C is not the concentration.",
+    },
+    ModelInfo {
+        id: "pk3.iv_infusion",
+        compartments: Compartments::Three,
+        input: Input::Infusion,
+        lag: false,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3"],
+        equation: &[
+            "0 ≤ t ≤ T:   C(t) = Σ Ai/(λi·T) · (1 − e^(−λi·t))",
+            "t > T:   C(t) = Σ Ai/(λi·T) · (1 − e^(−λi·T)) · e^(−λi·(t − T))",
+        ],
+        note: "T is the infusion duration, fixed (not fitted). The sums run over (A, α), (B, β) and (C, γ). A, B, C, α, β and γ come from the parameter set.",
+    },
+    ModelInfo {
+        id: "pk3.oral_1",
+        compartments: Compartments::Three,
+        input: Input::FirstOrder,
+        lag: false,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3", "ka"],
+        equation: &["C(t) = Σ Ai·ka/(ka − λi) · (e^(−λi·t) − e^(−ka·t))"],
+        note: "D is the dose times F; Vc, Vp2, Vp3, CL, Q2 and Q3 are the apparent values (divided by F). ka is the absorption rate constant. The sums run over (A, α), (B, β) and (C, γ).",
+    },
+    ModelInfo {
+        id: "pk3.oral_1_lag",
+        compartments: Compartments::Three,
+        input: Input::FirstOrder,
+        lag: true,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3", "ka", "tlag"],
+        equation: &[
+            "t ≤ tlag:   C(t) = 0",
+            "t > tlag:   the function above, with t replaced by t − tlag",
+        ],
+        note: "D is the dose times F; the volumes and clearances are apparent. tlag is the lag time.",
+    },
+    ModelInfo {
+        id: "pk3.oral_0",
+        compartments: Compartments::Three,
+        input: Input::ZeroOrder,
+        lag: false,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3"],
+        equation: &[
+            "0 ≤ t ≤ T:   C(t) = Σ Ai/(λi·T) · (1 − e^(−λi·t))",
+            "t > T:   C(t) = Σ Ai/(λi·T) · (1 − e^(−λi·T)) · e^(−λi·(t − T))",
+        ],
+        note: "T is the absorption duration, fixed (not fitted); D is the dose times F; the volumes and clearances are apparent. The sums run over (A, α), (B, β) and (C, γ).",
+    },
+    ModelInfo {
+        id: "pk3.oral_0_lag",
+        compartments: Compartments::Three,
+        input: Input::ZeroOrder,
+        lag: true,
+        parameters: &["cl", "vc", "q2", "vp2", "q3", "vp3", "tlag"],
+        equation: &[
+            "t ≤ tlag:   C(t) = 0",
+            "t > tlag:   the zero-order function above, with t replaced by t − tlag",
+        ],
+        note: "T is the absorption duration, fixed (not fitted); tlag is the lag time.",
+    },
 ];
 
 /// The model for a number of compartments, a route and a lag choice (the lag is ignored where it
@@ -398,6 +549,16 @@ pub fn parameter_label(name: &str, extravascular: bool) -> String {
         "vc" => format!("Vc{f}"),
         "vp" => format!("Vp{f}"),
         "q" => format!("Q{f}"),
+        "q2" => format!("Q2{f}"),
+        "vp2" => format!("Vp2{f}"),
+        "q3" => format!("Q3{f}"),
+        "vp3" => format!("Vp3{f}"),
+        "k13" => "k13".to_owned(),
+        "k31" => "k31".to_owned(),
+        "c" => "C".to_owned(),
+        "gamma" => "γ".to_owned(),
+        "half_life_beta" => "t½ β".to_owned(),
+        "half_life_gamma" => "t½ γ".to_owned(),
         "k10" => "k10".to_owned(),
         "k12" => "k12".to_owned(),
         "k21" => "k21".to_owned(),
@@ -432,6 +593,22 @@ pub fn parameter_meaning(name: &str) -> &'static str {
         "vc" => "Volume of the central compartment (apparent, Vc/F, for the oral routes)",
         "q" => "Intercompartmental clearance between the central and the peripheral compartment",
         "vp" => "Volume of the peripheral compartment (apparent, Vp/F, for the oral routes)",
+        "q2" => {
+            "Intercompartmental clearance between the central and the first peripheral compartment"
+        }
+        "vp2" => {
+            "Volume of the first peripheral compartment (apparent, Vp2/F, for the oral routes)"
+        }
+        "q3" => {
+            "Intercompartmental clearance between the central and the second peripheral compartment"
+        }
+        "vp3" => {
+            "Volume of the second peripheral compartment (apparent, Vp3/F, for the oral routes)"
+        }
+        "k13" => "Rate constant from the central to the second peripheral compartment, Q3/Vc",
+        "k31" => "Rate constant from the second peripheral compartment to the central one, Q3/Vp3",
+        "c" => "Coefficient of the slowest exponential after an intravenous bolus, D·wγ/Vc",
+        "gamma" => "The slowest exponent (the terminal phase), smaller than beta",
         "k10" => "Elimination rate constant from the central compartment, CL/Vc",
         "k12" => "Rate constant from the central to the peripheral compartment, Q/Vc",
         "k21" => "Rate constant from the peripheral to the central compartment, Q/Vp",
@@ -453,13 +630,14 @@ pub fn parameter_unit(
     derived: &std::collections::BTreeMap<String, String>,
 ) -> Option<String> {
     match name {
-        "v" | "vss" | "vc" | "vp" | "vz" => derived.get("v").cloned(),
-        "k" | "ka" | "k10" | "k12" | "k21" | "alpha" | "beta" => time.map(|t| format!("1/{t}")),
-        "tlag" | "dur" | "half_life" | "half_life_alpha" | "mrt" | "mrt_system" | "tmax_pred" => {
-            time.map(str::to_owned)
+        "v" | "vss" | "vc" | "vp" | "vp2" | "vp3" | "vz" => derived.get("v").cloned(),
+        "k" | "ka" | "k10" | "k12" | "k21" | "k13" | "k31" | "alpha" | "beta" | "gamma" => {
+            time.map(|t| format!("1/{t}"))
         }
-        "cl" | "q" => derived.get("cl").cloned(),
-        "a" | "b" => conc.map(str::to_owned),
+        "tlag" | "dur" | "half_life" | "half_life_alpha" | "half_life_beta" | "half_life_gamma"
+        | "mrt" | "mrt_system" | "tmax_pred" => time.map(str::to_owned),
+        "cl" | "q" | "q2" | "q3" => derived.get("cl").cloned(),
+        "a" | "b" | "c" => conc.map(str::to_owned),
         "auc_inf" => derived.get("auc").cloned(),
         _ => None,
     }
@@ -467,14 +645,18 @@ pub fn parameter_unit(
 
 /// Draws the compartment diagram of a model: the input arrow (bolus, infusion, or a depot with
 /// its rate constant), the central compartment with its volume, the elimination arrow, and for two
-/// compartments the peripheral compartment below the central one with the two exchange arrows.
+/// compartments the peripheral compartment below the central one with the two exchange arrows;
+/// for three, the central compartment is in the middle row with one peripheral compartment above
+/// and one below.
 pub fn diagram(ui: &mut Ui, tokens: &Tokens, model: &ModelInfo) {
     let c = &tokens.colors;
-    let two = model.compartments == Compartments::Two;
-    let height = if two {
-        tokens.size.diagram_height_two
-    } else {
-        tokens.size.diagram_height
+    let compartments = model.compartments;
+    let two = compartments == Compartments::Two;
+    let three = compartments == Compartments::Three;
+    let height = match compartments {
+        Compartments::One => tokens.size.diagram_height,
+        Compartments::Two => tokens.size.diagram_height_two,
+        Compartments::Three => tokens.size.diagram_height_three,
     };
     let (rect, _) = ui.allocate_exact_size(vec2(tokens.size.diagram_width, height), Sense::hover());
     let painter = ui.painter_at(rect);
@@ -486,10 +668,13 @@ pub fn diagram(ui: &mut Ui, tokens: &Tokens, model: &ModelInfo) {
         tokens.size.diagram_box_height,
     );
     // One compartment: the row is centred. Two: the central row is on top, the peripheral below.
-    let centre_y = if two {
-        rect.top() + tokens.spacing.small + tokens.size.diagram_box_height / 2.0
-    } else {
-        rect.center().y
+    // Three: the central row is in the middle.
+    let centre_y = match compartments {
+        Compartments::One => rect.center().y,
+        Compartments::Two => {
+            rect.top() + tokens.spacing.small + tokens.size.diagram_box_height / 2.0
+        }
+        Compartments::Three => rect.center().y,
     };
     let arrow = tokens.size.diagram_arrow;
     let draw_box = |center: Pos2, label: &str| {
@@ -518,7 +703,14 @@ pub fn diagram(ui: &mut Ui, tokens: &Tokens, model: &ModelInfo) {
         rect.right() - arrow - tokens.size.diagram_box_width / 2.0,
         centre_y,
     );
-    let central_box = draw_box(central, if two { "Central (Vc)" } else { "Central (V)" });
+    let central_box = draw_box(
+        central,
+        if two || three {
+            "Central (Vc)"
+        } else {
+            "Central (V)"
+        },
+    );
     painter.arrow(
         Pos2::new(central_box.right(), centre_y),
         Vec2::X * arrow,
@@ -529,38 +721,50 @@ pub fn diagram(ui: &mut Ui, tokens: &Tokens, model: &ModelInfo) {
             central_box.right() + arrow / 2.0,
             centre_y - tokens.spacing.medium,
         ),
-        if two { "k10 (CL)" } else { "k" },
+        if two || three { "k10 (CL)" } else { "k" },
         Align2::CENTER_BOTTOM,
     );
-    if two {
-        let row_gap = tokens.size.diagram_row_gap;
-        let peripheral = draw_box(
-            Pos2::new(central.x, central_box.bottom() + row_gap + box_size.y / 2.0),
-            "Peripheral (Vp)",
-        );
-        // Two arrows between the compartments: down with k12, up with k21 (both carry Q).
-        let side = tokens.spacing.large;
-        let middle_y = central_box.bottom() + row_gap / 2.0;
+    // A peripheral compartment above (-1) or below (+1) the central one, with the two exchange
+    // arrows: down with the rate constant out of the central compartment, up with the way back.
+    let row_gap = tokens.size.diagram_row_gap;
+    let side = tokens.spacing.large;
+    let peripheral = |direction: f32, label: &str, out: &str, back: &str| {
+        let edge_y = if direction > 0.0 {
+            central_box.bottom()
+        } else {
+            central_box.top()
+        };
+        let centre = Pos2::new(central.x, edge_y + direction * (row_gap + box_size.y / 2.0));
+        draw_box(centre, label);
+        let far_y = edge_y + direction * row_gap;
+        // Out of the central compartment on the left, back into it on the right.
         painter.arrow(
-            Pos2::new(central.x - side, central_box.bottom()),
-            Vec2::Y * row_gap,
+            Pos2::new(central.x - side, edge_y),
+            Vec2::Y * direction * row_gap,
             line,
         );
         painter.arrow(
-            Pos2::new(central.x + side, peripheral.top()),
-            -Vec2::Y * row_gap,
+            Pos2::new(central.x + side, far_y),
+            -Vec2::Y * direction * row_gap,
             line,
         );
+        let middle_y = edge_y + direction * row_gap / 2.0;
         caption(
             Pos2::new(central.x - side - tokens.spacing.small, middle_y),
-            "k12 = Q/Vc",
+            out,
             Align2::RIGHT_CENTER,
         );
         caption(
             Pos2::new(central.x + side + tokens.spacing.small, middle_y),
-            "k21 = Q/Vp",
+            back,
             Align2::LEFT_CENTER,
         );
+    };
+    if two {
+        peripheral(1.0, "Peripheral (Vp)", "k12 = Q/Vc", "k21 = Q/Vp");
+    } else if three {
+        peripheral(-1.0, "Peripheral (Vp2)", "k12 = Q2/Vc", "k21 = Q2/Vp2");
+        peripheral(1.0, "Peripheral (Vp3)", "k13 = Q3/Vc", "k31 = Q3/Vp3");
     }
     match model.input {
         Input::Bolus | Input::Infusion => {
@@ -648,6 +852,13 @@ mod tests {
         assert_eq!(pick(two, Input::FirstOrder, true).id, "pk2.oral_1_lag");
         assert_eq!(pick(two, Input::ZeroOrder, false).id, "pk2.oral_0");
         assert_eq!(pick(two, Input::ZeroOrder, true).id, "pk2.oral_0_lag");
+        let three = Compartments::Three;
+        assert_eq!(pick(three, Input::Bolus, false).id, "pk3.iv_bolus");
+        assert_eq!(pick(three, Input::Infusion, false).id, "pk3.iv_infusion");
+        assert_eq!(pick(three, Input::FirstOrder, false).id, "pk3.oral_1");
+        assert_eq!(pick(three, Input::FirstOrder, true).id, "pk3.oral_1_lag");
+        assert_eq!(pick(three, Input::ZeroOrder, false).id, "pk3.oral_0");
+        assert_eq!(pick(three, Input::ZeroOrder, true).id, "pk3.oral_0_lag");
         for m in MODELS {
             assert_eq!(by_id(m.id), Some(&m));
             assert_eq!(pick(m.compartments, m.input, m.lag).id, m.id);
@@ -688,20 +899,9 @@ mod tests {
             .iter()
             .filter_map(|v| v.as_str())
             .collect();
-        // pk3.* is in the engine but not in the UI yet (T-145); add it to MODELS when the UI gets its pk3 step.
-        // The catalogue of the engine lists the ids of this table, in its order, then the six pk3 ids.
+        // The catalogue of the engine lists the ids of this table, in its order.
         let ours: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
-        let pk3 = [
-            "pk3.iv_bolus",
-            "pk3.iv_infusion",
-            "pk3.oral_1",
-            "pk3.oral_1_lag",
-            "pk3.oral_0",
-            "pk3.oral_0_lag",
-        ];
-        assert_eq!(ours.len(), 12);
-        assert_eq!(ids[..ours.len()], ours[..]);
-        assert_eq!(ids[ours.len()..], pk3);
+        assert_eq!(ids, ours);
         // The parameter sets of the two-compartment ids are the ones the schema describes.
         let description = schema["$defs"]["ModelId"]["description"]
             .as_str()
@@ -711,13 +911,16 @@ mod tests {
         for (set, names) in ParameterSet::ALL.iter().zip(&sets) {
             assert_eq!(set.names(), names.as_slice(), "{set:?}");
         }
-        // The three-compartment sets are not in the UI: the schema must describe exactly these three.
-        let pk3_sets: Vec<Vec<&str>> = vec![
-            vec!["cl", "vc", "q2", "vp2", "q3", "vp3"],
-            vec!["k10", "k12", "k21", "k13", "k31", "vc"],
-            vec!["a", "b", "c", "alpha", "beta", "gamma"],
-        ];
-        assert_eq!(engine_sets(description, "pk3"), pk3_sets, "{description}");
+        // The three-compartment sets are the ones the schema describes too.
+        let sets3 = engine_sets(description, "pk3");
+        assert_eq!(sets3.len(), ParameterSet::ALL.len(), "{description}");
+        for (set, names) in ParameterSet::ALL.iter().zip(&sets3) {
+            assert_eq!(
+                set.names_in(Compartments::Three),
+                names.as_slice(),
+                "{set:?}"
+            );
+        }
         // The fitted parameters are the ones the engine accepts besides `dur`.
         for m in MODELS {
             match m.compartments {
@@ -726,6 +929,9 @@ mod tests {
                 }
                 Compartments::Two => {
                     assert_eq!(m.parameters[..4], CLEARANCE_SET);
+                }
+                Compartments::Three => {
+                    assert_eq!(m.parameters[..6], CLEARANCE_SET_3);
                 }
             }
             assert_eq!(
@@ -761,6 +967,53 @@ mod tests {
                 assert!(!parameter_meaning(name).is_empty(), "{name}");
             }
         }
+    }
+
+    #[test]
+    fn a_three_compartment_model_takes_the_names_of_its_parameter_set() {
+        let m = pick(Compartments::Three, Input::FirstOrder, true);
+        assert_eq!(
+            m.parameters_in(ParameterSet::Clearance),
+            ["cl", "vc", "q2", "vp2", "q3", "vp3", "ka", "tlag"]
+        );
+        assert_eq!(
+            m.parameters_in(ParameterSet::Micro),
+            ["k10", "k12", "k21", "k13", "k31", "vc", "ka", "tlag"]
+        );
+        assert_eq!(
+            m.parameters_in(ParameterSet::Macro),
+            ["a", "b", "c", "alpha", "beta", "gamma", "ka", "tlag"]
+        );
+        for set in ParameterSet::ALL {
+            let names = set.names_in(Compartments::Three);
+            assert_eq!(ParameterSet::of(names.iter().copied()), set);
+            assert!(!set.relations_in(Compartments::Three).is_empty());
+            assert!(set.label_in(Compartments::Three).contains("γ") || set != ParameterSet::Macro);
+            for name in names {
+                assert!(ParameterSet::example(name).is_some(), "{name}");
+                assert!(!parameter_meaning(name).is_empty(), "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_three_compartment_parameters_have_labels_and_units() {
+        assert_eq!(parameter_label("q2", true), "Q2/F");
+        assert_eq!(parameter_label("vp3", false), "Vp3");
+        assert_eq!(parameter_label("gamma", false), "γ");
+        assert_eq!(parameter_label("c", false), "C");
+        let derived = [
+            ("v".to_owned(), "L".to_owned()),
+            ("cl".to_owned(), "L/h".to_owned()),
+        ]
+        .into();
+        let unit = |name: &str| parameter_unit(name, Some("h"), Some("mg/L"), &derived);
+        assert_eq!(unit("vp2").as_deref(), Some("L"));
+        assert_eq!(unit("q3").as_deref(), Some("L/h"));
+        assert_eq!(unit("k31").as_deref(), Some("1/h"));
+        assert_eq!(unit("gamma").as_deref(), Some("1/h"));
+        assert_eq!(unit("c").as_deref(), Some("mg/L"));
+        assert_eq!(unit("half_life_gamma").as_deref(), Some("h"));
     }
 
     #[test]

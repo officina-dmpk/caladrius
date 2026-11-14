@@ -73,7 +73,11 @@ mod tests_palette;
 #[cfg(test)]
 mod tests_pk2;
 #[cfg(test)]
+mod tests_pk3;
+#[cfg(test)]
 mod tests_plotpage;
+#[cfg(test)]
+mod tests_plotzoom;
 #[cfg(test)]
 mod tests_project;
 #[cfg(test)]
