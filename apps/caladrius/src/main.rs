@@ -63,6 +63,16 @@ fn system_clock() -> Option<i64> {
     i64::try_from(elapsed.as_secs()).ok()
 }
 
+/// Seconds since the first call, from a monotonic clock: the Population screen times its call with
+/// it and shows the wall time beside the result (never in the analysis, which the seal hashes).
+fn stopwatch() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f64()
+}
+
 /// Reads a file for the interface; the error says which file and why.
 fn read(path: &Path) -> Result<(String, Vec<u8>), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
@@ -358,7 +368,9 @@ fn main() -> ExitCode {
         "Caladrius",
         options,
         Box::new(move |_cc| {
-            let mut desktop = Desktop::new(UiApp::with_clock(system_clock));
+            let mut ui = UiApp::with_clock(system_clock);
+            ui.set_stopwatch(stopwatch);
+            let mut desktop = Desktop::new(ui);
             desktop.start_settings();
             if let Some(path) = &first_file {
                 desktop.open(Path::new(path));
