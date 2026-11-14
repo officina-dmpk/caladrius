@@ -55,6 +55,21 @@ pub const POP_SEALED_DESIGNS: [&str; 2] = ["accurate", "limits"];
 
 // ---------------------------------------------------------------- tolerances
 
+impl crate::tolerance::Tolerance {
+    /// A standard error of the population fit (any of the three kinds of POP-COV-01, on theta, Omega or xi, in the
+    /// user's units) against the exact value of `oracle/expected/pop/fit_exact/*.json` (`standard_errors`):
+    /// relative error at most 1e-4. PROPOSED by card T-188 for Q-026 (no SE tolerance existed; POP-EST-06 asks for
+    /// one). Measured on the three interior cases (`fit_q1_h38`, `fit_q2_diag`, `fit_q2_block`), two starts each,
+    /// with the engine at aedeaca: the worst relative error is 1.3e-5 (sandwich), 2.0e-5 (r) and 2.8e-5 (s), the
+    /// largest being `s` on `fit_q2_diag` from the far start; the review of T-154 measured 2.8e-5 too. 1e-4 is
+    /// the parameter tolerance of `AGENTS.md` section 5, a margin of 3.6 over the worst error. The SE depends on the
+    /// estimate and on the finite differences, so it follows the stopping point of the optimiser (POP-EST-06).
+    pub const POP_SE: crate::tolerance::Tolerance = crate::tolerance::Tolerance::Relative {
+        rel: 1e-4,
+        abs: 0.0,
+    };
+}
+
 impl AbsoluteTolerance {
     /// Population objective at fixed parameters, one value (a total over subjects, one subject, or AIC and BIC,
     /// which are the total plus a constant), the conditional modes being found by the code under test. Absolute,
