@@ -12,7 +12,11 @@
     4. In `apps/caladrius-front`, run `npx vite preview --host 127.0.0.1 --port 4173`.
   - Tauri window: `C:\Users\abdou\caladrius-iter3\bin\caladrius-tauri.exe`.
   - The pk3 sample needs initial estimates typed by hand: CL 2, Vc 10, Q2 5, Vp2 20, Q3 0.5, Vp3 40.
-- **A Fable design pass** runs in the session `front-design`: card T-187 on its branch.
+- **The demo uses the new design** (Abdou, 2026-11-14): T-187, designed by Fable, on branch `claude/front-design-879a0b`, worktree `.claude/worktrees/front-design-879a0b`.
+  - Browser: port 4174, served from that worktree.
+  - Window: `C:\Users\abdou\caladrius-t187\bin\caladrius-tauri.exe`.
+  - The old front of `front/int` is the fallback.
+  - Merging the design into `front/int` (PR #22) is for Abdou to decide.
 - **Population PK:** no `pop.*` command exists (T-156 is not written), and `front/int` is built from `iter3/int`, not `iter3/pop`, so the front shows no population fit.
   - T-154 is verified. Its Fable review requests changes: two blockers, no wrong estimate (Q-029). No engine change was made before the demo.
   - T-174 is done, with verdict (a): the cl bias belongs to the POP-OBJ-02 objective, not to the engine (Q-030).
