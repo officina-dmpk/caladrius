@@ -64,8 +64,11 @@
 //!   "covariance": { "flags": ["few_subjects", "few_observations"], .. } }
 //! ```
 //!
-//! The sealed test reads `status`: a replicate whose status is not `converged` is counted, printed and left
-//! out of the aggregates, and an asserted design may have at most `MAX_NOT_CONVERGED_SHARE` of them. The
+//! The sealed test reads `status`: `converged` and `at_bound` both count as converged (FIT-CNV-03, FIT-ML-08:
+//! `at_bound` is a converged fit with a parameter on a bound, POP-EST-02), so an `at_bound` replicate stays in
+//! the aggregates, with the `se` of the printed kind (the SE of the free block, FIT-BND-02, POP-ORA-04). A
+//! replicate with any other status is counted, printed and left out of the aggregates, and an asserted design
+//! may have at most `MAX_NOT_CONVERGED_SHARE` of them. The number of `at_bound` replicates is printed. The
 //! estimates of Omega (`estimate.omega_full`) and of the error parameters (`estimate.xi`) are printed, not
 //! asserted. An accepted row of `errors.json` that carries `expect_flags` is run as a full fit and the array
 //! `covariance.flags` of the answer must hold them.
@@ -712,8 +715,9 @@ fn verify_sealed_pinned(sealed: &PopSealed) {
 }
 
 /// DECISION TAKEN MEANWHILE (2026-11-08), REVERSIBLE BY ABDOU: the largest share of replicates of an asserted
-/// design that may end without status `converged`. A replicate that does not converge is counted, reported and
-/// left out of the aggregates (the sealed note says so); without a bound, an engine that never converges would
+/// design that may end with a status that is neither `converged` nor `at_bound` (FIT-CNV-03: `at_bound` is a
+/// converged fit with a parameter on a bound, FIT-ML-08, POP-EST-02). A replicate that does not converge is
+/// counted, reported and left out of the aggregates (the sealed note says so); without a bound, an engine that never converges would
 /// pass with nothing to aggregate. 2% is 4 of 200: a design chosen so that the method is accurate should
 /// converge in nearly every replicate, and a defect shows as a share well above that. The value is a proposal
 /// of the reviewer of T-152, not a measurement (no engine exists); it is to be revisited with the first
@@ -751,6 +755,7 @@ fn check_sealed_recovery(design: &str) {
     let mut omega_hat: Vec<Vec<f64>> = vec![Vec::new(); q * (q + 1) / 2];
     let mut xi_hat: Vec<Vec<f64>> = vec![Vec::new(); xis.len()];
     let mut not_converged: Vec<usize> = Vec::new();
+    let mut at_bound: Vec<usize> = Vec::new();
     let c = &sealed.aggregate_checks.constants;
     for rep in 1..=k {
         let subjects = load_pop_sealed_replicate(&sealed, rep).expect("the replicate loads");
@@ -758,9 +763,15 @@ fn check_sealed_recovery(design: &str) {
         let answer = population_fit(&request).unwrap_or_else(|e| {
             panic!("{design} replicate {rep}: the engine refuses valid data: {e}")
         });
-        if answer["status"].as_str() != Some("converged") {
-            not_converged.push(rep);
-            continue;
+        // FIT-CNV-03, FIT-ML-08, POP-EST-02: `at_bound` is a converged fit with a parameter on a bound. Its `se`
+        // is that of the printed kind, the SE of the free block (FIT-BND-02, POP-ORA-04), and is used as is.
+        match answer["status"].as_str() {
+            Some("converged") => {}
+            Some("at_bound") => at_bound.push(rep),
+            _ => {
+                not_converged.push(rep);
+                continue;
+            }
         }
         for (i, par) in pars.iter().enumerate() {
             let est = number(&answer["estimate"][par.as_str()], par);
@@ -789,7 +800,7 @@ fn check_sealed_recovery(design: &str) {
     let n_ok = k - not_converged.len();
     let share_bad = not_converged.len() as f64 / k as f64;
     eprintln!(
-        "{design}: {} of {k} replicates did not converge ({:.1}%), left out of the aggregates{}",
+        "{design}: {} of {k} replicates did not converge (status neither `converged` nor `at_bound`, {:.1}%), left out of the aggregates{}",
         not_converged.len(),
         100.0 * share_bad,
         if not_converged.is_empty() {
@@ -800,6 +811,10 @@ fn check_sealed_recovery(design: &str) {
                 &not_converged[..not_converged.len().min(10)]
             )
         }
+    );
+    eprintln!(
+        "{design}: {} of {k} replicates ended `at_bound` (counted as converged, kept in the aggregates)",
+        at_bound.len()
     );
     // Omega and xi: printed, never asserted
     let mut at = 0;
@@ -825,7 +840,7 @@ fn check_sealed_recovery(design: &str) {
     let mut problems = Vec::new();
     if share_bad > MAX_NOT_CONVERGED_SHARE {
         problems.push(format!(
-            "{} of {k} replicates did not converge, more than the {:.0}% allowed",
+            "{} of {k} replicates did not converge (neither `converged` nor `at_bound`), more than the {:.0}% allowed",
             not_converged.len(),
             100.0 * MAX_NOT_CONVERGED_SHARE
         ));
@@ -834,7 +849,7 @@ fn check_sealed_recovery(design: &str) {
         let truth = f(&sealed.truth.typical_values[par]);
         if n_ok < 2 {
             problems.push(format!(
-                "{par}: {n_ok} converged replicates, nothing to aggregate"
+                "{par}: {n_ok} converged replicates (`converged` or `at_bound`), nothing to aggregate"
             ));
             continue;
         }
@@ -912,7 +927,8 @@ macro_rules! sealed_tests {
 ///   with respect to Omega) is positive semidefinite at the maximum, so `tr(G (Omega - Omega_hat)) >= 0` for any
 ///   feasible Omega and the OFV excess of an error is at least `d^T R d / 2`. The status must not be `non_finite`,
 ///   `inner_failed` or `max_iterations`; the other statuses and the flags are not asserted;
-/// * **a diagonal Omega**: the off-diagonal element of the answer is exactly 0;
+/// * **a diagonal Omega of two or more random effects**: the off-diagonal element of the answer is exactly 0 (a
+///   1 by 1 Omega has none);
 /// * **an interior maximum**: status `converged`, no `at_bound` (status or flag), and no `few_subjects` /
 ///   `few_observations` flag (the designs have more subjects and observations than parameters, POP-COV-03,
 ///   POP-INN-03). `omega_collapse` is not asserted (it depends on OP-11);
@@ -974,7 +990,9 @@ fn check_fit(name: &str, start: &str, convention: &str) {
     let answer = population_fit(&request)
         .unwrap_or_else(|e| panic!("{name} from `{start}`: the engine refuses a valid fit: {e}"));
     let mut p = Problems::new();
-    if case.design.omega_shape == "diagonal" {
+    // The off-diagonal element exists only when Omega is at least 2 by 2: the q1 cases have a 1 by 1 Omega
+    // (`expected.omega` is q by q), and `omega_full[1][0]` is not in their answer (T-173).
+    if case.design.omega_shape == "diagonal" && case.expected.omega.len() >= 2 {
         for label in ["omega_full[1][0]", "omega_full[0][1]"] {
             let off = labelled(&answer, "estimate", label)
                 .unwrap_or_else(|| panic!("{name}: the answer has no `{label}` in `estimate`"));
