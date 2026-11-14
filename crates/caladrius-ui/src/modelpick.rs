@@ -51,15 +51,19 @@ pub fn picker(ui: &mut Ui, tokens: &Tokens, choice: &mut Choice, what: &str) -> 
             ui.checkbox(&mut choice.lag, "with a lag time");
         }
     });
-    let two = choice.compartments == Compartments::Two;
-    if two {
+    let several = choice.compartments != Compartments::One;
+    if several {
         ui.horizontal(|ui| {
             ui.label("Parameters as");
             egui::ComboBox::from_id_salt("model-parameter-set")
-                .selected_text(choice.set.label())
+                .selected_text(choice.set.label_in(choice.compartments))
                 .show_ui(ui, |ui| {
                     for option in ParameterSet::ALL {
-                        ui.selectable_value(&mut choice.set, option, option.label());
+                        ui.selectable_value(
+                            &mut choice.set,
+                            option,
+                            option.label_in(choice.compartments),
+                        );
                     }
                 });
         });
@@ -92,8 +96,8 @@ pub fn picker(ui: &mut Ui, tokens: &Tokens, choice: &mut Choice, what: &str) -> 
         for line in model.equation {
             equation(ui, line);
         }
-        if two {
-            for line in choice.set.relations() {
+        if several {
+            for line in choice.set.relations_in(choice.compartments) {
                 equation(ui, line);
             }
         }

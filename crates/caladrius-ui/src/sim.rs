@@ -98,11 +98,13 @@ impl SimPage {
             ("ka".to_owned(), example::KA),
             ("tlag".to_owned(), example::TLAG),
         ]);
-        // The three sets of two compartments, from the public worked example of the specification.
-        for set in ParameterSet::ALL {
-            for name in set.names() {
-                if let Some(x) = ParameterSet::example(name) {
-                    params.insert((*name).to_owned(), x);
+        // The three sets of two and of three compartments, from the public worked example of the specification.
+        for compartments in [Compartments::Two, Compartments::Three] {
+            for set in ParameterSet::ALL {
+                for name in set.names_in(compartments) {
+                    if let Some(x) = ParameterSet::example(name) {
+                        params.insert((*name).to_owned(), x);
+                    }
                 }
             }
         }

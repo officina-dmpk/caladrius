@@ -84,7 +84,7 @@ pub struct FitPage {
     pub compartments: Compartments,
     pub input: Input,
     pub lag: bool,
-    /// For two compartments: which complete set of parameters the starting values are in.
+    /// For two or three compartments: which complete set of parameters the starting values are in.
     #[serde(default)]
     pub set: ParameterSet,
     /// The fixed duration of an infusion or a zero-order input.
@@ -214,12 +214,12 @@ impl FitPage {
     }
 
     /// Whether the engine can generate the starting values from the data (one compartment only,
-    /// `specs/fit.md` OF-08); for two compartments the person gives every one.
+    /// `specs/fit.md` OF-08); for two or three compartments the person gives every one.
     pub fn automatic_estimates(&self) -> bool {
         self.compartments == Compartments::One
     }
 
-    /// Two compartments: makes sure there is a value to edit for every parameter of the model in
+    /// Two or three compartments: makes sure there is a value to edit for every parameter of the model in
     /// the chosen set. A value already there is kept (it may be one the person set); a missing
     /// one is a placeholder from the public worked example, shown as not set yet. Values of
     /// parameters the set does not have are dropped.

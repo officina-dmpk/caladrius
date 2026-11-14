@@ -204,6 +204,12 @@ impl UiApp {
             Action::NewFitWith(Compartments::Two),
         ));
         out.push(ui(
+            "new_fit_three",
+            format!("New three-compartment fit{from}"),
+            format!("Fit a three-compartment model (clearances, micro- or macro-constants) to this worksheet; you give every starting value{needs}"),
+            Action::NewFitWith(Compartments::Three),
+        ));
+        out.push(ui(
             "new_plot",
             format!("New plot{from}"),
             format!("An XY plot of this worksheet kept in the project: subjects, linear or semi-log, overlaid or one panel per subject, SVG export{needs}"),
@@ -221,6 +227,13 @@ impl UiApp {
             "Draw the curve of a two-compartment model for a dose and parameters, no data needed"
                 .to_owned(),
             Action::NewSimulationWith(Compartments::Two),
+        ));
+        out.push(ui(
+            "new_simulation_three",
+            "New three-compartment simulation".to_owned(),
+            "Draw the curve of a three-compartment model for a dose and parameters, no data needed"
+                .to_owned(),
+            Action::NewSimulationWith(Compartments::Three),
         ));
         out.push(ui(
             "type_data",

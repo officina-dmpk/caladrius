@@ -11,6 +11,7 @@ use crate::fitpreset;
 use crate::fitresult;
 use crate::fmt;
 use crate::model::{Table, WorksheetInfo};
+use crate::modelinfo::Compartments;
 use crate::modelpick;
 use crate::nca::unit_notes;
 use crate::theme::Tokens;
@@ -203,10 +204,15 @@ fn starting_values(
     let automatic = page.automatic_estimates();
     if !automatic {
         // One sentence, and every value is asked for (specs/fit.md OF-08).
+        let count = if page.compartments == Compartments::Three {
+            "three"
+        } else {
+            "two"
+        };
         ui.label(
-            RichText::new(
-                "Starting values cannot be generated from the data for two compartments: set a value for every parameter below.",
-            )
+            RichText::new(format!(
+                "Starting values cannot be generated from the data for {count} compartments: set a value for every parameter below."
+            ))
             .color(c.text.color()),
         );
     }
