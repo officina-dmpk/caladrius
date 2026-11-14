@@ -378,3 +378,59 @@ fn the_failures_that_are_not_the_inner_problem_have_their_own_sentences() {
         assert!(!error.message.contains("did not converge"));
     }
 }
+
+#[test]
+fn every_observation_used_carries_pred_ipred_and_iwres_at_the_point_of_the_answer() {
+    // POP-DIA-01 on the linear model: PRED = θ1 + θ2·t, IPRED = PRED + η̂1 + η̂2·t (z_powers 0
+    // and 1), IWRES = (y − IPRED)/a with the additive error.
+    let request = linear_request();
+    let answer = run(&request).unwrap();
+    let a = 0.4;
+    let mut iwres = Vec::new();
+    for (s, out) in request
+        .subjects
+        .as_ref()
+        .unwrap()
+        .iter()
+        .zip(&answer.subjects)
+    {
+        assert_eq!(out.observations.len(), s.time.len());
+        let eta = out.eta_hat.as_ref().unwrap();
+        for ((row, &t), y) in out.observations.iter().zip(&s.time).zip(&s.y) {
+            let y = y.unwrap();
+            let pred = 1.0 + 0.5 * t;
+            let ipred = pred + eta[0] + eta[1] * t;
+            assert_eq!((row.time, row.y), (t, y));
+            assert!((row.pred - pred).abs() < 1e-12, "{row:?}");
+            let got = row.ipred.unwrap();
+            assert!((got - ipred).abs() < 1e-9, "{row:?}");
+            let w = row.iwres.unwrap();
+            assert!((w - (y - got) / a).abs() < 1e-12, "{row:?}");
+            iwres.push(w);
+        }
+    }
+    // The ε-shrinkage is 1 − SD(IWRES) over the same rows (POP-DIA-03, divisor N − 1).
+    let n = iwres.len() as f64;
+    let mean = iwres.iter().sum::<f64>() / n;
+    let ss: f64 = iwres.iter().map(|w| (w - mean) * (w - mean)).sum();
+    let sd = (ss / (n - 1.0)).sqrt();
+    assert_eq!(answer.eps_shrinkage, Some(1.0 - sd));
+    // FO has no η̂: PRED only, IPRED and IWRES are null.
+    let mut fo = linear_request();
+    fo.options.method = Some("fo".to_string());
+    let answer = run(&fo).unwrap();
+    for out in &answer.subjects {
+        assert_eq!(out.observations.len(), 3);
+        assert!(
+            out.observations
+                .iter()
+                .all(|r| r.ipred.is_none() && r.iwres.is_none() && r.pred.is_finite())
+        );
+    }
+    // The new field is serialized with the subject.
+    let json = serde_json::to_value(&answer).unwrap();
+    assert_eq!(
+        json["subjects"][0]["observations"][0],
+        serde_json::json!({ "time": 0.5, "y": 1.3, "pred": 1.25, "ipred": null, "iwres": null })
+    );
+}

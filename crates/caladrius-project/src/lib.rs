@@ -8,7 +8,7 @@
 //! Layer L1: project model (worksheets, workflow objects, results) as pure serializable data.
 //!
 //! A [`Project`] holds worksheets (columns with a role and a unit, all data) and analysis objects
-//! (NCA, model fit, simulation, XY plot). An analysis holds its options ([`AnalysisSpec`]) and its last
+//! (NCA, model fit, population fit, simulation, XY plot). An analysis holds its options ([`AnalysisSpec`]) and its last
 //! result ([`AnalysisResult`]); whether that result is still valid is derived from revision
 //! counters ([`Project::status`], `AGENTS.md` section 7, friction 7), never stored as a flag that
 //! could drift.
@@ -29,7 +29,8 @@ mod worksheet;
 
 pub use analysis::{
     ALL_SUBJECTS, Analysis, AnalysisId, AnalysisResult, AnalysisSpec, AnalysisStatus, FitRun,
-    FitSpec, NcaSpec, NcaSubjectResult, Outcome, SimulationRun, SimulationSpec, StaleReason,
+    FitSpec, NcaSpec, NcaSubjectResult, Outcome, PopFitRun, PopFitSpec, PopRefusedSubject,
+    SimulationRun, SimulationSpec, StaleReason,
 };
 pub use csv::{CsvOptions, ImportedTable, Reading, ReadingCheck, readings};
 pub use dataset::{

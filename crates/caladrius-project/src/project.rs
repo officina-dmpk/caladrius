@@ -396,6 +396,9 @@ impl Project {
                     .as_deref()
                     .map_or(String::new(), |x| format!(", subject {x}"))
             ),
+            AnalysisSpec::PopFit(s) => {
+                format!("Population fit {} to {}", s.model.id(), sheet(s.worksheet))
+            }
             AnalysisSpec::Simulation(s) => format!("Simulation of {}", s.input.model.id()),
             AnalysisSpec::Plot(PlotSpec {
                 source: PlotSource::Worksheet { worksheet },

@@ -101,7 +101,7 @@ pub struct ModelOptions {
 }
 
 /// Options of a population run.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PopOptions {
     /// `foce_i` (the default), `foce` or `fo`.
@@ -134,7 +134,7 @@ pub struct SubjectInput {
 // ---------------------------------------------------------------- the answer
 
 /// The method of the objective.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Method {
     /// FOCE with interaction (POP-OBJ-02), the default.
@@ -146,7 +146,7 @@ pub enum Method {
 }
 
 /// The constant of the objective (POP-OBJ-05).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OfvConvention {
     /// The constant N·ln(2π) kept (the default).
     #[serde(rename = "full")]
@@ -157,7 +157,7 @@ pub enum OfvConvention {
 }
 
 /// The answer of an evaluation or of a fit.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PopAnswer {
     /// `evaluated` (POP-API-01 item 6), or the status of the fit (POP-EST-03).
     pub status: String,
@@ -208,7 +208,7 @@ pub struct PopAnswer {
 }
 
 /// The estimates of a fit, in the user's units.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Estimate {
     /// The typical values by name (the fixed ones included).
     #[serde(flatten)]
@@ -227,7 +227,7 @@ pub struct Estimate {
 
 /// Standard errors with the keys of [`Estimate`]; null where NC, fixed, on a bound, or held at 0.
 /// The correlations of Ω have none in this version.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StandardErrors {
     #[serde(flatten)]
     pub theta: BTreeMap<String, Option<f64>>,
@@ -239,7 +239,7 @@ pub struct StandardErrors {
 }
 
 /// One row of the trace of a fit.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraceAnswer {
     pub iteration: usize,
     pub ofv: f64,
@@ -255,7 +255,7 @@ pub struct TraceAnswer {
 }
 
 /// Where the start of a fit came from (POP-EST-05, as FIT-ML-20).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StartRecord {
     /// `user`, `two_stage` or `mixed`.
     pub kind: String,
@@ -268,7 +268,7 @@ pub struct StartRecord {
 }
 
 /// One error parameter used by an evaluation.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ErrorValue {
     /// In the user's units (FIT-ML-21).
     pub value: f64,
@@ -278,7 +278,7 @@ pub struct ErrorValue {
 }
 
 /// One subject of the answer.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubjectAnswer {
     pub id: String,
     pub n_observations: usize,
@@ -291,6 +291,27 @@ pub struct SubjectAnswer {
     pub eta_hat_reason: Option<String>,
     /// The Newton decrement Δ of the returned η̂ (convention of H37); null when there is no η̂.
     pub newton_decrement: Option<f64>,
+    /// PRED, IPRED and IWRES of every observation used, at the point of the answer, in the order
+    /// of the subject's observations (POP-DIA-01); empty for a subject with no observation used.
+    #[serde(default)]
+    pub observations: Vec<ObservationAnswer>,
+}
+
+/// The diagnostics of one observation used (POP-DIA-01), at the point of the answer: the estimate
+/// of a fit, the given parameters of an evaluation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservationAnswer {
+    /// The time since the dose.
+    pub time: f64,
+    /// The observation.
+    pub y: f64,
+    /// PRED = ŷ(0), the prediction of the typical individual.
+    pub pred: f64,
+    /// IPRED = ŷ(η̂_i); null after FO, which has no η̂ (POP-OBJ-03, POP-API-01 item 8).
+    pub ipred: Option<f64>,
+    /// IWRES = (y − IPRED)/g(IPRED; ξ̂); null after FO, and where g(IPRED; ξ̂) is 0 (the value
+    /// would not be a finite number).
+    pub iwres: Option<f64>,
 }
 
 // ---------------------------------------------------------------- the refusals
@@ -1250,8 +1271,8 @@ impl Setup {
     }
 
     /// The answers of the subjects and the total OFV, in the convention of the answer, the
-    /// per-subject values summed in dataset order.
-    fn subject_answers(&self, evaluation: &Evaluation) -> (Vec<SubjectAnswer>, f64) {
+    /// per-subject values summed in dataset order, with the diagnostics of POP-DIA-01 at `p`.
+    fn subject_answers(&self, p: &Params, evaluation: &Evaluation) -> (Vec<SubjectAnswer>, f64) {
         let ln_2pi = libm::log(std::f64::consts::TAU);
         let mut total = 0.0;
         let mut out = Vec::with_capacity(self.subjects.len());
@@ -1265,6 +1286,7 @@ impl Setup {
                     eta_hat: None,
                     eta_hat_reason: Some("no_observations".to_string()),
                     newton_decrement: None,
+                    observations: Vec::new(),
                 });
                 continue;
             }
@@ -1280,6 +1302,7 @@ impl Setup {
                 eta_hat_reason: v.eta.is_none().then(|| "fo".to_string()),
                 eta_hat: v.eta.clone(),
                 newton_decrement: v.decrement,
+                observations: diagnostics::observations(self.method, self.error_model, &p.xi, s, v),
             });
         }
         (out, total)
@@ -1287,7 +1310,7 @@ impl Setup {
 
     /// The answer shared by an evaluation and a fit, at `p`.
     fn answer(&self, status: &str, p: &Params, evaluation: &Evaluation, k: usize) -> PopAnswer {
-        let (subjects, ofv) = self.subject_answers(evaluation);
+        let (subjects, ofv) = self.subject_answers(p, evaluation);
         let shrinkage = diagnostics::shrinkage(
             self.method,
             self.error_model,

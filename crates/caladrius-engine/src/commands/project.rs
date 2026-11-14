@@ -71,7 +71,7 @@ pub(super) fn overview_schema() -> Value {
                         ("label", string()),
                         (
                             "kind",
-                            one_of_strings(&["nca", "fit", "simulation", "plot"]),
+                            one_of_strings(&["nca", "fit", "pop_fit", "simulation", "plot"]),
                         ),
                         ("status", reference("AnalysisStatus")),
                     ],

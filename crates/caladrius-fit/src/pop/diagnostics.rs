@@ -1,5 +1,6 @@
-//! Shrinkage and information criteria (POP-DIA-03, POP-DIA-04), computed from an [`Evaluation`]
-//! that kept its linearisations. Every answer carries them, an evaluation's as a fit's.
+//! PRED, IPRED and IWRES per observation (POP-DIA-01), shrinkage and information criteria
+//! (POP-DIA-03, POP-DIA-04), computed from an [`Evaluation`] that kept its linearisations. Every
+//! answer carries them, an evaluation's as a fit's.
 //!
 //! The standard deviations are two-pass (the mean first, then the sum of squared deviations), with
 //! the sums in subject order and observation order (POP-DET-01).
@@ -7,9 +8,9 @@
 use crate::ErrorModel;
 use crate::linalg::Mat;
 
-use super::Method;
 use super::data::Subject;
-use super::evaluation::Evaluation;
+use super::evaluation::{Evaluation, SubjectValue};
+use super::{Method, ObservationAnswer};
 
 /// η-shrinkage and ε-shrinkage.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +19,43 @@ pub(crate) struct Shrinkage {
     pub eta: Vec<Option<f64>>,
     /// 1 − SD(IWRES) over all observations used (divisor N − 1); `None` where NC.
     pub eps: Option<f64>,
+}
+
+/// IWRES = (y − IPRED)/g(IPRED; ξ) (POP-DIA-01), for `foce` as for `foce_i`.
+fn iwres(error_model: ErrorModel, xi: &[f64], y: f64, ipred: f64) -> f64 {
+    (y - ipred) / error_model.sigma(xi, ipred)
+}
+
+/// POP-DIA-01 for one subject at the point of `value`, which must have kept its linearisation (an
+/// evaluation that did not gives no row): one row per observation used, with the error parameters
+/// `xi` (moved). FO has no η̂, so its IPRED and IWRES are null (POP-OBJ-03).
+pub(crate) fn observations(
+    method: Method,
+    error_model: ErrorModel,
+    xi: &[f64],
+    subject: &Subject,
+    value: &SubjectValue,
+) -> Vec<ObservationAnswer> {
+    let Some(lin) = &value.linearisation else {
+        return Vec::new();
+    };
+    let individual = method != Method::Fo;
+    subject
+        .times
+        .iter()
+        .zip(&subject.y)
+        .zip(lin.pred.iter().zip(&lin.ipred))
+        .map(|((&time, &y), (&pred, &ipred))| {
+            let w = iwres(error_model, xi, y, ipred);
+            ObservationAnswer {
+                time,
+                y,
+                pred,
+                ipred: individual.then_some(ipred),
+                iwres: (individual && w.is_finite()).then_some(w),
+            }
+        })
+        .collect()
 }
 
 /// Mean and two-pass standard deviation with divisor n − 1; `None` below 2 values.
@@ -64,17 +102,16 @@ pub(crate) fn shrinkage(
             sd(&column).map(|s| 1.0 - s / omega_k)
         })
         .collect();
-    // IWRES = (y − IPRED)/g(IPRED; ξ) (POP-DIA-01), for `foce` as for `foce_i`.
-    let mut iwres = Vec::new();
+    let mut residuals = Vec::new();
     for (s, value) in subjects.iter().zip(&evaluation.subjects) {
         let Some(lin) = &value.linearisation else {
             continue;
         };
         for (&y, &f) in s.y.iter().zip(&lin.ipred) {
-            iwres.push((y - f) / error_model.sigma(xi, f));
+            residuals.push(iwres(error_model, xi, y, f));
         }
     }
-    let eps = sd(&iwres).map(|s| 1.0 - s);
+    let eps = sd(&residuals).map(|s| 1.0 - s);
     Shrinkage { eta, eps }
 }
 

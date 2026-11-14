@@ -46,6 +46,8 @@ mod tests_pk3;
 #[cfg(test)]
 mod tests_plot;
 #[cfg(test)]
+mod tests_pop;
+#[cfg(test)]
 mod tests_replay;
 #[cfg(test)]
 mod tests_seal;

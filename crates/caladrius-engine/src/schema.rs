@@ -507,6 +507,7 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                     ],
                     &["kind", "subject", "n_observations", "n_missing", "outcome"],
                 ),
+                pop_fit_result(vec![("kind", json!({ "const": "pop_fit" }))], &["kind"]),
                 open_object(
                     vec![
                         ("kind", json!({ "const": "simulation" })),
@@ -568,7 +569,7 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
             )
         }
         "AnalysisSpec" => json!({ "type": "object", "required": ["kind"],
-            "properties": { "kind": one_of_strings(&["nca", "fit", "simulation", "plot"]) } }),
+            "properties": { "kind": one_of_strings(&["nca", "fit", "pop_fit", "simulation", "plot"]) } }),
         "AnalysisView" => object(
             vec![
                 ("id", reference("Id")),
@@ -576,13 +577,98 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
                 ("name", nullable(string())),
                 (
                     "kind",
-                    one_of_strings(&["nca", "fit", "simulation", "plot"]),
+                    one_of_strings(&["nca", "fit", "pop_fit", "simulation", "plot"]),
                 ),
                 ("spec", reference("AnalysisSpec")),
                 ("status", reference("AnalysisStatus")),
                 ("result", nullable(reference("AnalysisResult"))),
             ],
             &["id", "label", "name", "kind", "spec", "status", "result"],
+        ),
+        "PopOptions" => described(
+            object(
+                vec![
+                    (
+                        "method",
+                        nullable(one_of_strings(&["foce_i", "foce", "fo"])),
+                    ),
+                    (
+                        "ofv_convention",
+                        nullable(one_of_strings(&["full", "no_2pi"])),
+                    ),
+                    (
+                        "covariance",
+                        nullable(one_of_strings(&["sandwich", "r", "s"])),
+                    ),
+                    ("exclude_subjects", array_of(string())),
+                    ("evaluate_only", boolean()),
+                ],
+                &[],
+            ),
+            "Options of the population fit; every field is optional. method: foce_i (FOCE with interaction, the default), foce or fo. ofv_convention: full (the default, with N ln 2 pi) or no_2pi. covariance: the kind printed in `se`, sandwich (the default), r or s. exclude_subjects: labels of subjects left out. evaluate_only: the objective, the conditional modes and the diagnostics at the given parameters (`initial`, `omega`, `error_init`), with no iteration.",
+        ),
+        "PopEstimate" => described(
+            json!({
+                "type": "object",
+                "properties": {
+                    "omega_diagonal": { "type": "object", "additionalProperties": number() },
+                    "omega_full": array_of(array_of(number())),
+                    "omega_sd": { "type": "object", "additionalProperties": number() },
+                    "omega_correlation": array_of(array_of(number())),
+                    "xi": { "type": "object", "additionalProperties": number() },
+                },
+                "required": ["omega_diagonal", "omega_full", "omega_sd", "omega_correlation", "xi"],
+                "additionalProperties": number(),
+            }),
+            "The estimates in the units of the data: each typical value by parameter name, the variances of omega by random effect (omega_diagonal), omega in the order of random_effects (omega_full), the standard deviations (omega_sd) and correlations of omega, and the error parameters by key a, b (xi).",
+        ),
+        "PopStandardErrors" => described(
+            json!({
+                "type": "object",
+                "properties": {
+                    "omega_diagonal": { "type": "object", "additionalProperties": nullable(number()) },
+                    "omega_full": array_of(array_of(nullable(number()))),
+                    "omega_sd": { "type": "object", "additionalProperties": nullable(number()) },
+                    "xi": { "type": "object", "additionalProperties": nullable(number()) },
+                },
+                "required": ["omega_diagonal", "omega_full", "omega_sd", "xi"],
+                "additionalProperties": nullable(number()),
+            }),
+            "Standard errors with the keys of the estimates; null where not calculated, fixed, on a bound or held at 0.",
+        ),
+        "PopSubject" => object(
+            vec![
+                ("id", string()),
+                ("n_observations", integer()),
+                ("ofv", number()),
+                ("eta_hat", nullable(array_of(number()))),
+                ("eta_hat_reason", one_of_strings(&["fo", "no_observations"])),
+                ("newton_decrement", nullable(number())),
+                (
+                    "observations",
+                    described(
+                        array_of(object(
+                            vec![
+                                ("time", number()),
+                                ("y", number()),
+                                ("pred", number()),
+                                ("ipred", nullable(number())),
+                                ("iwres", nullable(number())),
+                            ],
+                            &["time", "y", "pred", "ipred", "iwres"],
+                        )),
+                        "Every observation used, at the point of the answer: the time since the dose, the observation, PRED (the typical individual), IPRED (at eta_hat; null after fo) and IWRES = (y - IPRED)/sd(IPRED) (null after fo).",
+                    ),
+                ),
+            ],
+            &[
+                "id",
+                "n_observations",
+                "ofv",
+                "eta_hat",
+                "newton_decrement",
+                "observations",
+            ],
         ),
         "UnitWarning" => object(
             vec![("code", string()), ("message", string())],
@@ -633,6 +719,126 @@ pub(crate) fn definition(name: &str) -> Option<Value> {
         ),
         _ => return None,
     })
+}
+
+/// The result of a population fit as the project stores it, with the `extra` properties (the `kind`
+/// of an analysis result, the `analysis` of the answer of `pop.fit`).
+pub(crate) fn pop_fit_result(extra: Vec<(&str, Value)>, extra_required: &[&str]) -> Value {
+    let mut properties = vec![
+        (
+            "status",
+            one_of_strings(&[
+                "converged",
+                "max_iterations",
+                "no_decrease",
+                "singular",
+                "non_finite",
+                "at_bound",
+                "inner_failed",
+                "evaluated",
+            ]),
+        ),
+        ("method", one_of_strings(&["foce_i", "foce", "fo"])),
+        ("ofv_convention", one_of_strings(&["full", "no_2pi"])),
+        ("ofv", number()),
+        ("n_subjects", integer()),
+        ("n_observations", integer()),
+        ("random_effects", array_of(string())),
+        (
+            "xi_used",
+            json!({ "type": "object", "additionalProperties": object(
+                vec![("value", number()), ("source", string())],
+                &["value", "source"],
+            ) }),
+        ),
+        ("subjects", array_of(reference("PopSubject"))),
+        ("eta_shrinkage", array_of(nullable(number()))),
+        ("eps_shrinkage", nullable(number())),
+        ("k", integer()),
+        ("aic", nullable(number())),
+        ("bic", nullable(number())),
+        ("estimate", reference("PopEstimate")),
+        ("se", reference("PopStandardErrors")),
+        (
+            "se_by_kind",
+            json!({ "type": "object", "additionalProperties": reference("PopStandardErrors") }),
+        ),
+        (
+            "covariance",
+            open_object(
+                vec![
+                    ("printed", one_of_strings(&["sandwich", "r", "s"])),
+                    ("labels", array_of(string())),
+                    ("correlation", nullable(array_of(array_of(number())))),
+                    ("eigenvalues", nullable(array_of(number()))),
+                    ("condition_number", nullable(number())),
+                    (
+                        "rse",
+                        json!({ "type": "object", "additionalProperties": nullable(number()) }),
+                    ),
+                    ("flags", array_of(string())),
+                ],
+                &["printed", "labels", "flags"],
+            ),
+        ),
+        ("iterations", integer()),
+        (
+            "trace",
+            array_of(open_object(
+                vec![
+                    ("iteration", integer()),
+                    ("ofv", number()),
+                    (
+                        "parameters",
+                        json!({ "type": "object", "additionalProperties": number() }),
+                    ),
+                ],
+                &["iteration", "ofv", "parameters"],
+            )),
+        ),
+        (
+            "start",
+            object(
+                vec![
+                    ("kind", one_of_strings(&["user", "two_stage", "mixed"])),
+                    (
+                        "sources",
+                        json!({ "type": "object", "additionalProperties": string() }),
+                    ),
+                    ("left_out", array_of(string())),
+                    ("note", string()),
+                ],
+                &["kind", "sources", "left_out"],
+            ),
+        ),
+        (
+            "refused_subjects",
+            array_of(object(
+                vec![("subject", string()), ("message", string())],
+                &["subject", "message"],
+            )),
+        ),
+        ("notes", array_of(string())),
+    ];
+    properties.extend(extra);
+    let mut required = vec![
+        "status",
+        "method",
+        "ofv_convention",
+        "ofv",
+        "n_subjects",
+        "n_observations",
+        "random_effects",
+        "xi_used",
+        "subjects",
+        "eta_shrinkage",
+        "eps_shrinkage",
+        "k",
+        "aic",
+        "bic",
+    ];
+    required.extend(extra_required);
+    object(properties, &required)
 }
 
 // ---- a minimal validator, for the tests ---------------------------------------------------

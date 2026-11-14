@@ -1,9 +1,10 @@
-//! Analysis objects: the options of an NCA, a model fit, a simulation or a plot, and their last
-//! result.
+//! Analysis objects: the options of an NCA, a model fit, a population fit, a simulation or a plot,
+//! and their last result.
 
 use std::collections::BTreeMap;
 
-use caladrius_fit::{FitOptions, FitResult, Weighting};
+use caladrius_fit::pop::{PopAnswer, PopOptions};
+use caladrius_fit::{Bounds, FitOptions, FitResult, Weighting};
 use caladrius_models::{ModelId, ModelInput, ModelOutput};
 use caladrius_nca::{NcaOptions, NcaResult, Route};
 use serde::{Deserialize, Serialize};
@@ -74,6 +75,47 @@ pub struct FitSpec {
     pub options: FitOptions,
 }
 
+/// Population fit of a model to every subject of a worksheet (`specs/population.md`): FOCE with
+/// interaction by default. Besides the worksheet, the fields are those of the population request
+/// (POP-API-01); the subjects are read from the worksheet, one dose per subject.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PopFitSpec {
+    /// The worksheet read.
+    pub worksheet: WorksheetId,
+    /// The structural model.
+    pub model: ModelId,
+    /// Starting typical values by parameter; a typical value with a random effect that is left out
+    /// is computed by the two-stage start (POP-EST-05).
+    #[serde(default)]
+    pub initial: BTreeMap<String, f64>,
+    /// The parameters that carry a random effect, in the order of the rows of Ω.
+    #[serde(default)]
+    pub random_effects: Option<Vec<String>>,
+    /// The starting Ω, q × q; `None` computes it by the two-stage start.
+    #[serde(default)]
+    pub omega: Option<Vec<Vec<f64>>>,
+    /// `diagonal` (the default) or `block`.
+    #[serde(default)]
+    pub omega_shape: Option<String>,
+    /// `additive`, `proportional`, `combined` or `combined_sd`.
+    #[serde(default)]
+    pub error_model: Option<String>,
+    /// The starting error parameters in the user's units: `[a]`, `[b]` or `[a, b]`.
+    #[serde(default)]
+    pub error_init: Option<Vec<f64>>,
+    /// Typical values, error parameters (`a`, `b`) and variances of Ω (`omega.<parameter>`) held
+    /// at a value.
+    #[serde(default)]
+    pub fixed: BTreeMap<String, f64>,
+    /// Bounds of the free typical values.
+    #[serde(default)]
+    pub bounds: BTreeMap<String, Bounds>,
+    /// Method, convention of the objective, printed covariance, subjects left out.
+    #[serde(default)]
+    pub options: PopOptions,
+}
+
 /// Evaluation of a model on a time grid (no worksheet).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -90,6 +132,8 @@ pub enum AnalysisSpec {
     Nca(NcaSpec),
     /// Model fit.
     Fit(FitSpec),
+    /// Population fit.
+    PopFit(PopFitSpec),
     /// Model simulation.
     Simulation(SimulationSpec),
     /// XY plot of a worksheet or of a fit.
@@ -102,6 +146,7 @@ impl AnalysisSpec {
         match self {
             AnalysisSpec::Nca(s) => Some(s.worksheet),
             AnalysisSpec::Fit(s) => Some(s.worksheet),
+            AnalysisSpec::PopFit(s) => Some(s.worksheet),
             AnalysisSpec::Simulation(_) => None,
             AnalysisSpec::Plot(s) => match s.source {
                 PlotSource::Worksheet { worksheet } => Some(worksheet),
@@ -121,11 +166,12 @@ impl AnalysisSpec {
         }
     }
 
-    /// `nca`, `fit`, `simulation` or `plot`.
+    /// `nca`, `fit`, `pop_fit`, `simulation` or `plot`.
     pub fn kind(&self) -> &'static str {
         match self {
             AnalysisSpec::Nca(_) => "nca",
             AnalysisSpec::Fit(_) => "fit",
+            AnalysisSpec::PopFit(_) => "pop_fit",
             AnalysisSpec::Simulation(_) => "simulation",
             AnalysisSpec::Plot(_) => "plot",
         }
@@ -212,6 +258,32 @@ pub struct FitRun {
     pub notes: Vec<String>,
 }
 
+/// A subject of the worksheet that the checks of the data refused, left out of a population fit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PopRefusedSubject {
+    /// Subject label.
+    pub subject: String,
+    /// The sentence of the check: what is wrong and what to do.
+    pub message: String,
+}
+
+/// A population fit: the answer of the population fit (POP-API-01, with the diagnostics of every
+/// observation, POP-DIA-01) and what was decided about the data of the worksheet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PopFitRun {
+    /// The answer, its fields at the top level.
+    #[serde(flatten)]
+    pub answer: PopAnswer,
+    /// The subjects of the worksheet that the checks of the data refused, in worksheet order; the
+    /// fit ran without them. Absent when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused_subjects: Vec<PopRefusedSubject>,
+    /// What was decided for the data that the person should know (rows before the dose left out,
+    /// a duration of the dose row not used). Absent when there is nothing to say.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
 /// A simulation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SimulationRun {
@@ -238,6 +310,8 @@ pub enum AnalysisResult {
         /// Subjects, in worksheet order.
         subjects: Vec<FitRun>,
     },
+    /// A population fit (boxed: it is much larger than the other results).
+    PopFit(Box<PopFitRun>),
     /// A simulation.
     Simulation(SimulationRun),
     /// The panels of a plot.

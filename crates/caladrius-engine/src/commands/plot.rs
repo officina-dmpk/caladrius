@@ -269,6 +269,7 @@ pub(crate) const EXPORT_PLOT: CommandDef = CommandDef {
             ),
         )
     },
-    example: || json!({ "analysis": 4 }),
+    // The plot of the examples script is analysis 5, after the fit (3) and the population fit (4).
+    example: || json!({ "analysis": 5 }),
     run: export_plot,
 };

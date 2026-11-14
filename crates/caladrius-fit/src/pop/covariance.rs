@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::linalg::{Mat, symmetric_eigenvalues};
 
@@ -39,7 +39,7 @@ pub(crate) const HIGH_ETA_SHRINKAGE: f64 = 0.3;
 pub(crate) const SLOW_ITERATIONS: usize = 100;
 
 /// One kind of covariance on the user's scale.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Kind {
     /// Over `labels`, row by row; null when NC.
     pub matrix: Option<Vec<Vec<f64>>>,
@@ -48,7 +48,7 @@ pub struct Kind {
 }
 
 /// The covariance block of the answer (POP-EST-04).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CovarianceBlock {
     /// The kind printed (`options.covariance`, `sandwich` by default).
     pub printed: String,

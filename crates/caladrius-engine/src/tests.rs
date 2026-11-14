@@ -63,6 +63,7 @@ fn the_commands_are_the_documented_ones() {
             "fit.initial_estimates",
             "fit.evaluate",
             "fit.run",
+            "pop.fit",
             "model.simulate",
             "plot.xy",
             "analysis.run",

@@ -5,6 +5,7 @@ mod analysis;
 mod compare;
 mod data;
 mod plot;
+mod pop;
 mod project;
 mod units;
 
@@ -46,6 +47,7 @@ pub(crate) const COMMANDS: &[CommandDef] = &[
     analysis::FIT_INITIAL_ESTIMATES,
     analysis::FIT_EVALUATE,
     analysis::FIT_RUN,
+    pop::POP_FIT,
     analysis::MODEL_SIMULATE,
     plot::PLOT_XY,
     analysis::ANALYSIS_RUN,

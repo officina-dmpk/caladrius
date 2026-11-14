@@ -178,6 +178,12 @@ fn side(project: &Project, id: AnalysisId) -> Result<Side, CommandError> {
                 ),
             ));
         }
+        AnalysisResult::PopFit(_) => {
+            return Err(CommandError::new(
+                "wrong_kind",
+                format!("analysis {id} is a population fit; compare NCA or fit results"),
+            ));
+        }
         AnalysisResult::Simulation(_) => {
             return Err(CommandError::new(
                 "wrong_kind",

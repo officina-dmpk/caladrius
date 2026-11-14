@@ -4,12 +4,13 @@
 use std::collections::BTreeMap;
 
 use caladrius_fit::FitInput;
+use caladrius_fit::pop::{PopError, PopRequest, SubjectInput};
 use caladrius_models::{ModelId, ModelInput};
 use caladrius_nca::{NcaInput, Route};
 use caladrius_project::{
     ALL_SUBJECTS, AnalysisResult, AnalysisSpec, CovariateValue, Dataset, FitRun, FitSpec, Layout,
-    NcaSpec, NcaSubjectResult, Outcome, Profile, Project, Purpose, SimulationRun, SimulationSpec,
-    SubjectData, Worksheet, WorksheetId,
+    NcaSpec, NcaSubjectResult, Outcome, PopFitRun, PopFitSpec, PopRefusedSubject, Profile, Project,
+    Purpose, SimulationRun, SimulationSpec, SubjectData, Worksheet, WorksheetId,
 };
 
 use crate::error::CommandError;
@@ -22,6 +23,7 @@ pub(crate) fn run_spec(
     match spec {
         AnalysisSpec::Nca(s) => run_nca(project, s),
         AnalysisSpec::Fit(s) => run_fit(project, s),
+        AnalysisSpec::PopFit(s) => run_pop_fit(project, s),
         AnalysisSpec::Simulation(s) => run_simulation(s),
         AnalysisSpec::Plot(s) => Ok(AnalysisResult::Plot(crate::plot::draw(project, s)?)),
     }
@@ -597,6 +599,133 @@ fn fit_one_of_all(
             Some(&meta),
         ),
     })
+}
+
+/// The population request of `spec`, with the subjects read from its worksheet, and what was
+/// decided about the data: the subjects that the checks refused (left out, each with its sentence)
+/// and the notes.
+///
+/// Each subject is read as `fit.run` reads it (DAT-USE-02: one dose row, the time measured from the
+/// dose, rows without a concentration or below the limit of quantification left out), so the
+/// request is the inline one of POP-API-01 item 10. A subject listed in `options.exclude_subjects`
+/// is left to the population fit to exclude, and is not reported when the checks refuse it.
+fn pop_request(
+    project: &Project,
+    spec: &PopFitSpec,
+) -> Result<(PopRequest, Vec<PopRefusedSubject>, Vec<String>), CommandError> {
+    let ws = project.worksheet(spec.worksheet)?;
+    let ds = ws.dataset();
+    let labels = ws.analysis_subjects(&ds);
+    if labels.is_empty() {
+        return Err(CommandError::new(
+            "no_subjects",
+            format!(
+                "worksheet `{}` has no subject with data; check the subject column",
+                ws.name()
+            ),
+        ));
+    }
+    let excluded = &spec.options.exclude_subjects;
+    let mut subjects: Vec<SubjectInput> = Vec::with_capacity(labels.len());
+    let mut refused = Vec::new();
+    let mut notes = Vec::new();
+    for label in &labels {
+        let data = match fit_data_in(ws, &ds, Some(label), None) {
+            Ok(d) => d,
+            Err(e) => {
+                if !excluded.contains(label) {
+                    refused.push(PopRefusedSubject {
+                        subject: label.clone(),
+                        message: e.message,
+                    });
+                }
+                continue;
+            }
+        };
+        let mut subject_notes = data.notes;
+        let duration = match data.duration {
+            Some(d) if takes_dose_duration(spec.model) => Some(d),
+            Some(d) => {
+                subject_notes.push(format!(
+                    "subject {}: the dose row is an infusion of duration {d}, which model {} does not read from the file; the duration of the dose row is not used",
+                    data.subject,
+                    spec.model.id()
+                ));
+                None
+            }
+            None => None,
+        };
+        if !excluded.contains(label) {
+            notes.extend(subject_notes);
+        }
+        subjects.push(SubjectInput {
+            id: data.subject,
+            dose: data.dose,
+            time: data.time,
+            y: data.conc.into_iter().map(Some).collect(),
+            duration,
+        });
+    }
+    let mut options = spec.options.clone();
+    // A subject of the worksheet that the checks refused is not in the list, and excluding it would
+    // name a subject that is not there; a label that is no subject of the worksheet stays, and the
+    // population fit refuses it.
+    options
+        .exclude_subjects
+        .retain(|l| subjects.iter().any(|s| &s.id == l) || !labels.contains(l));
+    let request = PopRequest {
+        model: Some(spec.model.id().to_owned()),
+        initial: spec.initial.clone(),
+        random_effects: spec.random_effects.clone(),
+        omega: spec.omega.clone(),
+        omega_shape: spec.omega_shape.clone(),
+        error_model: spec.error_model.clone(),
+        error_init: spec.error_init.clone(),
+        model_options: Default::default(),
+        fixed: spec.fixed.clone(),
+        bounds: spec.bounds.clone(),
+        dataset_file: None,
+        dataset_text: None,
+        options,
+        subjects: Some(subjects),
+    };
+    Ok((request, refused, notes))
+}
+
+/// The population fit of `spec` on the current state of `project` (`specs/population.md`). A
+/// refusal of the fit is an error with the code of POP-INN-03 and stores nothing.
+pub(crate) fn run_pop_fit(
+    project: &Project,
+    spec: &PopFitSpec,
+) -> Result<AnalysisResult, CommandError> {
+    let (request, refused, notes) = pop_request(project, spec)?;
+    match caladrius_fit::pop::run(&request) {
+        Ok(answer) => Ok(AnalysisResult::PopFit(Box::new(PopFitRun {
+            answer,
+            refused_subjects: refused,
+            notes,
+        }))),
+        Err(e) => Err(pop_error(e, &refused)),
+    }
+}
+
+/// A refusal of the population fit as a command error: its code and its sentence, followed by the
+/// subjects the checks of the data left out, since the refusal may come from their absence.
+fn pop_error(e: PopError, refused: &[PopRefusedSubject]) -> CommandError {
+    let mut message = e.message;
+    if !refused.is_empty() {
+        let list: Vec<String> = refused
+            .iter()
+            .map(|r| format!("subject {}: {}", r.subject, r.message))
+            .collect();
+        message = format!(
+            "{} (the checks of the data left out {} subject(s): {})",
+            message.trim_end_matches('.'),
+            refused.len(),
+            list.join("; ")
+        );
+    }
+    CommandError::new(e.code.id(), message)
 }
 
 fn run_simulation(spec: &SimulationSpec) -> Result<AnalysisResult, CommandError> {
