@@ -144,6 +144,10 @@ pub struct Sizes {
     pub diagram_gap: f32,
     pub residual_plot_height: f32,
     pub small_plot_height: f32,
+    /// The narrowest a plot of one subject gets in a grid of subjects (the population fit).
+    pub subject_plot_min_width: f32,
+    /// A short text field for one number (an optional starting value).
+    pub short_field_width: f32,
     /// The width of a question dialog.
     pub dialog_width: f32,
     /// The width of the command palette.
@@ -334,6 +338,17 @@ impl Tokens {
             .stroke(Stroke::new(1.0_f32, self.colors.border.color()))
             .corner_radius(CornerRadius::same(self.radius.medium.round() as u8))
             .inner_margin(Margin::same(self.spacing.medium.round() as i8))
+    }
+
+    /// A small tag beside a title (`in validation`): a thin border, no fill.
+    pub fn tag_frame(&self) -> egui::Frame {
+        egui::Frame::new()
+            .stroke(Stroke::new(self.stroke.thin, self.colors.border.color()))
+            .corner_radius(CornerRadius::same(self.radius.medium.round() as u8))
+            .inner_margin(Margin::symmetric(
+                self.spacing.small.round() as i8,
+                (self.spacing.small / 4.0).round() as i8,
+            ))
     }
 
     /// A banner box with its own fill and text colour (the stale notice).

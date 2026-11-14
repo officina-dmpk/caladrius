@@ -18,6 +18,8 @@
 //! - [`plotdata`]: what the profile plot draws, including the safe semi-log view.
 //! - [`rawplot`]: the raw data of a worksheet, linear and semi-log, before any analysis.
 //! - [`plotpage`]: plot objects of the project (`plot.xy`), their options and their panels.
+//! - [`pop`], [`poppage`], [`popplots`]: the population fit (`pop.fit`), its setup, its estimates
+//!   with the second look in R, and its goodness-of-fit and individual plots.
 //! - [`app`]: the application, its project tree and its screens ([`import`], [`entry`], [`sheet`],
 //!   [`nca`]).
 
@@ -43,6 +45,10 @@ pub mod palette;
 pub mod plot;
 pub mod plotdata;
 pub mod plotpage;
+pub mod pop;
+pub mod popflow;
+pub mod poppage;
+pub mod popplots;
 pub mod projectfile;
 pub mod projectmenu;
 pub mod rawplot;
@@ -78,6 +84,8 @@ mod tests_pk3;
 mod tests_plotpage;
 #[cfg(test)]
 mod tests_plotzoom;
+#[cfg(test)]
+mod tests_pop;
 #[cfg(test)]
 mod tests_project;
 #[cfg(test)]

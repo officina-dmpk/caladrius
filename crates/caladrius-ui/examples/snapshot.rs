@@ -32,6 +32,29 @@ const WIDE: &str = "Temps (h)\t1\t2\t3\t4\r\nDose (mg/kg)\t30\t30\t45\t45\r\n0,5
 /// The reported failure: a decimal comma read with a comma separator.
 const AMBIGUOUS: &str = "time,conc\n0,25\n0,5\n1,2\n2,1\n";
 
+/// The oracle's Theoph table in the event layout (12 subjects, a dose row each).
+const THEOPH: &str = include_str!("../../../oracle/data/population/event_theoph.csv");
+
+/// The demo dataset of the population fit: the Theoph table without its observation rows at time 0
+/// (EVID 0 and TIME 0), 12 dose rows and 120 observations.
+fn theoph_demo_csv() -> String {
+    let mut out = String::new();
+    for (i, line) in THEOPH.lines().enumerate() {
+        let fields: Vec<&str> = line.split(',').collect();
+        let at_zero = i > 0
+            && fields.get(4).map(|f| f.trim()) == Some("0")
+            && fields
+                .get(1)
+                .and_then(|t| t.trim().parse::<f64>().ok())
+                .is_some_and(|t| t == 0.0);
+        if !at_zero {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 fn out_dir() -> PathBuf {
     let dir = PathBuf::from("target").join("snapshots");
     if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -45,6 +68,9 @@ fn size_of(name: &str) -> (f32, f32) {
     // A narrow window: the lines of a page wrap instead of running off the edge.
     if name.contains("narrow") {
         return (800.0, 1600.0);
+    }
+    if name.contains("pop-results") {
+        return (SIZE.0, 1700.0);
     }
     if name.starts_with("35-")
         || name.starts_with("36-")
@@ -802,11 +828,66 @@ fn scenes() -> Vec<(&'static str, UiApp)> {
     scenes
 }
 
+/// The program's clock, as the desktop application gives it: seconds since the first reading.
+fn stopwatch() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f64()
+}
+
+/// The population fit (demo of 2026-11-16) on the Theoph table without its samples at time 0: the
+/// setup, then the results of the demo request. Each run is a `pop.fit` of a few seconds in a debug
+/// build, so a scene is built only when the filter asks for it.
+fn pop_scenes(wanted: &dyn Fn(&str) -> bool) -> Vec<(&'static str, UiApp)> {
+    use caladrius_ui::pop::Section;
+    let demo = || {
+        let mut app = UiApp::new();
+        app.set_stopwatch(stopwatch);
+        app.load_csv("theophylline_pop.csv", theoph_demo_csv().as_bytes());
+        app.perform(vec![Action::ImportConfirm, Action::NewPopFit]);
+        app
+    };
+    let run = |mode: ThemeMode, jump: Option<Section>, log: bool| {
+        let mut app = demo();
+        app.perform(vec![Action::RunPopFit]);
+        app.state.mode = mode;
+        app.state.log_axis = log;
+        if let Some(page) = app.state.pop.as_mut() {
+            page.jump = jump;
+        }
+        app
+    };
+    let mut scenes: Vec<(&'static str, UiApp)> = Vec::new();
+    let mut add = |name: &'static str, make: &dyn Fn() -> UiApp| {
+        if wanted(name) {
+            scenes.push((name, make()));
+        }
+    };
+    add("70-pop-setup-light", &demo);
+    add("71-pop-results-light", &|| {
+        run(ThemeMode::Light, None, false)
+    });
+    add("72-pop-results-dark", &|| run(ThemeMode::Dark, None, false));
+    add("73-pop-goodness-of-fit-light", &|| {
+        run(ThemeMode::Light, Some(Section::Goodness), false)
+    });
+    add("74-pop-individual-fits-light", &|| {
+        run(ThemeMode::Light, Some(Section::Individual), false)
+    });
+    add("75-pop-individual-fits-semilog-dark", &|| {
+        run(ThemeMode::Dark, Some(Section::Individual), true)
+    });
+    scenes
+}
+
 fn main() {
     // An argument renders only the scenes whose name contains it (`snapshot -- plot`).
     let only: Option<String> = std::env::args().nth(1);
+    let wanted = |name: &str| only.as_deref().is_none_or(|o| name.contains(o));
     let mut failed = false;
-    for (name, app) in scenes() {
+    for (name, app) in scenes().into_iter().chain(pop_scenes(&wanted)) {
         if only.as_deref().is_some_and(|o| !name.contains(o)) {
             continue;
         }

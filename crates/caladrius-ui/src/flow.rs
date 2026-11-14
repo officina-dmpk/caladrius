@@ -14,6 +14,9 @@ use crate::sim::SimPage;
 impl UiApp {
     /// The worksheet the person has selected: the one in view, or the one the open page reads.
     pub(crate) fn selected_worksheet(&self) -> Option<u64> {
+        if self.shown() == crate::app::Shown::Pop {
+            return self.state.pop.as_ref().map(|p| p.worksheet);
+        }
         match &self.state.selection {
             Selection::Worksheet(id) => Some(*id),
             Selection::Analysis(_) | Selection::NewFit => self

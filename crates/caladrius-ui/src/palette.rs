@@ -198,6 +198,12 @@ impl UiApp {
             Action::NewFit,
         ));
         out.push(ui(
+            "new_pop_fit",
+            format!("New population fit{from}"),
+            format!("One model fitted to every subject at once (FOCEI): variability, shrinkage, diagnostics{needs}"),
+            Action::NewPopFit,
+        ));
+        out.push(ui(
             "new_fit_two",
             format!("New two-compartment fit{from}"),
             format!("Fit a two-compartment model (clearances, micro- or macro-constants) to this worksheet; you give every starting value{needs}"),
@@ -331,6 +337,7 @@ impl UiApp {
             "data.import" | "data.preview" => Action::OpenCsv,
             "nca.run" => Action::NewAnalysis,
             "fit.run" | "fit.initial_estimates" | "fit.evaluate" => Action::NewFit,
+            "pop.fit" => Action::NewPopFit,
             "model.simulate" => Action::NewSimulation,
             "plot.xy" => Action::NewPlot,
             "export.plot" => match analysis {

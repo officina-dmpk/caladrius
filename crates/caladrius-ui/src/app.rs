@@ -18,6 +18,8 @@ use crate::modelinfo::Compartments;
 use crate::nca::{self, NcaPage};
 use crate::palette::{self, CommandLine, PaletteState};
 use crate::plotpage::{self, PlotPage};
+use crate::pop::PopPage;
+use crate::poppage;
 use crate::projectfile::{FileState, Guarded};
 use crate::projectmenu;
 use crate::settings::{Settings, ThemeChoice};
@@ -129,6 +131,12 @@ pub enum Action {
     PlotChanged,
     /// Save the SVG of this plot (`export.plot`).
     ExportPlot(u64),
+    /// A new population fit of the worksheet in view (`pop.fit`).
+    NewPopFit,
+    /// The worksheet of the population-fit page changed.
+    PopChanged,
+    /// Fit the population model of the page (`pop.fit`).
+    RunPopFit,
 }
 
 /// What the engine understood of a typed cell, when that is not what was typed (`3,25` is 3.25).
@@ -159,6 +167,8 @@ pub enum Selection {
     NewFit,
     /// A model simulation being set up.
     NewSimulation,
+    /// A population fit being set up, not yet run.
+    NewPopFit,
     /// The settings page.
     Settings,
     /// The report of a project file that was verified (`project.replay`); the welcome page when
@@ -168,12 +178,14 @@ pub enum Selection {
 
 /// Which analysis page is on screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Shown {
+pub(crate) enum Shown {
     Nca,
     Fit,
     Sim,
     /// A plot object: its page fills the main area, with no side plot.
     Plot,
+    /// The population fit: its tables and plots fill the main area, with no side plot.
+    Pop,
     Nothing,
 }
 
@@ -230,6 +242,9 @@ pub struct UiState {
     /// The plot page being worked on.
     #[serde(default)]
     pub plot: Option<PlotPage>,
+    /// The population-fit page being worked on.
+    #[serde(default)]
+    pub pop: Option<Box<PopPage>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -282,7 +297,14 @@ pub struct UiApp {
     logo_loaded: bool,
     /// Whether the program around can close itself: a window can, a browser tab cannot.
     pub(crate) can_quit: bool,
+    /// The program's monotonic clock, for the wall time of a population fit (`None`: not shown).
+    pub(crate) stopwatch: Option<Stopwatch>,
 }
+
+/// A monotonic clock the program around gives: seconds from any fixed origin. The interface reads
+/// no clock itself (it compiles for the browser, where the standard library has none); it reads
+/// this one before and after a long call and shows the difference beside the result.
+pub type Stopwatch = fn() -> f64;
 
 impl Default for UiApp {
     fn default() -> Self {
@@ -333,6 +355,7 @@ impl UiApp {
             logo: None,
             logo_loaded: false,
             can_quit: true,
+            stopwatch: None,
         };
         app.mark_saved();
         app.refresh_overview();
@@ -347,6 +370,12 @@ impl UiApp {
     /// Mutable access to the engine, for tests that set a project up through commands.
     pub fn engine_mut(&mut self) -> &mut Engine {
         &mut self.engine
+    }
+
+    /// Gives the interface the program's monotonic clock: the population fit then shows how long
+    /// its call took. Without one (the default), no time is shown.
+    pub fn set_stopwatch(&mut self, now: Stopwatch) {
+        self.stopwatch = Some(now);
     }
 
     /// Says whether the program around can close itself. In a browser tab it cannot: "Quit" leaves
@@ -383,6 +412,11 @@ impl UiApp {
     /// The current plot page, for tests.
     pub fn plot_page(&self) -> Option<&PlotPage> {
         self.state.plot.as_ref()
+    }
+
+    /// The current population-fit page, for tests.
+    pub fn pop_page(&self) -> Option<&PopPage> {
+        self.state.pop.as_deref()
     }
 
     /// An exported file was written (the program says under which name).
@@ -506,6 +540,7 @@ impl UiApp {
             Some("fit") => return self.open_fit(&view),
             Some("simulation") => return self.open_simulation(&view),
             Some("plot") => return self.open_plot(&view),
+            Some("pop_fit") => return self.open_pop(&view),
             _ => {}
         }
         match NcaPage::from_view(&view) {
@@ -526,7 +561,7 @@ impl UiApp {
     }
 
     /// Takes the answer of a run into the page of its kind.
-    fn adopt_run(&mut self, view: &Value) {
+    pub(crate) fn adopt_run(&mut self, view: &Value) {
         // Only the page that shows this analysis takes the answer (the tree can run any of them).
         let id = view.get("id").and_then(Value::as_u64);
         if let Some(page) = self.state.nca.as_mut().filter(|p| p.analysis == id) {
@@ -616,12 +651,7 @@ impl UiApp {
                     self.remember_settings();
                 }
                 Action::RunNca => self.run_nca(),
-                Action::RunAgain(id) => {
-                    if let Ok(view) = self.call("analysis.run", json!({ "analysis": id })) {
-                        self.adopt_run(&view);
-                        self.refresh_overview();
-                    }
-                }
+                Action::RunAgain(id) => self.run_again(id),
                 Action::SetCell {
                     worksheet,
                     row,
@@ -716,6 +746,9 @@ impl UiApp {
                 Action::NewFitPlot { fit, view } => self.new_fit_plot(fit, &view),
                 Action::PlotChanged => self.plot_changed(),
                 Action::ExportPlot(id) => self.export_plot(id),
+                Action::NewPopFit => self.new_pop_fit(),
+                Action::PopChanged => self.pop_changed(),
+                Action::RunPopFit => self.run_pop_fit(),
             }
         }
     }
@@ -810,7 +843,7 @@ impl UiApp {
             .frame(tokens.panel_frame(tokens.colors.panel_alt))
             .show(ctx, |ui| self.tree(ui, &mut actions));
         let shown = self.shown();
-        if shown != Shown::Nothing && shown != Shown::Plot {
+        if !matches!(shown, Shown::Nothing | Shown::Plot | Shown::Pop) {
             egui::SidePanel::right("plot-panel")
                 .default_width(tokens.size.plot_panel_width)
                 .min_width(tokens.size.plot_panel_min_width)
@@ -845,7 +878,7 @@ impl UiApp {
     }
 
     /// Which page the main area shows.
-    fn shown(&self) -> Shown {
+    pub(crate) fn shown(&self) -> Shown {
         let page = match self.state.selection {
             Selection::Analysis(id)
                 if self
@@ -856,6 +889,16 @@ impl UiApp {
             {
                 Shown::Plot
             }
+            Selection::Analysis(id)
+                if self
+                    .state
+                    .pop
+                    .as_ref()
+                    .is_some_and(|p| p.analysis == Some(id)) =>
+            {
+                Shown::Pop
+            }
+            Selection::NewPopFit if self.state.pop.is_some() => Shown::Pop,
             Selection::Analysis(_) => {
                 if self.state.nca.is_some() {
                     Shown::Nca
@@ -921,7 +964,7 @@ impl UiApp {
                     sim::plot_panel(ui, tokens, page, info, &mut self.state.log_axis);
                 }
             }
-            Shown::Plot | Shown::Nothing => {}
+            Shown::Plot | Shown::Pop | Shown::Nothing => {}
         }
     }
 
@@ -965,6 +1008,16 @@ impl UiApp {
                         .clicked()
                     {
                         actions.push(Action::NewFit);
+                    }
+                    if ui
+                        .add_enabled(
+                            has_sheet,
+                            egui::Button::new("Population fit (all subjects)"),
+                        )
+                        .on_disabled_hover_text("Open a CSV file with a subject column first")
+                        .clicked()
+                    {
+                        actions.push(Action::NewPopFit);
                     }
                     if ui.button("Model simulation").clicked() {
                         actions.push(Action::NewSimulation);
@@ -1173,43 +1226,69 @@ impl UiApp {
                 Some(v) => verify::screen(ui, tokens, v, actions),
                 None => self.welcome(ui, tokens, actions),
             },
-            Selection::Analysis(_) | Selection::NewFit | Selection::NewSimulation => {
-                match (self.shown(), self.sheet.as_ref()) {
-                    (Shown::Nca, Some(s)) => {
-                        if let Some(page) = self.state.nca.as_mut() {
-                            nca::central(ui, tokens, page, &s.info, &s.table, actions);
-                        }
-                    }
-                    (Shown::Fit, Some(s)) => {
-                        if let Some(page) = self.state.fit.as_mut() {
-                            fitform::central(ui, tokens, page, &s.info, &s.table, actions);
-                        }
-                    }
-                    (Shown::Plot, _) => {
-                        let worksheets = self.plot_worksheets();
-                        let analyses: Vec<(u64, String)> = self
-                            .overview
-                            .analyses
-                            .iter()
-                            .map(|a| (a.id, a.label.clone()))
-                            .collect();
-                        if let Some(page) = self.state.plot.as_mut() {
-                            plotpage::central(ui, tokens, page, &worksheets, &analyses, actions);
-                        }
-                    }
-                    (Shown::Sim, sheet) => {
-                        if let Some(page) = self.state.sim.as_mut() {
-                            let info = sheet
-                                .map(|s| &s.info)
-                                .filter(|i| Some(i.id) == page.worksheet);
-                            sim::central(ui, tokens, page, info, actions);
-                        }
-                    }
-                    _ => {
-                        ui.label("This analysis cannot be shown here yet.");
+            Selection::Analysis(_)
+            | Selection::NewFit
+            | Selection::NewSimulation
+            | Selection::NewPopFit => match (self.shown(), self.sheet.as_ref()) {
+                (Shown::Nca, Some(s)) => {
+                    if let Some(page) = self.state.nca.as_mut() {
+                        nca::central(ui, tokens, page, &s.info, &s.table, actions);
                     }
                 }
-            }
+                (Shown::Fit, Some(s)) => {
+                    if let Some(page) = self.state.fit.as_mut() {
+                        fitform::central(ui, tokens, page, &s.info, &s.table, actions);
+                    }
+                }
+                (Shown::Plot, _) => {
+                    let worksheets = self.plot_worksheets();
+                    let analyses: Vec<(u64, String)> = self
+                        .overview
+                        .analyses
+                        .iter()
+                        .map(|a| (a.id, a.label.clone()))
+                        .collect();
+                    if let Some(page) = self.state.plot.as_mut() {
+                        plotpage::central(ui, tokens, page, &worksheets, &analyses, actions);
+                    }
+                }
+                (Shown::Pop, sheet) => {
+                    let entry = self.state.pop.as_ref().and_then(|p| {
+                        self.overview
+                            .analyses
+                            .iter()
+                            .find(|a| Some(a.id) == p.analysis)
+                            .cloned()
+                    });
+                    let worksheets = self.overview.worksheets.clone();
+                    if let Some(page) = self.state.pop.as_mut() {
+                        let info = sheet.map(|s| &s.info).filter(|i| i.id == page.worksheet);
+                        poppage::central(
+                            ui,
+                            tokens,
+                            page,
+                            poppage::Context {
+                                entry: entry.as_ref(),
+                                info,
+                                worksheets: &worksheets,
+                            },
+                            &mut self.state.log_axis,
+                            actions,
+                        );
+                    }
+                }
+                (Shown::Sim, sheet) => {
+                    if let Some(page) = self.state.sim.as_mut() {
+                        let info = sheet
+                            .map(|s| &s.info)
+                            .filter(|i| Some(i.id) == page.worksheet);
+                        sim::central(ui, tokens, page, info, actions);
+                    }
+                }
+                _ => {
+                    ui.label("This analysis cannot be shown here yet.");
+                }
+            },
         }
     }
 
