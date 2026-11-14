@@ -334,3 +334,18 @@ Answer (human): pending.
 - it pushes `iter2/egui`, `iter2/react`, `iter2/leptos` and the two new commits of `iter2/base`.
 
 Answer (2026-11-08, Abdou, in chat): « ok fait tout le process de nettoyage, maintenance, rangement aussi bien sur le repo qu'en local parce que je vais faire une grosse update sur comment est-ce qu'on dirige ce projet ». Nothing was deleted that a kept branch or `origin` does not still hold; the deleted branch tips are in `LOG.md`.
+
+## Q-029 (2026-11-14, orchestrator): what the Fable review of T-154 leaves open (population estimation)
+
+The review (`board/messages/2026-11-14-review-T-154.md`) found no wrong estimate, but asks for changes. Before the demo of 2026-11-16 no engine change is made in `crates/caladrius-fit/src/pop/`: each one costs a 12-minute verify and a Fable re-check, and the estimation is not reachable from any command yet (T-156 is not written). Blocker 1, the missing tests, is card T-188. The rest waits for Abdou:
+
+1. **Blocker 2, POP-COV-04: no SE for the correlations of Ω.** Decision meanwhile: cut from T-154 and done in the engine fix round after the demo, by the delta method of POP-COV-04.
+2. **The `s` kind under `omega_collapse`** (`covariance.rs:226-275`): the collapsed ln ω stays in the inverted set, and `s` is 9.9%, 15% and 71% from the oracle's conditional SEs on the three exact boundary cases. POP-COV-03 has no rule for it.
+   - Option (a): leave the collapsed parameter out of the inverted set and print it as NC, which matches the conditional SEs the oracle stores.
+   - Option (b): keep it and mark `s` NC whenever a collapse is flagged.
+   - Decision meanwhile: none asserted; `reader` writes the rule after the demo. Recommendation: (a).
+3. **The two-stage start with a combined error** (POP-EST-05): on `accurate` it leaves out 30 to 38 of 40 subjects (replicates 1, 2, 46, 97), because most individual fits end on a bound.
+   - Option (a): keep the subjects whose individual fit ends `at_bound` in the means.
+   - Option (b): use a proportional error for the individual stage.
+   - Decision meanwhile: unchanged; a `reader` round after the demo. Recommendation: (a).
+4. **Eleven "decisions taken meanwhile" live only in code comments**, and three contradict a spec sentence: `inner.rs:42` against POP-INN-02 (the polish condition), `outer.rs:63` against POP-COV-02 requirement 3, `mod.rs:758` against POP-EST-02 (a fixed ω = 0 is refused, the spec says it means no random effect). Decision meanwhile: the spec wins until a `reader` round amends it; the engine fix round aligns the code case by case, after the demo.

@@ -1,6 +1,31 @@
-# How to resume (state of 2026-11-08, afternoon)
+# How to resume (state of 2026-11-14; the sections below "Demo" are from 2026-11-08)
 
-**The project is paused.** The usage budget for the iterations is spent, and Abdou is changing how the project is run. The steps below describe the setup as it was on 2026-11-08. If the new setup replaces them, follow the new one; the state further down still holds.
+## Demo of 2026-11-16 (written 2026-11-14)
+
+- **Iteration 3 resumed for the demo.** T-139's thread has the order and the state.
+- **Worktrees:** under `C:\Users\abdou\caladrius-iter3\`: `int`, `pop`, `pop-triage` and `front`. Data outside the repository is in `C:\Users\abdou\caladrius-iter3\data\`: the engine CSV of T-154, the R triage cache, and the reviewer's harness.
+- **The front for the demo** is on `front/int` at ee4c51d.
+  - Browser:
+    1. From `apps/`, run `npm ci`.
+    2. Run `npm run wasm -w @caladrius/front` with `CARGO_TARGET_DIR` set.
+    3. Run `npm run build -w @caladrius/front`.
+    4. In `apps/caladrius-front`, run `npx vite preview --host 127.0.0.1 --port 4173`.
+  - Tauri window: `C:\Users\abdou\caladrius-iter3\bin\caladrius-tauri.exe`.
+  - The pk3 sample needs initial estimates typed by hand: CL 2, Vc 10, Q2 5, Vp2 20, Q3 0.5, Vp3 40.
+- **A Fable design pass** runs in the session `front-design`: card T-187 on its branch.
+- **Population PK:** no `pop.*` command exists (T-156 is not written).
+  - T-154 is verified, and its Fable review requests changes (Q-029).
+  - T-188 and T-174 are in progress.
+  - The demo calls the estimation "in validation".
+- **Card ids:** `front/int` numbers its own cards T-177 to T-185, which collide with those of `main`. New cards start at T-186.
+- **Not pushed:**
+  - `main` (board);
+  - `iter3/int` f91891a;
+  - `iter3/pop` aedeaca;
+  - `front/int` (local, ee4c51d);
+  - the `front-design` branch.
+
+**Before 2026-11-14, the project was paused.** The usage budget for the iterations was spent, and Abdou was changing how the project is run. The steps below describe the setup as it was on 2026-11-08.
 
 1. Open Claude Code in `C:\Users\abdou\officina\caladrius`: the agent files of `.claude/agents/` load only when a session starts here, and `CLAUDE.md` imports `AGENTS.md`. Say: "Reprends le rôle d'orchestrateur : lis board/RESUME.md, board/INDEX.md et la carte d'itération ouverte, puis continue."
 2. One session = one iteration (`AGENTS.md` section 9). The open iteration card holds the brief, the plan and the state of each card.
