@@ -479,12 +479,26 @@ pub fn central(
                 }
                 if page.dosing == Dosing::Repeated {
                     ui.label("Number of doses");
+                    // A stored simulation with more doses than the field offers keeps its number
+                    // until the person changes it: drawing the field never rewrites it.
                     if ui
-                        .add(egui::DragValue::new(&mut page.n_doses).range(1..=MAX_DOSES))
+                        .add(
+                            egui::DragValue::new(&mut page.n_doses)
+                                .range(1..=MAX_DOSES)
+                                .clamp_existing_to_range(false),
+                        )
                         .changed()
                     {
                         page.fit_end_to_doses();
                         changed = true;
+                    }
+                    if page.n_doses > MAX_DOSES {
+                        ui.label(
+                            RichText::new(format!(
+                                "as stored: more than the {MAX_DOSES} this field offers"
+                            ))
+                            .color(c.text_muted.color()),
+                        );
                     }
                 }
             });

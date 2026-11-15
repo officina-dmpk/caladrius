@@ -335,6 +335,59 @@ fn a_stored_fit_opens_with_its_result_and_the_palette_offers_a_new_one() {
 }
 
 #[test]
+fn run_again_on_a_fit_made_outside_the_page_runs_the_same_fit() {
+    let mut app = with_demo();
+    // A fit made through the engine, as the CLI or MCP make one, with what the page does not edit.
+    let made = app
+        .engine_mut()
+        .execute(
+            "pop.fit",
+            json!({
+                "worksheet": 1, "model": "pk1.oral_1", "random_effects": ["cl", "v", "ka"],
+                "error_model": "proportional",
+                "bounds": { "cl": { "lower": 0.5 } },
+                "options": { "method": "foce_i", "exclude_subjects": ["12"] },
+            }),
+        )
+        .unwrap();
+    assert_eq!(made["n_subjects"], 11);
+    let id = made["analysis"].as_u64().unwrap();
+    app.refresh_overview();
+    app.perform(vec![Action::Select(Selection::Analysis(id))]);
+    let page = app.pop_page().unwrap();
+    assert_eq!(page.analysis, Some(id));
+    assert_eq!(
+        page.kept_summary().as_deref(),
+        Some("bounds (cl), options.exclude_subjects")
+    );
+    // Run again from the page: the same fit, not a fit of the 12 subjects without the bound.
+    app.perform(vec![Action::RunPopFit]);
+    let run = run_of(&app);
+    assert_eq!(run.request["options"]["exclude_subjects"], json!(["12"]));
+    assert_eq!(run.request["bounds"]["cl"]["lower"], 0.5);
+    assert_eq!(run.answer["n_subjects"], 11);
+    assert_eq!(
+        pop::summary(&run.answer, &["cl", "v", "ka"]),
+        pop::summary(&made, &["cl", "v", "ka"])
+    );
+    let view = app
+        .engine_mut()
+        .execute("analysis.get", json!({ "analysis": id }))
+        .unwrap();
+    assert_eq!(view["spec"]["options"]["exclude_subjects"], json!(["12"]));
+    // The page says what it sends without showing it.
+    let mut h = harness(app);
+    h.run_steps(3);
+    assert_eq!(
+        labels(
+            &h,
+            "Also sent as stored, set outside this page: bounds (cl), options.exclude_subjects."
+        ),
+        1
+    );
+}
+
+#[test]
 fn a_new_project_leaves_no_population_page_behind() {
     let mut app = run_demo();
     app.perform(vec![Action::NewProject, Action::GuardDiscard]);

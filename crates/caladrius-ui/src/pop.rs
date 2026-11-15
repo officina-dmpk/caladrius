@@ -89,14 +89,52 @@ pub fn structural(model: &ModelInfo) -> Vec<&'static str> {
     names
 }
 
-/// The random effects ticked when a model is picked: every structural parameter but the lag time
-/// (the engine takes none on it in this version).
+/// Whether a parameter may carry a random effect in this version: not the lag time and not the
+/// duration of a zero-order input (POP-MOD-02 rule 3: the prediction has a kink there, and the
+/// engine refuses such a request).
+pub fn takes_random_effect(name: &str) -> bool {
+    name != "tlag" && name != "dur"
+}
+
+/// The random effects ticked when a model is picked: every structural parameter that may carry
+/// one ([`takes_random_effect`]).
 pub fn default_random_effects(model: &ModelInfo) -> Vec<String> {
     structural(model)
         .into_iter()
-        .filter(|n| *n != "tlag")
+        .filter(|n| takes_random_effect(n))
         .map(str::to_owned)
         .collect()
+}
+
+/// The keys of a stored `pop.fit` specification that the page does not edit and sends again as
+/// stored; the options other than the method are kept under `options`.
+const KEPT_KEYS: [&str; 6] = [
+    "name",
+    "omega",
+    "omega_shape",
+    "error_init",
+    "fixed",
+    "bounds",
+];
+
+/// A stored value that says something: not null, not an empty map or list, not `false` (the
+/// stored specification writes every field, its defaults included).
+fn says_something(x: &Value) -> bool {
+    match x {
+        Value::Null | Value::Bool(false) => false,
+        Value::Object(m) => !m.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        _ => true,
+    }
+}
+
+/// The error parameters of an error model, as `fixed` names them.
+fn error_parameters(error_model: &str) -> &'static [&'static str] {
+    match error_model {
+        "additive" => &["a"],
+        "proportional" => &["b"],
+        _ => &["a", "b"],
+    }
 }
 
 /// One run of the engine: the request it answers and the answer as it came.
@@ -161,6 +199,13 @@ pub struct PopPage {
     /// engine's two-stage start.
     #[serde(default)]
     pub initial: BTreeMap<String, String>,
+    /// What a stored fit was given that the page does not edit (`omega`, `fixed`, `bounds`,
+    /// `error_init`, the options other than the method, set through the CLI or MCP): sent again
+    /// as stored, so that "Run again" runs the same fit. A change on the page that makes one of
+    /// them wrong drops it ([`PopPage::set_model`], [`PopPage::set_random_effect`],
+    /// [`PopPage::set_error_model`]).
+    #[serde(default)]
+    pub kept: serde_json::Map<String, Value>,
     #[serde(skip)]
     pub run: Option<PopRun>,
     #[serde(skip)]
@@ -181,6 +226,7 @@ impl PopPage {
             error_model: DEFAULT_ERROR_MODEL.to_owned(),
             method: DEFAULT_METHOD.to_owned(),
             initial: BTreeMap::new(),
+            kept: serde_json::Map::new(),
             run: None,
             error: None,
             jump: None,
@@ -214,6 +260,22 @@ impl PopPage {
                     .collect()
             })
             .unwrap_or_default();
+        let mut kept = serde_json::Map::new();
+        for key in KEPT_KEYS {
+            if let Some(x) = spec.get(key).filter(|x| says_something(x)) {
+                kept.insert(key.to_owned(), x.clone());
+            }
+        }
+        if let Some(options) = spec.get("options").and_then(Value::as_object) {
+            let others: serde_json::Map<String, Value> = options
+                .iter()
+                .filter(|(k, x)| k.as_str() != "method" && says_something(x))
+                .map(|(k, x)| (k.clone(), x.clone()))
+                .collect();
+            if !others.is_empty() {
+                kept.insert("options".to_owned(), Value::Object(others));
+            }
+        }
         let mut page = PopPage {
             analysis: view.get("id").and_then(Value::as_u64),
             worksheet: spec.get("worksheet").and_then(Value::as_u64).unwrap_or(0),
@@ -226,6 +288,7 @@ impl PopPage {
                 .unwrap_or(DEFAULT_METHOD)
                 .to_owned(),
             initial,
+            kept,
             run: None,
             error: None,
             jump: None,
@@ -244,24 +307,93 @@ impl PopPage {
         self.model_info().map(structural).unwrap_or_default()
     }
 
-    /// Picks another model: the random effects go back to their defaults and the starting values
-    /// of parameters the model does not have are dropped.
+    /// Picks another model: the random effects go back to their defaults, and the starting values,
+    /// fixed values and bounds of parameters the model does not have are dropped, with a stored
+    /// starting Ω (its size was that of the old random effects).
     pub fn set_model(&mut self, id: &str) {
         let Some(model) = modelinfo::by_id(id) else {
             return;
         };
+        if model.id == self.model {
+            return;
+        }
         self.model = model.id.to_owned();
         self.random_effects = default_random_effects(model);
         let names = structural(model);
         self.initial.retain(|k, _| names.contains(&k.as_str()));
+        self.drop_omega();
+        let errors = error_parameters(&self.error_model);
+        let effects = self.random_effects.clone();
+        self.retain_kept("fixed", |k| {
+            names.contains(&k)
+                || errors.contains(&k)
+                || k.strip_prefix("omega.")
+                    .is_some_and(|p| effects.iter().any(|r| r == p))
+        });
+        self.retain_kept("bounds", |k| names.contains(&k));
     }
 
-    /// Ticks or unticks the random effect of a parameter.
+    /// Ticks or unticks the random effect of a parameter. A stored starting Ω no longer has the
+    /// right size and is dropped, and so is a fixed variance of a random effect taken away.
     pub fn set_random_effect(&mut self, name: &str, on: bool) {
+        let before = self.random_effects.iter().any(|n| n == name);
         self.random_effects.retain(|n| n != name);
         if on {
             self.random_effects.push(name.to_owned());
         }
+        if before != on {
+            self.drop_omega();
+            if !on {
+                let gone = format!("omega.{name}");
+                self.retain_kept("fixed", |k| k != gone);
+            }
+        }
+    }
+
+    /// Picks another error model: stored starting error parameters and fixed error parameters
+    /// that the new model does not have are dropped.
+    pub fn set_error_model(&mut self, id: &str) {
+        if id == self.error_model {
+            return;
+        }
+        self.error_model = id.to_owned();
+        self.kept.remove("error_init");
+        let errors = error_parameters(id);
+        self.retain_kept("fixed", |k| !matches!(k, "a" | "b") || errors.contains(&k));
+    }
+
+    fn drop_omega(&mut self) {
+        self.kept.remove("omega");
+        self.kept.remove("omega_shape");
+    }
+
+    /// Keeps the entries of a kept map (`fixed`, `bounds`) whose name passes; an empty map goes.
+    fn retain_kept(&mut self, key: &str, keep: impl Fn(&str) -> bool) {
+        if let Some(map) = self.kept.get_mut(key).and_then(Value::as_object_mut) {
+            map.retain(|k, _| keep(k));
+            if map.is_empty() {
+                self.kept.remove(key);
+            }
+        }
+    }
+
+    /// What is sent as stored without being on the page, for the line under the form; `None`
+    /// when nothing is.
+    pub fn kept_summary(&self) -> Option<String> {
+        let mut names = Vec::new();
+        for (key, x) in &self.kept {
+            match (key.as_str(), x.as_object()) {
+                ("options", Some(options)) => {
+                    names.extend(options.keys().map(|k| format!("options.{k}")));
+                }
+                ("fixed" | "bounds", Some(map)) => {
+                    let inner: Vec<&str> = map.keys().map(String::as_str).collect();
+                    names.push(format!("{key} ({})", inner.join(", ")));
+                }
+                _ => names.push(key.clone()),
+            }
+        }
+        (!names.is_empty()).then(|| names.join(", "))
     }
 
     /// The random effects in the order of the structural parameters (the order of the rows of Ω).
@@ -332,6 +464,20 @@ impl PopPage {
         }
         if let Some(id) = self.analysis {
             params["analysis"] = json!(id);
+        }
+        // What the page does not edit goes again as stored; the method of the page wins.
+        for (key, x) in &self.kept {
+            if key == "options" {
+                if let (Some(sent), Some(stored)) =
+                    (params["options"].as_object_mut(), x.as_object())
+                {
+                    for (k, v) in stored {
+                        sent.entry(k.clone()).or_insert_with(|| v.clone());
+                    }
+                }
+            } else {
+                params[key.as_str()] = x.clone();
+            }
         }
         Ok(params)
     }
@@ -897,6 +1043,122 @@ mod tests {
         let indometh =
             second_look("pk2.iv_bolus", "additive", &effects(&["cl", "vc"]), 66, 6).unwrap();
         assert_eq!(indometh.nlme.omega["vc"], 0.0557237754370592);
+    }
+
+    #[test]
+    fn no_default_random_effect_on_the_lag_time_or_the_zero_order_duration() {
+        let zero_order: Vec<&ModelInfo> =
+            models().filter(|m| m.input == Input::ZeroOrder).collect();
+        assert!(!zero_order.is_empty());
+        for model in models() {
+            let effects = default_random_effects(model);
+            assert!(
+                !effects.iter().any(|n| n == "dur" || n == "tlag"),
+                "{}: {effects:?}",
+                model.id
+            );
+            assert!(!effects.is_empty(), "{}", model.id);
+        }
+        for model in zero_order {
+            assert!(structural(model).contains(&"dur"), "{}", model.id);
+            let mut page = PopPage::new(1);
+            page.set_model(model.id);
+            let sent = page.params().unwrap();
+            assert!(
+                !sent["random_effects"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|n| n == "dur"),
+                "{}",
+                model.id
+            );
+            // Without a random effect the engine needs a starting value for dur: the page says so.
+            assert!(page.missing_values().contains(&"dur"), "{}", model.id);
+        }
+        assert!(
+            takes_random_effect("cl")
+                && !takes_random_effect("dur")
+                && !takes_random_effect("tlag")
+        );
+    }
+
+    fn stored_view() -> Value {
+        json!({
+            "id": 4, "kind": "pop_fit",
+            "spec": {
+                "worksheet": 1, "model": "pk1.oral_1", "random_effects": ["cl", "v", "ka"],
+                "initial": { "cl": 2.8, "v": 32.0, "ka": 1.5 },
+                "omega": [[0.06, 0.0, 0.0], [0.0, 0.016, 0.0], [0.0, 0.0, 0.4]],
+                "omega_shape": null, "error_model": "proportional", "error_init": [0.15],
+                "fixed": { "omega.ka": 0.4, "b": 0.15 }, "bounds": { "cl": { "lower": 1.0, "upper": null } },
+                "options": { "method": "foce", "ofv_convention": null, "covariance": "r",
+                             "exclude_subjects": ["12"], "evaluate_only": false },
+            },
+            "result": null,
+        })
+    }
+
+    #[test]
+    fn a_stored_fit_keeps_what_the_page_does_not_edit_and_sends_it_again() {
+        let page = PopPage::from_view(&stored_view()).unwrap();
+        let sent = page.params().unwrap();
+        assert_eq!(sent["omega"], stored_view()["spec"]["omega"]);
+        assert_eq!(sent["error_init"], json!([0.15]));
+        assert_eq!(sent["fixed"], json!({ "omega.ka": 0.4, "b": 0.15 }));
+        assert_eq!(sent["bounds"]["cl"]["lower"], 1.0);
+        assert_eq!(sent["options"]["method"], "foce");
+        assert_eq!(sent["options"]["covariance"], "r");
+        assert_eq!(sent["options"]["exclude_subjects"], json!(["12"]));
+        assert_eq!(sent["analysis"], 4);
+        // The defaults the stored specification writes are not sent as if someone had set them.
+        for key in ["omega_shape", "kind"] {
+            assert!(sent.get(key).is_none(), "{key}");
+        }
+        for key in ["ofv_convention", "evaluate_only"] {
+            assert!(sent["options"].get(key).is_none(), "{key}");
+        }
+        assert_eq!(
+            page.kept_summary().as_deref(),
+            Some(
+                "bounds (cl), error_init, fixed (b, omega.ka), omega, options.covariance, options.exclude_subjects"
+            )
+        );
+        // A page made here has nothing kept.
+        assert_eq!(PopPage::new(1).kept_summary(), None);
+    }
+
+    #[test]
+    fn a_change_on_the_page_drops_what_it_makes_wrong() {
+        // A random effect taken away: Omega no longer has the right size, its fixed variance goes.
+        let mut page = PopPage::from_view(&stored_view()).unwrap();
+        page.set_random_effect("ka", false);
+        let sent = page.params().unwrap();
+        assert!(sent.get("omega").is_none());
+        assert_eq!(sent["fixed"], json!({ "b": 0.15 }));
+        assert_eq!(sent["options"]["exclude_subjects"], json!(["12"]));
+        // Ticking what is already ticked changes nothing.
+        let mut same = PopPage::from_view(&stored_view()).unwrap();
+        same.set_random_effect("cl", true);
+        assert!(same.params().unwrap().get("omega").is_some());
+        // Another error model: its starting values and the fixed b go.
+        let mut page = PopPage::from_view(&stored_view()).unwrap();
+        page.set_error_model("additive");
+        let sent = page.params().unwrap();
+        assert!(sent.get("error_init").is_none());
+        assert_eq!(sent["fixed"], json!({ "omega.ka": 0.4 }));
+        // Another model: Omega goes, and the fixed and bounds of parameters it does not have.
+        let mut page = PopPage::from_view(&stored_view()).unwrap();
+        page.set_model("pk1.iv_bolus");
+        let sent = page.params().unwrap();
+        assert!(sent.get("omega").is_none());
+        assert_eq!(sent["fixed"], json!({ "b": 0.15 }));
+        assert_eq!(sent["bounds"]["cl"]["lower"], 1.0);
+        assert_eq!(sent["options"]["covariance"], "r");
+        // Picking the model already there changes nothing.
+        let mut page = PopPage::from_view(&stored_view()).unwrap();
+        page.set_model("pk1.oral_1");
+        assert!(page.params().unwrap().get("omega").is_some());
     }
 
     #[test]

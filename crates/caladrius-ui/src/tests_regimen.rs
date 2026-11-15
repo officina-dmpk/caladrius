@@ -144,6 +144,40 @@ fn repeated_infusions_on_the_page_are_the_oracles_and_every_peak_is_drawn() {
 }
 
 #[test]
+fn a_stored_number_of_doses_above_the_field_is_kept_when_drawn_and_saved() {
+    let over = crate::sim::MAX_DOSES + 500;
+    let mut app = simulation(Input::Bolus, Dosing::Repeated, 6.0, over);
+    assert_eq!(app.sim_page().unwrap().error, None);
+    app.perform(vec![Action::SimSave]);
+    let crate::app::Selection::Analysis(id) = app.state.selection.clone() else {
+        panic!("a saved simulation is shown as an analysis");
+    };
+    app.perform(vec![Action::Select(crate::app::Selection::Welcome)]);
+    app.perform(vec![Action::Select(crate::app::Selection::Analysis(id))]);
+    assert_eq!(app.sim_page().unwrap().n_doses, over);
+    // Drawn: the field does not bring the stored number down to what it offers, and says so.
+    let mut h = harness(app);
+    h.run_steps(3);
+    assert_eq!(h.state().sim_page().unwrap().n_doses, over);
+    assert!(
+        h.query_all_by_label_contains("as stored: more than the")
+            .next()
+            .is_some()
+    );
+    // Saved again from the page: the stored number is unchanged.
+    h.state_mut().perform(vec![Action::SimSave]);
+    let app = h.state_mut();
+    let crate::app::Selection::Analysis(again) = app.state.selection.clone() else {
+        panic!("a saved simulation is shown as an analysis");
+    };
+    let view = app
+        .engine_mut()
+        .execute("analysis.get", serde_json::json!({ "analysis": again }))
+        .unwrap();
+    assert_eq!(view["spec"]["input"]["params"]["n_doses"], f64::from(over));
+}
+
+#[test]
 fn going_back_to_one_dose_sends_no_regimen_and_three_compartments_take_one() {
     let mut app = simulation(Input::Bolus, Dosing::Repeated, 6.0, 3);
     if let Some(p) = app.state.sim.as_mut() {

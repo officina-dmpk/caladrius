@@ -169,12 +169,23 @@ fn setup(
                 for name in page.parameters() {
                     let label = modelinfo::parameter_label(name, extravascular);
                     let mut on = page.random_effects.iter().any(|r| r == name);
-                    if name == "tlag" {
-                        // The engine takes no random effect on the lag time in this version.
-                        ui.add_enabled(false, egui::Checkbox::new(&mut on, label))
-                            .on_disabled_hover_text(
-                                "No random effect on the lag time in this version: it is a shared typical value",
-                            );
+                    if !pop::takes_random_effect(name) {
+                        // The engine takes no random effect on the lag time or on the duration of
+                        // a zero-order input in this version (POP-MOD-02). A stored fit that has
+                        // one can still be unticked.
+                        let why = if name == "tlag" {
+                            "No random effect on the lag time in this version: it is a shared typical value"
+                        } else {
+                            "No random effect on the duration of the zero-order input in this version: it is a shared typical value"
+                        };
+                        if ui
+                            .add_enabled(on, egui::Checkbox::new(&mut on, label))
+                            .on_disabled_hover_text(why)
+                            .on_hover_text(why)
+                            .changed()
+                        {
+                            page.set_random_effect(name, on);
+                        }
                         continue;
                     }
                     if ui
@@ -185,14 +196,19 @@ fn setup(
                         page.set_random_effect(name, on);
                     }
                 }
-                ui.label(RichText::new("log-normal, diagonal Ω").color(muted));
+                let shape = if page.kept.get("omega_shape").and_then(|s| s.as_str()) == Some("block") {
+                    "log-normal, block Ω (as stored)"
+                } else {
+                    "log-normal, diagonal Ω"
+                };
+                ui.label(RichText::new(shape).color(muted));
             });
             ui.end_row();
 
             row_label(ui, "Error model");
             line(ui, |ui| {
                 if let Some(id) = combo(ui, "pop-error-model", &page.error_model, &pop::ERROR_MODELS) {
-                    page.error_model = id;
+                    page.set_error_model(&id);
                 }
                 ui.label(RichText::new(pop::error_formula(&page.error_model)).color(muted));
             });
@@ -245,6 +261,14 @@ fn setup(
                 names.join(" and ")
             ))
             .color(c.warning.color()),
+        );
+    }
+    if let Some(kept) = page.kept_summary() {
+        ui.label(
+            RichText::new(format!(
+                "Also sent as stored, set outside this page: {kept}."
+            ))
+            .color(muted),
         );
     }
     ui.add_space(tokens.spacing.medium);

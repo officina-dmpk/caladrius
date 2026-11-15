@@ -74,7 +74,7 @@ impl UiApp {
                     Ok(answer) => {
                         page.adopt_answer(params, answer, wall);
                         if let Some(run) = page.run.as_mut() {
-                            run.seal = self.last_seal();
+                            run.seal = self.seal_of_last_command();
                         }
                         self.notice = None;
                     }
@@ -122,7 +122,7 @@ impl UiApp {
                 if let Some(page) = self.state.pop.as_mut().filter(|p| p.analysis == Some(id)) {
                     page.adopt_view(&view, wall);
                 }
-                let seal = self.last_seal();
+                let seal = self.seal_of_last_command();
                 if let Some(run) = self
                     .state
                     .pop
@@ -146,15 +146,5 @@ impl UiApp {
                 });
             }
         }
-    }
-
-    /// The seal of the last command, the first digits and the stamp line.
-    fn last_seal(&self) -> Option<(String, String)> {
-        let entry = self.engine.history().entries().last()?;
-        let seal = entry.seal.as_ref()?;
-        Some((
-            seal.short().to_owned(),
-            caladrius_engine::seal::stamp_line(&entry.command, seal),
-        ))
     }
 }

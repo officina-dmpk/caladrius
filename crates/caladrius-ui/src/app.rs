@@ -460,10 +460,17 @@ impl UiApp {
     /// The stamp line (`caladrius engine=... seal=...`) of the last command the engine ran, for a
     /// file that command produced; `None` when it carries no seal.
     pub(crate) fn stamp_of_last_command(&self) -> Option<String> {
+        self.seal_of_last_command().map(|(_, line)| line)
+    }
+
+    /// The seal of the last command the engine ran: its first digits and its stamp line; `None`
+    /// when it carries no seal.
+    pub(crate) fn seal_of_last_command(&self) -> Option<(String, String)> {
         let entry = self.engine.history().entries().last()?;
-        Some(caladrius_engine::seal::stamp_line(
-            &entry.command,
-            entry.seal.as_ref()?,
+        let seal = entry.seal.as_ref()?;
+        Some((
+            seal.short().to_owned(),
+            caladrius_engine::seal::stamp_line(&entry.command, seal),
         ))
     }
 
