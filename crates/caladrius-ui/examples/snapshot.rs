@@ -72,6 +72,9 @@ fn size_of(name: &str) -> (f32, f32) {
     if name.contains("pop-results") {
         return (SIZE.0, 1700.0);
     }
+    if name.contains("ml-fit") {
+        return (SIZE.0, 2600.0);
+    }
     if name.starts_with("35-")
         || name.starts_with("36-")
         || name.contains("more-options")
@@ -882,12 +885,68 @@ fn pop_scenes(wanted: &dyn Fn(&str) -> bool) -> Vec<(&'static str, UiApp)> {
     scenes
 }
 
+/// The engine's maximum-likelihood fit and multiple dosing in the interface (demo of 2026-11-16):
+/// subject 1 of the demo table fitted with a proportional error model, and a two-hour infusion
+/// (public values of the multiple-dosing oracle: dose 100, V 10, k 0.2, every 6 h) at steady state
+/// and over ten doses, with the units of the oral worksheet.
+fn regimen_scenes(wanted: &dyn Fn(&str) -> bool) -> Vec<(&'static str, UiApp)> {
+    let ml = |mode: ThemeMode| {
+        let mut app = UiApp::new();
+        app.load_csv("theophylline_pop.csv", theoph_demo_csv().as_bytes());
+        app.perform(vec![Action::ImportConfirm, Action::NewFit]);
+        if let Some(page) = app.state.fit.as_mut() {
+            page.set_maximum_likelihood(true);
+        }
+        app.perform(vec![
+            Action::FitChanged { regenerate: false },
+            Action::RunFit,
+        ]);
+        app.state.mode = mode;
+        app
+    };
+    let infusion = |dosing: caladrius_ui::sim::Dosing| {
+        let mut app = with_oral();
+        app.perform(vec![Action::NewSimulation]);
+        if let Some(p) = app.state.sim.as_mut() {
+            p.input = Input::Infusion;
+            p.duration = 2.0;
+            p.dose = 100.0;
+            p.params.insert("v".to_owned(), 10.0);
+            p.params.insert("k".to_owned(), 0.2);
+            p.tau = 6.0;
+            p.n_doses = 10;
+            p.set_dosing(dosing);
+        }
+        app.perform(vec![Action::SimChanged]);
+        app
+    };
+    let mut scenes: Vec<(&'static str, UiApp)> = Vec::new();
+    let mut add = |name: &'static str, make: &dyn Fn() -> UiApp| {
+        if wanted(name) {
+            scenes.push((name, make()));
+        }
+    };
+    add("80-ml-fit-light", &|| ml(ThemeMode::Light));
+    add("81-ml-fit-dark", &|| ml(ThemeMode::Dark));
+    add("82-steady-state-light", &|| {
+        infusion(caladrius_ui::sim::Dosing::SteadyState)
+    });
+    add("83-repeated-doses-light", &|| {
+        infusion(caladrius_ui::sim::Dosing::Repeated)
+    });
+    scenes
+}
+
 fn main() {
     // An argument renders only the scenes whose name contains it (`snapshot -- plot`).
     let only: Option<String> = std::env::args().nth(1);
     let wanted = |name: &str| only.as_deref().is_none_or(|o| name.contains(o));
     let mut failed = false;
-    for (name, app) in scenes().into_iter().chain(pop_scenes(&wanted)) {
+    for (name, app) in scenes()
+        .into_iter()
+        .chain(pop_scenes(&wanted))
+        .chain(regimen_scenes(&wanted))
+    {
         if only.as_deref().is_some_and(|o| !name.contains(o)) {
             continue;
         }

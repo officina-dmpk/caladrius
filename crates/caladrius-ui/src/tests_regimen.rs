@@ -76,11 +76,24 @@ fn the_steady_state_of_the_page_is_the_oracles() {
         crate::model::read::<crate::model::Simulation>(&direct).conc,
         result.conc
     );
+    // Saved, then opened again: the same steady state, the regimen apart from the parameters.
+    app.perform(vec![Action::SimSave]);
+    let crate::app::Selection::Analysis(id) = app.state.selection.clone() else {
+        panic!("a saved simulation is shown as an analysis");
+    };
+    app.perform(vec![Action::Select(crate::app::Selection::Welcome)]);
+    app.perform(vec![Action::Select(crate::app::Selection::Analysis(id))]);
+    let back = app.sim_page().unwrap().clone();
+    assert_eq!((back.dosing, back.tau), (Dosing::SteadyState, 6.0));
+    assert!(!back.params.contains_key("tau"));
+    app.perform(vec![Action::SimChanged]);
+    let again = app.sim_page().unwrap().result.clone().unwrap();
+    assert_eq!(again.secondary["cmin_ss"], result.secondary["cmin_ss"]);
     // Drawn, with the steady-state values named.
     let mut h = harness(app);
     h.run_steps(3);
     for label in [
-        "Cmin at steady state (trough)",
+        "Cmin at steady state, trough",
         "Cmax at steady state",
         "Accumulation ratio of Cmax",
         "Steady state",

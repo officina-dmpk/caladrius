@@ -581,7 +581,7 @@ pub fn parameter_label(name: &str, extravascular: bool) -> String {
         "error_b" => "b (proportional error)".to_owned(),
         "cmax_ss" => "Cmax at steady state".to_owned(),
         "tmax_ss" => "Tmax at steady state".to_owned(),
-        "cmin_ss" => "Cmin at steady state (trough)".to_owned(),
+        "cmin_ss" => "Cmin at steady state, trough".to_owned(),
         "cav_ss" => "Average concentration at steady state".to_owned(),
         "auc_tau_ss" => "AUC over one interval at steady state".to_owned(),
         "accum_cmax" => "Accumulation ratio of Cmax".to_owned(),

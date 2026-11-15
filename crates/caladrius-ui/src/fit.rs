@@ -324,6 +324,21 @@ impl FitPage {
     /// squares removes them, and the starting error values, since the engine refuses an error
     /// model with least squares. The weighting the person chose stays, for when they come back.
     pub fn set_maximum_likelihood(&mut self, on: bool) {
+        // A limit equal to the other objective's default is that default (a stored fit echoes
+        // every option): it goes, so the new objective runs with its own.
+        let other = if on {
+            defaults::MAX_ITERATIONS
+        } else {
+            defaults::ML_MAX_ITERATIONS
+        };
+        if self
+            .options
+            .pointer("/max_iterations")
+            .and_then(Value::as_u64)
+            == Some(other)
+        {
+            self.remove_option("max_iterations");
+        }
         if on {
             let model = self.error_model();
             self.set_option(&["objective"], json!("ml"));
@@ -689,6 +704,14 @@ mod tests {
         for key in ["objective", "error_model", "error_init"] {
             assert!(run["options"].get(key).is_none(), "{key} left");
         }
+        // A stored least-squares fit echoes its limit of 50: switched to ml, the limit is 500.
+        p.set_option(&["max_iterations"], json!(50));
+        p.set_maximum_likelihood(true);
+        assert_eq!(p.option_f64("/max_iterations", 500.0), 500.0);
+        assert!(p.run_params()["options"].get("max_iterations").is_none());
+        p.set_option(&["max_iterations"], json!(80));
+        p.set_maximum_likelihood(false);
+        assert_eq!(p.option_f64("/max_iterations", 50.0), 80.0);
         // A stored ml fit opens on maximum likelihood.
         let view = json!({
             "id": 3, "label": "Fit", "kind": "fit", "status": { "state": "fresh" },

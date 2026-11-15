@@ -166,19 +166,27 @@ fn estimates(
     let percent = fmt::number(level * 100.0);
     let extravascular = page.input.extravascular();
     let flagged: Vec<&str> = ok.flags.iter().map(|f| f.concerns()).collect();
+    // The engine gives no confidence intervals for a maximum-likelihood fit: no empty columns.
+    let intervals = ok
+        .parameters
+        .iter()
+        .any(|n| ok.value(&format!("ci_lo.{n}")).is_some());
+    let mut heads = vec![
+        "Parameter".to_owned(),
+        "Estimate".to_owned(),
+        "SE".to_owned(),
+        "CV%".to_owned(),
+    ];
+    if intervals {
+        heads.push(format!("{percent}% interval"));
+        heads.push(format!("{percent}% planar"));
+    }
     egui::Grid::new("estimates-grid")
-        .num_columns(6)
+        .num_columns(heads.len())
         .spacing([tokens.spacing.large, tokens.spacing.small])
         .striped(true)
         .show(ui, |ui| {
-            for h in [
-                "Parameter".to_owned(),
-                "Estimate".to_owned(),
-                "SE".to_owned(),
-                "CV%".to_owned(),
-                format!("{percent}% interval"),
-                format!("{percent}% planar"),
-            ] {
+            for h in &heads {
                 ui.label(RichText::new(h).small().strong());
             }
             ui.end_row();
@@ -194,7 +202,7 @@ fn estimates(
                 if i == ok.parameters.len() {
                     // A thin break between what was fitted and what follows from it.
                     ui.label(RichText::new("Derived").small().color(c.text_muted.color()));
-                    for _ in 0..5 {
+                    for _ in 1..heads.len() {
                         ui.label("");
                     }
                     ui.end_row();
@@ -213,10 +221,12 @@ fn estimates(
                 ui.label(RichText::new(show(value("se"))).color(body));
                 let cv_color = if bad { c.warning.color() } else { body };
                 ui.label(RichText::new(show(value("cv_percent"))).color(cv_color));
-                ui.label(RichText::new(interval(value("ci_lo"), value("ci_hi"))).color(body));
-                ui.label(
-                    RichText::new(interval(value("planar_lo"), value("planar_hi"))).color(body),
-                );
+                if intervals {
+                    ui.label(RichText::new(interval(value("ci_lo"), value("ci_hi"))).color(body));
+                    ui.label(
+                        RichText::new(interval(value("planar_lo"), value("planar_hi"))).color(body),
+                    );
+                }
                 ui.end_row();
             }
         });
@@ -256,6 +266,9 @@ fn goodness(ui: &mut Ui, tokens: &Tokens, ok: &FitOk, body: egui::Color32) {
                     ui.label(RichText::new(*label).color(c.text_muted.color()));
                     let shown = if *key == "corr_obs_pred" {
                         fmt::fit_quality(x)
+                    } else if *key == "iwres_mean" && x.abs() < 1e-9 {
+                        // Zero by construction for a proportional model: the rounding is noise.
+                        "0".to_owned()
                     } else {
                         fmt::number(x)
                     };
