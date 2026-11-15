@@ -6,7 +6,7 @@ use egui::{RichText, Ui};
 use serde_json::{Value, json};
 
 use crate::app::Action;
-use crate::fit::{CRITERIA, DERIVATIVES, FitPage, WEIGHTINGS, defaults};
+use crate::fit::{CRITERIA, DERIVATIVES, FitPage, OBJECTIVES, WEIGHTINGS, defaults};
 use crate::fitpreset;
 use crate::fitresult;
 use crate::fmt;
@@ -130,7 +130,7 @@ pub fn central(
         starting_values(ui, tokens, page, info, &mut changed, &mut regenerate);
     });
 
-    section(ui, tokens, "Weighting and options", |ui| {
+    section(ui, tokens, "Objective, weighting and options", |ui| {
         options_form(ui, tokens, page, &mut changed);
     });
 
@@ -272,10 +272,12 @@ fn starting_values(
     }
     let mut notes: Vec<String> = Vec::new();
     if let Some(wrss) = page.preview.wrss {
-        notes.push(format!(
-            "Weighted sum of squares at these values: {}",
-            fmt::number(wrss)
-        ));
+        let what = if page.maximum_likelihood() {
+            "Sum of squares (uniform weights)"
+        } else {
+            "Weighted sum of squares"
+        };
+        notes.push(format!("{what} at these values: {}", fmt::number(wrss)));
     }
     let time = info.unit_of("time").unwrap_or("");
     if let Some(t) = page.preview.secondary.get("half_life") {
@@ -299,19 +301,55 @@ fn starting_values(
 fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut bool) {
     let c = &tokens.colors;
     ui.horizontal(|ui| {
-        ui.label("Weighting");
-        if let Some(v) = combo(ui, "weighting", &page.weighting.clone(), &WEIGHTINGS) {
-            page.weighting = v;
+        ui.label("Objective");
+        let current = if page.maximum_likelihood() {
+            "ml"
+        } else {
+            "wls"
+        };
+        if let Some(v) = combo(ui, "objective", current, &OBJECTIVES) {
+            page.set_maximum_likelihood(v == "ml");
             *changed = true;
         }
     });
-    let predicted = page.weighting.contains("yhat");
-    if predicted {
+    if page.maximum_likelihood() {
+        ui.horizontal(|ui| {
+            ui.label("Error model");
+            if let Some(v) = combo(
+                ui,
+                "fit-error-model",
+                &page.error_model(),
+                &crate::pop::ERROR_MODELS,
+            ) {
+                page.set_option(&["error_model"], json!(v));
+                *changed = true;
+            }
+            let formula = crate::pop::error_formula(&page.error_model()).replace("IPRED", "ŷ");
+            ui.label(RichText::new(formula).color(c.text_muted.color()));
+        });
         ui.label(
-            RichText::new("Weights from the predictions are recomputed at every iteration.")
-                .small()
-                .color(c.text_muted.color()),
+            RichText::new(
+                "The error parameters are estimated with the model; the weights follow from them, so there is no weighting to choose.",
+            )
+            .small()
+            .color(c.text_muted.color()),
         );
+    } else {
+        ui.horizontal(|ui| {
+            ui.label("Weighting");
+            if let Some(v) = combo(ui, "weighting", &page.weighting.clone(), &WEIGHTINGS) {
+                page.weighting = v;
+                *changed = true;
+            }
+        });
+        let predicted = page.weighting.contains("yhat");
+        if predicted {
+            ui.label(
+                RichText::new("Weights from the predictions are recomputed at every iteration.")
+                    .small()
+                    .color(c.text_muted.color()),
+            );
+        }
     }
     egui::CollapsingHeader::new("More options")
         .id_salt("fit-more-options")
@@ -322,8 +360,9 @@ fn options_form(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut 
                 .num_columns(2)
                 .show(ui, |ui| {
                     ui.label("Maximum iterations");
-                    let mut n =
-                        page.option_f64("/max_iterations", defaults::MAX_ITERATIONS as f64) as i64;
+                    let mut n = page
+                        .option_f64("/max_iterations", page.default_max_iterations() as f64)
+                        as i64;
                     if ui
                         .add(egui::DragValue::new(&mut n).range(1..=1000))
                         .changed()
@@ -446,6 +485,11 @@ fn preset_choice(ui: &mut Ui, tokens: &Tokens, page: &mut FitPage, changed: &mut
                 && !selected
                 && fitpreset::apply(&mut page.options, &preset.id)
             {
+                // A preset's iteration limit is the one of least squares: maximum likelihood keeps
+                // the engine's own (500).
+                if page.maximum_likelihood() {
+                    page.remove_option("max_iterations");
+                }
                 *changed = true;
             }
         }

@@ -21,6 +21,12 @@ pub const WEIGHTINGS: [(&str, &str); 5] = [
     ("inv_yhat2", "1/ŷ² (predicted)"),
 ];
 
+/// What a fit minimises, by the engine's id of `options.objective`.
+pub const OBJECTIVES: [(&str, &str); 2] = [
+    ("wls", "Least squares (weighted)"),
+    ("ml", "Maximum likelihood (error model estimated)"),
+];
+
 /// How the partial derivatives are formed.
 pub const DERIVATIVES: [(&str, &str); 3] = [
     (
@@ -45,6 +51,8 @@ pub const CRITERIA: [(&str, &str); 2] = [
 /// so a change in the engine cannot leave the page showing other numbers.
 pub mod defaults {
     pub const MAX_ITERATIONS: u64 = 50;
+    /// The engine's iteration limit of a maximum-likelihood fit (`specs/fit.md` FIT-ML-08).
+    pub const ML_MAX_ITERATIONS: u64 = 500;
     pub const CONVERGENCE: f64 = 1.0e-10;
     pub const INCREMENT: f64 = 1.0e-5;
     pub const DERIVATIVES: &str = "auto";
@@ -301,6 +309,58 @@ impl FitPage {
         }
     }
 
+    /// Whether the fit is by maximum likelihood (`options.objective = ml`); else least squares.
+    pub fn maximum_likelihood(&self) -> bool {
+        self.options.pointer("/objective").and_then(Value::as_str) == Some("ml")
+    }
+
+    /// The error model of a maximum-likelihood fit (the engine has no default: the page shows
+    /// this one and always sends it, as the population page does).
+    pub fn error_model(&self) -> String {
+        self.option_str("/error_model", crate::pop::DEFAULT_ERROR_MODEL)
+    }
+
+    /// Chooses the objective. Maximum likelihood writes `objective` and the error model; least
+    /// squares removes them, and the starting error values, since the engine refuses an error
+    /// model with least squares. The weighting the person chose stays, for when they come back.
+    pub fn set_maximum_likelihood(&mut self, on: bool) {
+        if on {
+            let model = self.error_model();
+            self.set_option(&["objective"], json!("ml"));
+            self.set_option(&["error_model"], json!(model));
+        } else {
+            for key in ["objective", "error_model", "error_init"] {
+                self.remove_option(key);
+            }
+        }
+    }
+
+    /// The weighting sent to the engine: a maximum-likelihood fit takes its weights from the
+    /// error model and the engine refuses any other than the default, uniform.
+    pub fn weighting_sent(&self) -> &str {
+        if self.maximum_likelihood() {
+            "uniform"
+        } else {
+            &self.weighting
+        }
+    }
+
+    /// The iteration limit the engine applies when none is set: 500 for maximum likelihood.
+    pub fn default_max_iterations(&self) -> u64 {
+        if self.maximum_likelihood() {
+            defaults::ML_MAX_ITERATIONS
+        } else {
+            defaults::MAX_ITERATIONS
+        }
+    }
+
+    /// Removes a top-level option.
+    pub fn remove_option(&mut self, key: &str) {
+        if let Some(map) = self.options.as_object_mut() {
+            map.remove(key);
+        }
+    }
+
     /// Sets a value in the options, creating the objects on the way.
     pub fn set_option(&mut self, path: &[&str], value: Value) {
         if !self.options.is_object() {
@@ -374,7 +434,7 @@ impl FitPage {
             "subject": self.subject,
             "model": self.model().id,
             "dose": self.dose_override,
-            "weighting": self.weighting,
+            "weighting": self.weighting_sent(),
             "initial": self.fitted_initial(),
             "options": self.command_options(),
         })
@@ -602,6 +662,44 @@ mod tests {
         assert_eq!(p.threshold("max_cv_percent", 50.0), None);
         assert_eq!(p.threshold("max_abs_correlation", 0.95), Some(0.95));
         assert_eq!(p.run_params()["options"]["max_iterations"], 80);
+    }
+
+    #[test]
+    fn maximum_likelihood_sends_its_error_model_and_uniform_weights_and_goes_back_cleanly() {
+        let mut p = page();
+        p.weighting = "inv_yhat2".to_owned();
+        assert!(!p.maximum_likelihood());
+        assert_eq!(p.default_max_iterations(), 50);
+        p.set_maximum_likelihood(true);
+        let run = p.run_params();
+        assert_eq!(run["options"]["objective"], "ml");
+        assert_eq!(run["options"]["error_model"], "proportional");
+        // The engine refuses a weighting with ml: uniform is sent, the choice is kept.
+        assert_eq!(run["weighting"], "uniform");
+        assert_eq!(p.weighting, "inv_yhat2");
+        assert_eq!(p.default_max_iterations(), 500);
+        p.set_option(&["error_model"], json!("combined"));
+        p.set_option(&["error_init"], json!([0.1, 0.2]));
+        p.set_maximum_likelihood(true);
+        assert_eq!(p.error_model(), "combined");
+        // Back to least squares: no key of ml is left (the engine refuses an error model there).
+        p.set_maximum_likelihood(false);
+        let run = p.run_params();
+        assert_eq!(run["weighting"], "inv_yhat2");
+        for key in ["objective", "error_model", "error_init"] {
+            assert!(run["options"].get(key).is_none(), "{key} left");
+        }
+        // A stored ml fit opens on maximum likelihood.
+        let view = json!({
+            "id": 3, "label": "Fit", "kind": "fit", "status": { "state": "fresh" },
+            "spec": { "kind": "fit", "worksheet": 1, "subject": "1", "model": "pk1.oral_1",
+                      "dose": null, "weighting": "uniform", "initial": {},
+                      "options": { "objective": "ml", "error_model": "additive", "max_iterations": 500 } },
+            "result": null,
+        });
+        let q = FitPage::from_view(&view).unwrap();
+        assert!(q.maximum_likelihood());
+        assert_eq!(q.error_model(), "additive");
     }
 
     #[test]

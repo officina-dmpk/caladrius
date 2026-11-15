@@ -362,6 +362,9 @@ pub struct FitObservation {
     pub residual: f64,
     pub weighted_residual: f64,
     pub weight: f64,
+    /// Maximum likelihood only: the standard deviation of the observation and its IWRES.
+    pub sigma: Option<f64>,
+    pub iwres: Option<f64>,
 }
 
 /// A point of the fitted curve, as the engine computed it.
@@ -378,6 +381,8 @@ pub struct CurvePoint {
 pub struct TraceRow {
     pub iteration: usize,
     pub wrss: f64,
+    /// Maximum likelihood only: -2 log-likelihood at this iteration.
+    pub m2ll: Option<f64>,
     pub estimates: Vec<f64>,
     pub step: Option<f64>,
     pub lambda: f64,
@@ -390,6 +395,10 @@ pub struct TraceRow {
 #[serde(default)]
 pub struct FitOk {
     pub status: String,
+    /// `wls` or `ml` (absent before maximum likelihood existed: least squares).
+    pub objective: String,
+    /// The error model of a maximum-likelihood fit.
+    pub error_model: Option<String>,
     pub parameters: Vec<String>,
     pub values: BTreeMap<String, f64>,
     pub observations: Vec<FitObservation>,
@@ -403,6 +412,11 @@ impl FitOk {
     /// A named value (`estimate.v`, `se.k`, `wrss`...).
     pub fn value(&self, name: &str) -> Option<f64> {
         self.values.get(name).copied()
+    }
+
+    /// Whether this is a maximum-likelihood fit.
+    pub fn maximum_likelihood(&self) -> bool {
+        self.objective == "ml"
     }
 }
 

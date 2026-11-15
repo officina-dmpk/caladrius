@@ -16,6 +16,24 @@ use crate::widgets::error_box;
 /// The derived parameters, in the order shown.
 const DERIVED: [&str; 3] = ["cl", "half_life", "auc_inf"];
 
+/// The goodness-of-fit values of a maximum-likelihood fit: label, engine name. The likelihood
+/// forms first; the least-squares forms (uniform weights at the estimate) follow, labelled as such,
+/// and are never compared with them (`specs/fit.md` FIT-ML-16).
+const GOODNESS_ML: [(&str, &str); 12] = [
+    ("-2 log-likelihood", "m2ll"),
+    ("Observations", "n"),
+    ("AIC", "aic_ml"),
+    ("BIC", "bic_ml"),
+    ("IWRES mean", "iwres_mean"),
+    ("IWRES SD", "iwres_sd"),
+    ("|IWRES| above 2", "n_iwres_gt2"),
+    ("|IWRES| above 3", "n_iwres_gt3"),
+    ("Sum of squares (uniform)", "wrss"),
+    ("Degrees of freedom", "df"),
+    ("AIC, least-squares form", "aic"),
+    ("SBC, least-squares form", "sbc"),
+];
+
 /// The goodness-of-fit values: label, engine name.
 const GOODNESS: [(&str, &str); 7] = [
     ("Weighted sum of squares", "wrss"),
@@ -208,11 +226,32 @@ fn goodness(ui: &mut Ui, tokens: &Tokens, ok: &FitOk, body: egui::Color32) {
     let c = &tokens.colors;
     ui.add_space(tokens.spacing.medium);
     ui.label(RichText::new("Goodness of fit").strong());
+    if ok.maximum_likelihood() {
+        let model = ok.error_model.as_deref().unwrap_or_default();
+        let name = crate::pop::ERROR_MODELS
+            .iter()
+            .find(|(id, _)| *id == model)
+            .map_or(model, |(_, label)| *label);
+        ui.label(
+            RichText::new(format!(
+                "Maximum likelihood, {} error model ({}). The least-squares forms are shown for reference and are not comparable with the likelihood ones.",
+                name.to_lowercase(),
+                crate::pop::error_formula(model).replace("IPRED", "ŷ")
+            ))
+            .small()
+            .color(c.text_muted.color()),
+        );
+    }
     egui::Grid::new("goodness-grid")
         .num_columns(4)
         .spacing([tokens.spacing.large, tokens.spacing.small])
         .show(ui, |ui| {
-            for (i, (label, key)) in GOODNESS.iter().enumerate() {
+            let rows: &[(&str, &str)] = if ok.maximum_likelihood() {
+                &GOODNESS_ML
+            } else {
+                &GOODNESS
+            };
+            for (i, (label, key)) in rows.iter().enumerate() {
                 if let Some(x) = ok.value(key) {
                     ui.label(RichText::new(*label).color(c.text_muted.color()));
                     let shown = if *key == "corr_obs_pred" {
@@ -317,13 +356,19 @@ fn trace(ui: &mut Ui, tokens: &Tokens, ok: &FitOk) {
                 .striped(true)
                 .spacing([tokens.spacing.large, tokens.spacing.small])
                 .show(ui, |ui| {
-                    let mut head = vec!["iteration".to_owned(), "WRSS".to_owned()];
+                    let ml = ok.maximum_likelihood();
+                    let objective = if ml { "-2LL" } else { "WRSS" };
+                    let mut head = vec!["iteration".to_owned(), objective.to_owned()];
                     head.extend(ok.parameters.iter().cloned());
                     head.extend(["damping".to_owned(), "step".to_owned()]);
                     header(ui, &head);
                     for row in &ok.trace {
                         ui.label(row.iteration.to_string());
-                        ui.label(fmt::number(row.wrss));
+                        if ml {
+                            ui.label(show(row.m2ll));
+                        } else {
+                            ui.label(fmt::number(row.wrss));
+                        }
                         for j in 0..ok.parameters.len() {
                             ui.label(show(row.estimates.get(j).copied()));
                         }
@@ -345,7 +390,13 @@ fn partials(ui: &mut Ui, tokens: &Tokens, ok: &FitOk) {
                 .spacing([tokens.spacing.large, tokens.spacing.small])
                 .show(ui, |ui| {
                     let mut head = vec!["time".to_owned()];
-                    head.extend(ok.parameters.iter().map(|p| format!("d/d {p}")));
+                    // One column per model parameter: the error parameters have none.
+                    head.extend(
+                        ok.parameters
+                            .iter()
+                            .take(ok.partials.len())
+                            .map(|p| format!("d/d {p}")),
+                    );
                     header(ui, &head);
                     for (i, o) in ok.observations.iter().enumerate() {
                         ui.label(fmt::number(o.time));
@@ -367,6 +418,12 @@ fn predicted(ui: &mut Ui, tokens: &Tokens, ok: &FitOk) {
                 .striped(true)
                 .spacing([tokens.spacing.large, tokens.spacing.small])
                 .show(ui, |ui| {
+                    let ml = ok.maximum_likelihood();
+                    let (fifth, sixth) = if ml {
+                        ("σ", "IWRES")
+                    } else {
+                        ("weighted residual", "weight")
+                    };
                     header(
                         ui,
                         &[
@@ -374,20 +431,20 @@ fn predicted(ui: &mut Ui, tokens: &Tokens, ok: &FitOk) {
                             "observed".to_owned(),
                             "predicted".to_owned(),
                             "residual".to_owned(),
-                            "weighted residual".to_owned(),
-                            "weight".to_owned(),
+                            fifth.to_owned(),
+                            sixth.to_owned(),
                         ],
                     );
                     for o in &ok.observations {
-                        for x in [
-                            o.time,
-                            o.observed,
-                            o.predicted,
-                            o.residual,
-                            o.weighted_residual,
-                            o.weight,
-                        ] {
+                        for x in [o.time, o.observed, o.predicted, o.residual] {
                             ui.label(fmt::number(x));
+                        }
+                        if ml {
+                            ui.label(show(o.sigma));
+                            ui.label(show(o.iwres));
+                        } else {
+                            ui.label(fmt::number(o.weighted_residual));
+                            ui.label(fmt::number(o.weight));
                         }
                         ui.end_row();
                     }

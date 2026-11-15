@@ -577,6 +577,15 @@ pub fn parameter_label(name: &str, extravascular: bool) -> String {
         "tmax_pred" => "Tmax (predicted)".to_owned(),
         "cmax_pred" => "Cmax (predicted)".to_owned(),
         "rate" => "Input rate".to_owned(),
+        "error_a" => "a (additive error)".to_owned(),
+        "error_b" => "b (proportional error)".to_owned(),
+        "cmax_ss" => "Cmax at steady state".to_owned(),
+        "tmax_ss" => "Tmax at steady state".to_owned(),
+        "cmin_ss" => "Cmin at steady state (trough)".to_owned(),
+        "cav_ss" => "Average concentration at steady state".to_owned(),
+        "auc_tau_ss" => "AUC over one interval at steady state".to_owned(),
+        "accum_cmax" => "Accumulation ratio of Cmax".to_owned(),
+        "accum_auc" => "Accumulation ratio of AUC".to_owned(),
         other => other.to_owned(),
     }
 }
@@ -637,8 +646,9 @@ pub fn parameter_unit(
         "tlag" | "dur" | "half_life" | "half_life_alpha" | "half_life_beta" | "half_life_gamma"
         | "mrt" | "mrt_system" | "tmax_pred" => time.map(str::to_owned),
         "cl" | "q" | "q2" | "q3" => derived.get("cl").cloned(),
-        "a" | "b" | "c" => conc.map(str::to_owned),
-        "auc_inf" => derived.get("auc").cloned(),
+        "a" | "b" | "c" | "error_a" | "cmax_ss" | "cmin_ss" | "cav_ss" => conc.map(str::to_owned),
+        "tmax_ss" => time.map(str::to_owned),
+        "auc_inf" | "auc_tau_ss" => derived.get("auc").cloned(),
         _ => None,
     }
 }

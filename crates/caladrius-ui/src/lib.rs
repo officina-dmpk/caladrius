@@ -75,6 +75,8 @@ mod tests_entry;
 #[cfg(test)]
 mod tests_fitpreset;
 #[cfg(test)]
+mod tests_ml;
+#[cfg(test)]
 mod tests_palette;
 #[cfg(test)]
 mod tests_pk2;

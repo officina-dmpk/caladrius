@@ -168,16 +168,18 @@ fn residuals(ui: &mut Ui, tokens: &Tokens, page: &FitPage, info: &WorksheetInfo)
         &pairs(&|o| o.predicted, &|o| o.residual),
         height,
     );
-    ui.label(
-        RichText::new("Weighted residual against time")
-            .small()
-            .color(c.text_muted.color()),
-    );
+    // With maximum likelihood the engine's weighted residual is the IWRES, (y - ŷ)/σ.
+    let (title, axis) = if ok.maximum_likelihood() {
+        ("IWRES against time", "IWRES")
+    } else {
+        ("Weighted residual against time", "Weighted resid.")
+    };
+    ui.label(RichText::new(title).small().color(c.text_muted.color()));
     plot::scatter(
         ui,
         tokens,
         "residual-weighted",
-        (&time, "Weighted resid."),
+        (&time, axis),
         &pairs(&|o| o.time, &|o| o.weighted_residual),
         height,
     );
