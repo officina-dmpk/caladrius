@@ -91,6 +91,8 @@ mod tests_pop;
 #[cfg(test)]
 mod tests_project;
 #[cfg(test)]
+mod tests_regimen;
+#[cfg(test)]
 mod tests_settings;
 #[cfg(test)]
 mod tests_verify;

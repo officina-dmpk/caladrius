@@ -1,6 +1,9 @@
 //! The simulation page: a model, a dose, the parameters and a time range give the curve of the
 //! engine's `model.simulate` (no worksheet needed). It reuses the model and parameter controls of
 //! the fit page. The curve is redrawn at every change; "Save as analysis" stores it in the project.
+//! The dosing is one dose, n equal doses every tau, or the steady state of doses every tau: the
+//! engine reads the regimen from the reserved parameters `tau` and `n_doses` (`specs/models.md`
+//! MOD-MD-11, 14, 16).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,6 +32,44 @@ pub mod example {
     pub const TLAG: f64 = 0.5;
     pub const DURATION: f64 = 1.0;
     pub const END: f64 = 24.0;
+    /// The dosing interval offered when the person first chooses several doses.
+    pub const TAU: f64 = 12.0;
+    pub const N_DOSES: u32 = 5;
+}
+
+/// The most doses the page offers: the engine takes up to 10 000 (MOD-MD-15), and its limit of
+/// evaluations (MOD-MD-17) stays far away with the grid below.
+pub const MAX_DOSES: u32 = 1000;
+
+/// Grid points per dose of a regimen, so that each peak of a short infusion falls near a point.
+const POINTS_PER_DOSE: usize = 100;
+
+/// The most grid points of a regimen.
+const MAX_POINTS: usize = 4000;
+
+/// How the doses are given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Dosing {
+    /// One dose at time 0.
+    #[default]
+    Single,
+    /// `n_doses` equal doses every `tau`, the first at 0; times since the first dose.
+    Repeated,
+    /// Equal doses every `tau` for ever; one interval, times since the last dose.
+    SteadyState,
+}
+
+impl Dosing {
+    pub const ALL: [Dosing; 3] = [Dosing::Single, Dosing::Repeated, Dosing::SteadyState];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Dosing::Single => "One dose",
+            Dosing::Repeated => "Repeated doses",
+            Dosing::SteadyState => "Steady state",
+        }
+    }
 }
 
 /// The derived values shown under the curve, in order.
@@ -56,6 +97,17 @@ const SECONDARY: [&str; 21] = [
     "cmax_pred",
 ];
 
+/// The values of a steady state, shown first when the dosing is the steady state.
+const STEADY_STATE: [&str; 7] = [
+    "cmax_ss",
+    "tmax_ss",
+    "cmin_ss",
+    "cav_ss",
+    "auc_tau_ss",
+    "accum_cmax",
+    "accum_auc",
+];
+
 /// The state of the simulation page.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SimPage {
@@ -73,6 +125,15 @@ pub struct SimPage {
     pub set: ParameterSet,
     pub duration: f64,
     pub dose: f64,
+    /// One dose, repeated doses or the steady state (absent in pages saved before: one dose).
+    #[serde(default)]
+    pub dosing: Dosing,
+    /// The dosing interval of repeated doses and of the steady state.
+    #[serde(default = "default_tau")]
+    pub tau: f64,
+    /// The number of repeated doses.
+    #[serde(default = "default_n_doses")]
+    pub n_doses: u32,
     /// Parameter values by engine name (`v`, `k`, `ka`, `tlag`; for two compartments the three
     /// sets, of which the chosen one is used).
     pub params: BTreeMap<String, f64>,
@@ -82,6 +143,14 @@ pub struct SimPage {
     pub result: Option<Simulation>,
     #[serde(skip)]
     pub error: Option<String>,
+}
+
+fn default_tau() -> f64 {
+    example::TAU
+}
+
+fn default_n_doses() -> u32 {
+    example::N_DOSES
 }
 
 impl Default for SimPage {
@@ -117,6 +186,9 @@ impl SimPage {
             set: ParameterSet::default(),
             duration: example::DURATION,
             dose: example::DOSE,
+            dosing: Dosing::Single,
+            tau: example::TAU,
+            n_doses: example::N_DOSES,
             params,
             end: example::END,
             result: None,
@@ -139,20 +211,31 @@ impl SimPage {
         page.compartments = model.compartments;
         page.input = model.input;
         page.lag = model.lag;
+        // The regimen travels among the parameters under reserved names: they are not model
+        // parameters, so they are read apart and kept out of the set.
+        let regimen = |k: &str| k == "tau" || k == "n_doses";
         if let Some(map) = input.get("params").and_then(Value::as_object) {
-            page.set = ParameterSet::of(map.keys().map(String::as_str));
+            page.set = ParameterSet::of(map.keys().map(String::as_str).filter(|k| !regimen(k)));
         }
         page.dose = input.get("dose").and_then(Value::as_f64)?;
         if let Some(map) = input.get("params").and_then(Value::as_object) {
             for (k, x) in map {
                 if let Some(x) = x.as_f64() {
-                    if k == "dur" {
-                        page.duration = x;
-                    } else {
-                        page.params.insert(k.clone(), x);
+                    match k.as_str() {
+                        "dur" => page.duration = x,
+                        "tau" => page.tau = x,
+                        "n_doses" => page.n_doses = x as u32,
+                        _ => {
+                            page.params.insert(k.clone(), x);
+                        }
                     }
                 }
             }
+            page.dosing = match (map.contains_key("tau"), map.contains_key("n_doses")) {
+                (true, true) => Dosing::Repeated,
+                (true, false) => Dosing::SteadyState,
+                _ => Dosing::Single,
+            };
         }
         page.end = input
             .get("times")
@@ -195,11 +278,21 @@ impl SimPage {
         if self.input.has_duration() {
             params.insert("dur".to_owned(), self.duration);
         }
+        match self.dosing {
+            Dosing::Single => {}
+            Dosing::Repeated => {
+                params.insert("tau".to_owned(), self.tau);
+                params.insert("n_doses".to_owned(), f64::from(self.n_doses));
+            }
+            Dosing::SteadyState => {
+                params.insert("tau".to_owned(), self.tau);
+            }
+        }
         let mut out = json!({
             "model": model.id,
             "dose": self.dose,
             "params": params,
-            "grid": { "start": 0.0, "end": self.end, "points": PREVIEW_POINTS },
+            "grid": { "start": 0.0, "end": self.grid_end(), "points": self.grid_points() },
         });
         if store {
             out["store"] = json!(true);
@@ -209,6 +302,42 @@ impl SimPage {
             }
         }
         out
+    }
+
+    /// The end of the curve: one interval at steady state (the engine takes times since the last
+    /// dose, from 0 to tau), else the time the person chose.
+    pub fn grid_end(&self) -> f64 {
+        match self.dosing {
+            Dosing::SteadyState => self.tau,
+            _ => self.end,
+        }
+    }
+
+    /// Points of the curve: more for repeated doses, so that every peak is drawn.
+    pub fn grid_points(&self) -> usize {
+        match self.dosing {
+            Dosing::Repeated => {
+                (self.n_doses as usize * POINTS_PER_DOSE).clamp(PREVIEW_POINTS, MAX_POINTS)
+            }
+            _ => PREVIEW_POINTS,
+        }
+    }
+
+    /// Chooses the dosing. Repeated doses show all of them: the end moves out to cover the last
+    /// interval when it would stop before.
+    pub fn set_dosing(&mut self, dosing: Dosing) {
+        self.dosing = dosing;
+        self.fit_end_to_doses();
+    }
+
+    /// With repeated doses, the curve runs at least to the end of the last interval.
+    pub fn fit_end_to_doses(&mut self) {
+        if self.dosing == Dosing::Repeated {
+            let last = self.tau * f64::from(self.n_doses);
+            if self.end < last {
+                self.end = last;
+            }
+        }
     }
 
     /// Takes the answer of `model.simulate`.
@@ -322,6 +451,53 @@ pub fn central(
             ui.label("Dose");
             changed |= unit_field(ui, &mut page.dose, 0.0..=1.0e12, &units.dose);
         });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Dosing");
+            for dosing in Dosing::ALL {
+                let selected = page.dosing == dosing;
+                let response = ui.selectable_label(selected, dosing.label());
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        true,
+                        selected,
+                        dosing.label(),
+                    )
+                });
+                if response.clicked() && !selected {
+                    page.set_dosing(dosing);
+                    changed = true;
+                }
+            }
+        });
+        if page.dosing != Dosing::Single {
+            ui.horizontal(|ui| {
+                ui.label("Every");
+                if unit_field(ui, &mut page.tau, 1.0e-4..=1.0e6, &units.time) {
+                    page.fit_end_to_doses();
+                    changed = true;
+                }
+                if page.dosing == Dosing::Repeated {
+                    ui.label("Number of doses");
+                    if ui
+                        .add(egui::DragValue::new(&mut page.n_doses).range(1..=MAX_DOSES))
+                        .changed()
+                    {
+                        page.fit_end_to_doses();
+                        changed = true;
+                    }
+                }
+            });
+            let note = match page.dosing {
+                Dosing::Repeated => {
+                    "The first dose at time 0, the others every interval; times since the first dose."
+                }
+                _ => {
+                    "After doses every interval for long enough: one interval, times since the last dose."
+                }
+            };
+            ui.label(RichText::new(note).small().color(c.text_muted.color()));
+        }
         let rows = modelpick::Rows::of("simulation", &page.choice(), info);
         changed |= modelpick::parameter_rows(
             ui,
@@ -334,8 +510,15 @@ pub fn central(
 
     section(ui, tokens, "Time", |ui| {
         ui.horizontal(|ui| {
-            ui.label("From 0 to");
-            changed |= unit_field(ui, &mut page.end, 1.0e-6..=1.0e9, &units.time);
+            if page.dosing == Dosing::SteadyState {
+                ui.label("One interval, from 0 to");
+                ui.label(
+                    RichText::new(format!("{} {}", fmt::number(page.tau), units.time)).strong(),
+                );
+            } else {
+                ui.label("From 0 to");
+                changed |= unit_field(ui, &mut page.end, 1.0e-6..=1.0e9, &units.time);
+            }
         });
     });
 
@@ -349,14 +532,24 @@ pub fn central(
             return;
         };
         let extravascular = page.input.extravascular();
+        let worksheet_units = info.is_some();
         egui::Grid::new("simulation-secondary")
             .num_columns(2)
             .spacing([tokens.spacing.large, tokens.spacing.small])
             .striped(true)
             .show(ui, |ui| {
-                for name in SECONDARY {
+                for name in STEADY_STATE.into_iter().chain(SECONDARY) {
                     if let Some(x) = result.secondary.get(name) {
-                        ui.label(modelinfo::parameter_label(name, extravascular));
+                        let mut label = if name == "auc_inf" && page.dosing == Dosing::Repeated {
+                            "AUC to infinity, all doses".to_owned()
+                        } else {
+                            modelinfo::parameter_label(name, extravascular)
+                        };
+                        let unit = modelpick::unit_of(name, info);
+                        if worksheet_units && !unit.is_empty() {
+                            label = format!("{label} ({unit})");
+                        }
+                        ui.label(label);
                         ui.label(RichText::new(fmt::number(*x)).strong());
                         ui.end_row();
                     }
@@ -403,6 +596,11 @@ pub fn plot_panel(
         }
     };
     fitplots::scale_switch(ui, tokens, "Concentration over time", log_axis);
+    let time_name = match page.dosing {
+        Dosing::Single => "Time",
+        Dosing::Repeated => "Time since the first dose",
+        Dosing::SteadyState => "Time since the last dose",
+    };
     let Some(result) = &page.result else {
         ui.label(RichText::new("The curve appears here.").color(c.text_muted.color()));
         return;
@@ -426,7 +624,7 @@ pub fn plot_panel(
         tokens,
         "simulation-plot",
         (
-            axis("Time", &units.time),
+            axis(time_name, &units.time),
             axis("Concentration", &units.conc),
         ),
         &[PointSet::new("Peak", peak(&curve), Tone::Fit, Dot::Large)],
@@ -495,6 +693,61 @@ mod tests {
         let text = serde_json::to_string(&p).unwrap();
         assert_eq!(serde_json::from_str::<SimPage>(&text).unwrap(), p);
         assert!(SimPage::from_view(&json!({ "kind": "fit" })).is_none());
+    }
+
+    #[test]
+    fn the_dosing_goes_to_the_engine_as_its_regimen_and_comes_back_from_a_stored_simulation() {
+        let mut p = SimPage::new();
+        p.input = Input::Bolus;
+        assert!(p.params(false)["params"].get("tau").is_none());
+        // Repeated doses: tau and n_doses, the curve over every dose with more points.
+        p.end = 24.0;
+        p.tau = 6.0;
+        p.n_doses = 10;
+        p.set_dosing(Dosing::Repeated);
+        let q = p.params(false);
+        assert_eq!(q["params"]["tau"], 6.0);
+        assert_eq!(q["params"]["n_doses"], 10.0);
+        assert_eq!(q["grid"]["end"], 60.0);
+        assert_eq!(q["grid"]["points"], 1000);
+        // Steady state: tau alone, and one interval from 0 to tau.
+        p.set_dosing(Dosing::SteadyState);
+        let q = p.params(true);
+        assert_eq!(q["params"]["tau"], 6.0);
+        assert!(q["params"].get("n_doses").is_none());
+        assert_eq!(q["grid"]["end"], 6.0);
+        assert_eq!(q["grid"]["points"], PREVIEW_POINTS);
+        // A stored steady state opens on the steady state; the regimen is not a model parameter.
+        let view = json!({ "id": 7, "kind": "simulation", "spec": { "kind": "simulation",
+            "input": { "model": "pk1.iv_bolus", "dose": 100.0,
+                       "params": { "v": 20.0, "k": 0.1, "tau": 6.0 },
+                       "times": [0.0, 3.0, 6.0] } } });
+        let back = SimPage::from_view(&view).unwrap();
+        assert_eq!((back.dosing, back.tau), (Dosing::SteadyState, 6.0));
+        assert!(!back.params.contains_key("tau"));
+        assert_eq!(
+            back.params(false)["params"],
+            json!({ "v": 20.0, "k": 0.1, "tau": 6.0 })
+        );
+        let view = json!({ "id": 8, "kind": "simulation", "spec": { "kind": "simulation",
+            "input": { "model": "pk1.iv_bolus", "dose": 100.0,
+                       "params": { "v": 20.0, "k": 0.1, "tau": 12.0, "n_doses": 3.0 },
+                       "times": [0.0, 36.0] } } });
+        let back = SimPage::from_view(&view).unwrap();
+        assert_eq!(
+            (back.dosing, back.n_doses, back.end),
+            (Dosing::Repeated, 3, 36.0)
+        );
+        // A page saved before the regimen existed still opens, on one dose.
+        let mut old = serde_json::to_value(SimPage::new()).unwrap();
+        for key in ["dosing", "tau", "n_doses"] {
+            old.as_object_mut().unwrap().remove(key);
+        }
+        let read: SimPage = serde_json::from_value(old).unwrap();
+        assert_eq!(
+            (read.dosing, read.tau, read.n_doses),
+            (Dosing::Single, 12.0, 5)
+        );
     }
 
     #[test]
