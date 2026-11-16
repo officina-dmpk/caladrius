@@ -21,19 +21,19 @@ The demo of 2026-11-16 is done; it ran on the new design (T-187). Abdou received
 
 | Branch | Where | What it holds | Pushed |
 |---|---|---|---|
-| `main` | this checkout | the board | no, 10 commits ahead |
+| `main` | this checkout | the board | yes |
 | `iter3/int` | `C:\Users\abdou\caladrius-iter3\int` | bricks 1 and 2 | yes |
 | `iter3/pop` | `...\caladrius-iter3\pop` | brick 3 so far, T-188 | yes |
 | `iter3/pop-triage` | `...\caladrius-iter3\pop-triage` | T-174 | yes |
 | `iter3/pop-ora`, `iter3/sim` | none | T-173 (contained in `iter3/pop`); brick 4 | yes |
 | `front/int` | `...\caladrius-iter3\front` | the previous front (T-177 to T-186 of its own numbering); PR #22 closed without merging (egui kept) | 2 commits ahead |
-| `demo/egui-pop` | `...\caladrius-iter3\demo` | the egui demo with population fit (contains the deleted `demo/pop-fit`, `demo/pop-ui`, `demo/ui-quick`) | no |
+| `demo/egui-pop` | `...\caladrius-iter3\demo` | the egui demo with population fit (contains the deleted `demo/pop-fit`, `demo/pop-ui`, `demo/ui-quick`); the way forward for the egui front. Its nine demo commits have no card yet; ultrareview of 2026-11-15: 4 of 9 findings fixed, 5 open in T-191 | yes |
 | `claude/front-design-879a0b` | `.claude\worktrees\front-design-879a0b` | T-187, the new design used in the demo, not merged into `front/int` | no |
 | `claude/objective-bardeen-af9f71` | `.claude\worktrees\objective-bardeen-af9f71` | T-189 (Q-031, golden rule 1), **not merged into `main`** | no |
 | `iter2/*` | none | the stack prototypes of iteration 2 | yes |
 
 - Two detached worktrees build the window: `C:\Users\abdou\caladrius-t187\tauri-src` (the demo window, binary in `caladrius-t187\bin\caladrius-tauri.exe`) and `caladrius-t189\tauri-src` (one uncommitted change in `tauri.conf.json`).
-- **Card ids:** `front/int` and the T-187 branch number their own cards T-177 to T-185, which collide with `main`'s. T-186 to T-189 live on branches; `main` continues at T-190.
+- **Card ids:** `front/int` and the T-187 branch number their own cards T-177 to T-185, which collide with `main`'s. T-186 to T-189 live on branches; `main` continues at T-192.
 - Data outside the repository: `C:\Users\abdou\caladrius-iter3\data\` (the engine CSV of T-154, the R triage cache, the reviewer's harness).
 
 ## This PC
@@ -45,7 +45,7 @@ The demo of 2026-11-16 is done; it ran on the new design (T-187). Abdou received
 ## Waiting for Abdou
 
 - The demo feedback, to write on the board and turn into the next iteration.
-- From the T-190 proposal: merge T-189 into `main`; push `main`, `front/int`, `demo/egui-pop` and the `claude/*` branches (Q-013 covers pushes of this repository); `iter2/*` kept as branches or turned into tags.
+- From the T-190 proposal: merge T-189 into `main`; push `front/int` and the `claude/*` branches (Q-013 covers pushes of this repository); `iter2/*` kept as branches or turned into tags.
 - Open questions: Q-002, Q-004 to Q-012 (from 2026-10-08, mostly applied in practice, never answered), Q-023 to Q-027, Q-029, Q-030.
 - Whether the T-154 fix round and T-156 (`pop.fit`) come next.
 - Red-team todo cards (T-054 to T-093 in `INDEX.md`): most touch `../agent`, `../optchat` or the umbrella.

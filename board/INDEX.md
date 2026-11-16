@@ -188,3 +188,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-160 | specs/vpc.md, the visual predictive check (brick 4, if time allows) | reader | done | T-157, T-170, T-162 |
 | T-188 | Oracle tests for the T-154 review, blocker 1: two-stage start, statuses, the three covariance kinds, bounds and fixed Omega | oracle | to review | T-154 |
 | T-190 | Post-demo cleanup: board, worktrees, build directories, caches | orchestrator, janitor | done | Q-032 |
+| T-191 | The open findings of the ultrareview of demo/egui-pop (IV infusion, R second look, diagnostics shape and fallback) | orchestrator, interface, engine | todo | T-139 |
