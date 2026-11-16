@@ -15,7 +15,7 @@ The demo of 2026-11-16 is done; it ran on the new design (T-187). Abdou received
   - Brick 3 (population): the objective T-153 is done. The estimation **T-154** is `to review`: verified, the Fable review requests changes (two blockers, no wrong estimate, Q-029). **T-188** is `to review`: 44 oracle tests on `iter3/pop`, 6 fail on spec rules the engine does not meet yet. T-174 is done: the cl bias belongs to the POP-OBJ-02 objective, not to the engine (Q-030).
   - **T-176** `todo`: the published `fit.run` schema lacks the ML options.
   - Not written: T-155 (CWRES), T-156 (`pop.fit` as a command), T-161 (wave 4 datasets), the merges of `iter3/pop` and `iter3/sim` into `iter3/int`.
-- **Iteration 2, T-130** (`blocked`): the interface stack. The demo used the T-187 design; whether it becomes the front is open.
+- **Iteration 2, T-130** (`blocked`): the interface stack. **Decided 2026-11-16 (Abdou): egui stays the front**; the web/Tauri front is dropped and PR #22 is closed without merging.
 
 ## Branches and worktrees
 
@@ -26,7 +26,7 @@ The demo of 2026-11-16 is done; it ran on the new design (T-187). Abdou received
 | `iter3/pop` | `...\caladrius-iter3\pop` | brick 3 so far, T-188 | yes |
 | `iter3/pop-triage` | `...\caladrius-iter3\pop-triage` | T-174 | yes |
 | `iter3/pop-ora`, `iter3/sim` | none | T-173 (contained in `iter3/pop`); brick 4 | yes |
-| `front/int` | `...\caladrius-iter3\front` | the previous front (T-177 to T-186 of its own numbering); PR #22 towards `main`, no CI check reported | 2 commits ahead |
+| `front/int` | `...\caladrius-iter3\front` | the previous front (T-177 to T-186 of its own numbering); PR #22 closed without merging (egui kept) | 2 commits ahead |
 | `demo/egui-pop` | `...\caladrius-iter3\demo` | the egui demo with population fit (contains the deleted `demo/pop-fit`, `demo/pop-ui`, `demo/ui-quick`) | no |
 | `claude/front-design-879a0b` | `.claude\worktrees\front-design-879a0b` | T-187, the new design used in the demo, not merged into `front/int` | no |
 | `claude/objective-bardeen-af9f71` | `.claude\worktrees\objective-bardeen-af9f71` | T-189 (Q-031, golden rule 1), **not merged into `main`** | no |
