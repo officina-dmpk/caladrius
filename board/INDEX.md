@@ -187,3 +187,4 @@ One line per task: id, title, role, state. Only the orchestrator writes this fil
 | T-179 | The orchestrator runs at high effort, not max | orchestrator | done | |
 | T-160 | specs/vpc.md, the visual predictive check (brick 4, if time allows) | reader | done | T-157, T-170, T-162 |
 | T-188 | Oracle tests for the T-154 review, blocker 1: two-stage start, statuses, the three covariance kinds, bounds and fixed Omega | oracle | to review | T-154 |
+| T-190 | Post-demo cleanup: board, worktrees, build directories, caches | orchestrator, janitor | in progress | Q-032 |
