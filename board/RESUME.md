@@ -26,9 +26,9 @@ The demo of 2026-11-16 is done; it ran on the new design (T-187). Abdou received
 | `iter3/pop` | `...\caladrius-iter3\pop` | brick 3 so far, T-188 | yes |
 | `iter3/pop-triage` | `...\caladrius-iter3\pop-triage` | T-174 | yes |
 | `iter3/pop-ora`, `iter3/sim` | none | T-173 (contained in `iter3/pop`); brick 4 | yes |
-| `front/int` | `...\caladrius-iter3\front` | the previous front (T-177 to T-186 of its own numbering) | 2 commits ahead |
+| `front/int` | `...\caladrius-iter3\front` | the previous front (T-177 to T-186 of its own numbering); PR #22 towards `main`, no CI check reported | 2 commits ahead |
 | `demo/egui-pop` | `...\caladrius-iter3\demo` | the egui demo with population fit (contains the deleted `demo/pop-fit`, `demo/pop-ui`, `demo/ui-quick`) | no |
-| `claude/front-design-879a0b` | `.claude\worktrees\front-design-879a0b` | T-187, the new design used in the demo (PR #22 towards `front/int`) | no |
+| `claude/front-design-879a0b` | `.claude\worktrees\front-design-879a0b` | T-187, the new design used in the demo, not merged into `front/int` | no |
 | `claude/objective-bardeen-af9f71` | `.claude\worktrees\objective-bardeen-af9f71` | T-189 (Q-031, golden rule 1), **not merged into `main`** | no |
 | `iter2/*` | none | the stack prototypes of iteration 2 | yes |
 
